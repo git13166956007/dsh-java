@@ -94,7 +94,8 @@ const toolForm = ref({
   name: '',
   description: '',
   parameters: '{\n  "type": "object",\n  "properties": {}\n}',
-  result: ''
+  result: '',
+  approvalRequired: false
 })
 const toolFormError = ref('')
 const toolSaving = ref(false)
@@ -578,7 +579,8 @@ function resetToolForm() {
     name: '',
     description: '',
     parameters: '{\n  "type": "object",\n  "properties": {}\n}',
-    result: ''
+    result: '',
+    approvalRequired: false
   }
   toolFormError.value = ''
 }
@@ -605,7 +607,8 @@ async function createTool() {
         name: toolForm.value.name.trim(),
         description: toolForm.value.description.trim(),
         parameters,
-        result: toolForm.value.result
+        result: toolForm.value.result,
+        approvalRequired: toolForm.value.approvalRequired
       })
     })
     const payload = await response.json().catch(() => ({}))
@@ -628,6 +631,16 @@ async function toggleTool(tool) {
   if (!response.ok) return
   const updated = await response.json()
   Object.assign(tool, updated)
+}
+
+async function toggleToolApproval(tool) {
+  const response = await fetch(`/api/v1/tools/${encodeURIComponent(tool.name)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ approvalRequired: !tool.approvalRequired })
+  })
+  if (!response.ok) return
+  Object.assign(tool, await response.json())
 }
 
 async function deleteTool(tool) {
@@ -1218,6 +1231,10 @@ onUnmounted(() => clearTimeout(planPollTimer))
             <p>{{ tool.description }}</p>
           </div>
           <div class="managed-tool-actions">
+            <label class="tool-toggle" :title="tool.approvalRequired ? 'Disable approval requirement' : 'Require approval before execution'">
+              <input type="checkbox" :checked="tool.approvalRequired" @change="toggleToolApproval(tool)" />
+              <span></span>
+            </label>
             <label class="tool-toggle" :title="tool.enabled ? 'Disable tool' : 'Enable tool'">
               <input type="checkbox" :checked="tool.enabled" @change="toggleTool(tool)" />
               <span></span>
@@ -1254,6 +1271,7 @@ onUnmounted(() => clearTimeout(planPollTimer))
           <span>Tool result</span>
           <textarea v-model="toolForm.result" rows="3" placeholder="Return value sent back to the model"></textarea>
         </label>
+        <label class="plan-approval-toggle"><input v-model="toolForm.approvalRequired" type="checkbox" /> Require approval before execution</label>
         <p v-if="toolFormError" class="tool-form-error">{{ toolFormError }}</p>
         <div class="tool-form-footer">
           <button class="secondary-button" type="button" @click="resetToolForm">Reset</button>

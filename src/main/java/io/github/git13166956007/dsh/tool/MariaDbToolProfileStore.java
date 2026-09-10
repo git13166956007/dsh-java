@@ -29,7 +29,7 @@ public final class MariaDbToolProfileStore implements ToolProfileStore {
         List<ToolProfileData> result = new ArrayList<ToolProfileData>();
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(
-                     "SELECT name, description, input_schema_json, result_text, enabled FROM dsh_tool_definition "
+                     "SELECT name, description, input_schema_json, result_text, enabled, approval_required FROM dsh_tool_definition "
                              + "WHERE source_type='custom' ORDER BY name");
              ResultSet rows = statement.executeQuery()) {
             while (rows.next()) {
@@ -37,7 +37,7 @@ public final class MariaDbToolProfileStore implements ToolProfileStore {
                         objectMapper.readTree(rows.getString("input_schema_json")).isObject()
                                 ? (ObjectNode) objectMapper.readTree(rows.getString("input_schema_json"))
                                 : objectMapper.createObjectNode(),
-                        rows.getString("result_text"), rows.getBoolean("enabled")));
+                        rows.getString("result_text"), rows.getBoolean("enabled"), rows.getBoolean("approval_required")));
             }
         }
         return result;
@@ -47,15 +47,16 @@ public final class MariaDbToolProfileStore implements ToolProfileStore {
     public void save(ToolProfileData profile) throws SQLException {
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(
-                     "INSERT INTO dsh_tool_definition (name, source_type, description, input_schema_json, result_text, enabled) "
-                             + "VALUES (?, 'custom', ?, ?, ?, ?) ON DUPLICATE KEY UPDATE source_type='custom', "
+                     "INSERT INTO dsh_tool_definition (name, source_type, description, input_schema_json, result_text, enabled, approval_required) "
+                             + "VALUES (?, 'custom', ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE source_type='custom', "
                              + "description=VALUES(description), input_schema_json=VALUES(input_schema_json), "
-                             + "result_text=VALUES(result_text), enabled=VALUES(enabled)")) {
+                             + "result_text=VALUES(result_text), enabled=VALUES(enabled), approval_required=VALUES(approval_required)")) {
             statement.setString(1, profile.name());
             statement.setString(2, profile.description());
             statement.setString(3, objectMapper.writeValueAsString(profile.parameters()));
             statement.setString(4, profile.result());
             statement.setBoolean(5, profile.enabled());
+            statement.setBoolean(6, profile.approvalRequired());
             statement.executeUpdate();
         }
     }
@@ -76,12 +77,17 @@ public final class MariaDbToolProfileStore implements ToolProfileStore {
                      "CREATE TABLE IF NOT EXISTS dsh_tool_definition (name VARCHAR(128) NOT NULL PRIMARY KEY, "
                              + "source_type VARCHAR(32) NOT NULL, source_id VARCHAR(255) NULL, description TEXT NOT NULL, "
                              + "input_schema_json LONGTEXT NOT NULL, result_text LONGTEXT NULL, enabled BOOLEAN NOT NULL DEFAULT TRUE, "
+                             + "approval_required BOOLEAN NOT NULL DEFAULT FALSE, "
                              + "version BIGINT NOT NULL DEFAULT 1, updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) "
                              + "ON UPDATE CURRENT_TIMESTAMP(3), INDEX idx_dsh_tool_source (source_type, source_id)) "
                              + "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4")) {
             statement.executeUpdate();
             try (PreparedStatement alter = connection.prepareStatement(
                     "ALTER TABLE dsh_tool_definition ADD COLUMN IF NOT EXISTS result_text LONGTEXT NULL")) {
+                alter.executeUpdate();
+            }
+            try (PreparedStatement alter = connection.prepareStatement(
+                    "ALTER TABLE dsh_tool_definition ADD COLUMN IF NOT EXISTS approval_required BOOLEAN NOT NULL DEFAULT FALSE")) {
                 alter.executeUpdate();
             }
         } catch (SQLException exception) {

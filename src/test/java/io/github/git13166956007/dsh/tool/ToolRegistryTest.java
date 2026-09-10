@@ -45,4 +45,21 @@ class ToolRegistryTest {
         assertEquals("saved-result", second.list().get(0).name().equals("persistent_demo")
                 ? store.list().get(0).result() : "");
     }
+
+    @Test
+    void approvalPolicyBlocksExecutionAndSurvivesRegistryRecreation() throws Exception {
+        InMemoryToolProfileStore store = new InMemoryToolProfileStore();
+        ToolRegistry first = new ToolRegistry(store);
+        first.registerCustom(new ToolDefinition("approval_demo", "Approval tool.",
+                JsonNodeFactory.instance.objectNode().put("type", "object")), "saved-result", true);
+
+        assertEquals(true, first.list().get(0).approvalRequired());
+        assertThrows(ToolApprovalRequiredException.class,
+                () -> first.execute("approval_demo", JsonNodeFactory.instance.objectNode()));
+
+        ToolRegistry second = new ToolRegistry(store);
+        assertEquals(true, second.list().get(0).approvalRequired());
+        second.setApprovalRequired("approval_demo", false);
+        assertEquals("saved-result", second.execute("approval_demo", JsonNodeFactory.instance.objectNode()));
+    }
 }

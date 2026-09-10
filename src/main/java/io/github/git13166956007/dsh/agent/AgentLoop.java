@@ -1,6 +1,7 @@
 package io.github.git13166956007.dsh.agent;
 
 import io.github.git13166956007.dsh.tool.ToolRegistry;
+import io.github.git13166956007.dsh.tool.ToolApprovalRequiredException;
 import io.github.git13166956007.dsh.skill.SkillRegistry;
 import io.github.git13166956007.dsh.memory.MemoryManager;
 import io.github.git13166956007.dsh.run.RunManager;
@@ -140,6 +141,9 @@ public final class AgentLoop {
                     String result;
                     try {
                         result = tools.execute(call.name(), call.arguments(), options.allowedToolNames());
+                    } catch (ToolApprovalRequiredException exception) {
+                        result = "Tool approval required: " + call.name();
+                        recordEvent(runId, "tool_approval_required", call.name());
                     } catch (Exception exception) {
                         result = "Tool execution failed: " + exception.getMessage();
                     }
@@ -226,6 +230,9 @@ public final class AgentLoop {
                     String result;
                     try {
                         result = tools.execute(call.name(), call.arguments(), options.allowedToolNames());
+                    } catch (ToolApprovalRequiredException exception) {
+                        result = "Tool approval required: " + call.name();
+                        recordEvent(runId, "tool_approval_required", call.name());
                     } catch (Exception exception) {
                         result = "Tool execution failed: " + exception.getMessage();
                     }

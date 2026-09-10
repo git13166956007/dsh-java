@@ -122,7 +122,7 @@ public final class DshController {
             }
             toolRegistry.registerCustom(new io.github.git13166956007.dsh.tool.ToolDefinition(
                     request.name().trim(), request.description().trim(),
-                    (ObjectNode) request.parameters()), request.result());
+                    (ObjectNode) request.parameters()), request.result(), Boolean.TRUE.equals(request.approvalRequired()));
             return toolRegistry.list().stream()
                     .filter(tool -> tool.name().equals(request.name().trim()))
                     .findFirst().orElseThrow();
@@ -133,10 +133,12 @@ public final class DshController {
 
     @PatchMapping("/tools/{name}")
     public ToolInfo updateTool(@PathVariable String name, @RequestBody ToolUpdateRequest request) {
-        if (request == null || request.enabled() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "enabled must be provided");
+        if (request == null || (request.enabled() == null && request.approvalRequired() == null)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "enabled or approvalRequired must be provided");
         }
-        if (!toolRegistry.setEnabled(name, request.enabled())) {
+        boolean found = request.enabled() == null || toolRegistry.setEnabled(name, request.enabled());
+        found = request.approvalRequired() == null || toolRegistry.setApprovalRequired(name, request.approvalRequired());
+        if (!found) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown tool: " + name);
         }
         return toolRegistry.list().stream().filter(tool -> tool.name().equals(name)).findFirst().orElseThrow();
@@ -633,7 +635,7 @@ public final class DshController {
                               String agentId, String mode) {
     }
 
-    public record ToolUpdateRequest(Boolean enabled) {
+    public record ToolUpdateRequest(Boolean enabled, Boolean approvalRequired) {
     }
 
     public record SkillUpdateRequest(Boolean enabled) {
@@ -673,7 +675,7 @@ public final class DshController {
     }
 
     public record ToolCreateRequest(String name, String description, tools.jackson.databind.JsonNode parameters,
-                                    String result) {
+                                    String result, Boolean approvalRequired) {
     }
 
     public record McpServerRequest(String name, String transport, String endpoint, String command,

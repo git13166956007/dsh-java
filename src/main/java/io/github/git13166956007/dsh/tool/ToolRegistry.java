@@ -23,6 +23,7 @@ public final class ToolRegistry {
                     register(new ToolDefinition(profile.name(), profile.description(), profile.parameters()),
                             new FixedResultHandler(profile.result()), "custom", true);
                     tools.get(profile.name()).enabled = profile.enabled();
+                    tools.get(profile.name()).approvalRequired = profile.approvalRequired();
                 }
             } catch (Exception exception) {
                 throw new IllegalStateException("failed to load custom tool profiles", exception);
@@ -35,6 +36,10 @@ public final class ToolRegistry {
     }
 
     public synchronized void registerCustom(ToolDefinition definition, String result) {
+        registerCustom(definition, result, false);
+    }
+
+    public synchronized void registerCustom(ToolDefinition definition, String result, boolean approvalRequired) {
         if (definition.description().trim().isEmpty()) {
             throw new IllegalArgumentException("custom tool description must not be blank");
         }
@@ -42,12 +47,20 @@ public final class ToolRegistry {
             throw new IllegalArgumentException("custom tool result must not be null");
         }
         register(definition, new FixedResultHandler(result), "custom", true);
-        persistCustom(definition, result, true);
+        RegisteredTool tool = tools.get(definition.name());
+        tool.approvalRequired = approvalRequired;
+        persistCustom(definition, result, true, approvalRequired);
     }
 
     public synchronized void registerExternal(ToolDefinition definition, ToolHandler handler, String source) {
+        registerExternal(definition, handler, source, true);
+    }
+
+    public synchronized void registerExternal(ToolDefinition definition, ToolHandler handler, String source,
+                                              boolean approvalRequired) {
         if (source == null || source.trim().isEmpty()) throw new IllegalArgumentException("source must not be blank");
         register(definition, handler, source.trim(), true);
+        tools.get(definition.name()).approvalRequired = approvalRequired;
     }
 
     private void register(ToolDefinition definition, ToolHandler handler, String source, boolean removable) {
@@ -78,7 +91,7 @@ public final class ToolRegistry {
         List<ToolInfo> result = new ArrayList<ToolInfo>();
         for (RegisteredTool tool : tools.values()) {
             result.add(new ToolInfo(tool.definition.name(), tool.definition.description(),
-                    tool.definition.parameters(), tool.enabled, tool.source, tool.removable));
+                    tool.definition.parameters(), tool.enabled, tool.source, tool.removable, tool.approvalRequired));
         }
         return result;
     }
@@ -109,7 +122,17 @@ public final class ToolRegistry {
         if (tool == null) return false;
         tool.enabled = enabled;
         if (tool.removable && "custom".equals(tool.source)) {
-            persistCustom(tool.definition, tool.fixedResult, enabled);
+            persistCustom(tool.definition, tool.fixedResult, enabled, tool.approvalRequired);
+        }
+        return true;
+    }
+
+    public synchronized boolean setApprovalRequired(String name, boolean required) {
+        RegisteredTool tool = tools.get(name);
+        if (tool == null) return false;
+        tool.approvalRequired = required;
+        if (tool.removable && "custom".equals(tool.source)) {
+            persistCustom(tool.definition, tool.fixedResult, tool.enabled, required);
         }
         return true;
     }
@@ -125,6 +148,7 @@ public final class ToolRegistry {
         RegisteredTool tool = tools.get(name);
         if (tool == null) throw new IllegalArgumentException("unknown tool: " + name);
         if (!tool.enabled) throw new IllegalStateException("tool is disabled: " + name);
+        if (tool.approvalRequired) throw new ToolApprovalRequiredException(name);
         return tool.handler.execute(arguments);
     }
 
@@ -134,6 +158,7 @@ public final class ToolRegistry {
         private final String source;
         private final boolean removable;
         private boolean enabled = true;
+        private boolean approvalRequired;
         private final String fixedResult;
 
         private RegisteredTool(ToolDefinition definition, ToolHandler handler, String source, boolean removable) {
@@ -145,10 +170,11 @@ public final class ToolRegistry {
         }
     }
 
-    private void persistCustom(ToolDefinition definition, String result, boolean enabled) {
+    private void persistCustom(ToolDefinition definition, String result, boolean enabled, boolean approvalRequired) {
         if (profiles == null) return;
         try {
-            profiles.save(new ToolProfileData(definition.name(), definition.description(), definition.parameters(), result, enabled));
+            profiles.save(new ToolProfileData(definition.name(), definition.description(), definition.parameters(), result,
+                    enabled, approvalRequired));
         } catch (Exception exception) {
             tools.remove(definition.name());
             throw new IllegalStateException("failed to persist custom tool", exception);

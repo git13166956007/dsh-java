@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS dsh_tool_definition (
     input_schema_json LONGTEXT NOT NULL,
     result_text LONGTEXT NULL,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    approval_required BOOLEAN NOT NULL DEFAULT FALSE,
     version BIGINT NOT NULL DEFAULT 1,
     updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     INDEX idx_dsh_tool_source (source_type, source_id)
