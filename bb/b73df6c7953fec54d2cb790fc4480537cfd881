@@ -1,0 +1,30 @@
+README.md
+  h_eb697744b14c1b 95-96
+docs/runtime-roadmap.md
+  h_eb697744b14c1b 12
+frontend/src/App.vue
+  h_eb697744b14c1b 69,358-390,1433-1439
+src/main/java/io/github/git13166956007/dsh/agent/SubAgentRunner.java
+  h_eb697744b14c1b 16-23,25
+src/main/java/io/github/git13166956007/dsh/config/DshRuntimeConfiguration.java
+  h_eb697744b14c1b 32,154-160
+src/main/java/io/github/git13166956007/dsh/plan/AdaptivePlanService.java
+  h_eb697744b14c1b 1-108
+src/main/java/io/github/git13166956007/dsh/plan/PlanExecutor.java
+  h_eb697744b14c1b 57
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 25,63,70,83,381-393,568-571
+src/test/java/io/github/git13166956007/dsh/plan/AdaptivePlanServiceTest.java
+  h_eb697744b14c1b 1-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "bbb73df6c7953fec54d2cb790fc4480537cfd881",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
