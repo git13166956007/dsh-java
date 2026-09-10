@@ -9,6 +9,7 @@ import io.github.git13166956007.dsh.model.ModelRegistry;
 import io.github.git13166956007.dsh.run.RunManager;
 import io.github.git13166956007.dsh.skill.SkillRegistry;
 import io.github.git13166956007.dsh.tool.ToolRegistry;
+import io.github.git13166956007.dsh.workspace.WorkspaceRegistry;
 import io.github.git13166956007.dsh.service.ServiceKey;
 
 public final class DshServices {
@@ -21,6 +22,7 @@ public final class DshServices {
     public static final ServiceKey<MemoryManager> MEMORIES = new ServiceKey<MemoryManager>("memories", MemoryManager.class);
     public static final ServiceKey<ContextManager> CONTEXT = new ServiceKey<ContextManager>("context", ContextManager.class);
     public static final ServiceKey<RunManager> RUNS = new ServiceKey<RunManager>("runs", RunManager.class);
+    public static final ServiceKey<WorkspaceRegistry> WORKSPACES = new ServiceKey<WorkspaceRegistry>("workspaces", WorkspaceRegistry.class);
 
     private DshServices() {
     }

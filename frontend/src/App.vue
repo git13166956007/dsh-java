@@ -29,6 +29,22 @@ const skillFormError = ref('')
 const skillSaving = ref(false)
 const models = ref([])
 const modelProviders = ref([])
+const workspaces = ref([])
+const workspaceForm = ref({
+  id: null,
+  name: '',
+  directory: '.',
+  enabled: true,
+  active: false,
+  writeEnabled: false,
+  maxReadBytes: 1000000,
+  maxWriteBytes: 1000000,
+  maxProcessTimeoutSeconds: 120,
+  maxProcessOutputBytes: 1000000,
+  allowedCommands: ''
+})
+const workspaceFormError = ref('')
+const workspaceSaving = ref(false)
 const contextInfo = ref(null)
 const contextProviders = ref([])
 const contextLoading = ref(false)
@@ -1376,6 +1392,110 @@ function resetModelForm() {
   modelCatalogSelection.value = []
 }
 
+function resetWorkspaceForm() {
+  workspaceForm.value = {
+    id: null,
+    name: '',
+    directory: '.',
+    enabled: true,
+    active: false,
+    writeEnabled: false,
+    maxReadBytes: 1000000,
+    maxWriteBytes: 1000000,
+    maxProcessTimeoutSeconds: 120,
+    maxProcessOutputBytes: 1000000,
+    allowedCommands: ''
+  }
+  workspaceFormError.value = ''
+}
+
+function editWorkspace(workspace) {
+  workspaceForm.value = {
+    id: workspace.id,
+    name: workspace.name,
+    directory: workspace.directory,
+    enabled: workspace.enabled,
+    active: workspace.active,
+    writeEnabled: workspace.writeEnabled,
+    maxReadBytes: workspace.maxReadBytes,
+    maxWriteBytes: workspace.maxWriteBytes,
+    maxProcessTimeoutSeconds: workspace.maxProcessTimeoutSeconds,
+    maxProcessOutputBytes: workspace.maxProcessOutputBytes,
+    allowedCommands: (workspace.allowedCommands || []).join(', ')
+  }
+  workspaceFormError.value = ''
+}
+
+async function refreshWorkspaces() {
+  const response = await fetch('/api/v1/workspaces')
+  const payload = await response.json().catch(() => [])
+  if (!response.ok) throw new Error(payload.message || payload.error || 'Workspace 加载失败')
+  workspaces.value = payload
+}
+
+async function saveWorkspace() {
+  workspaceFormError.value = ''
+  if (!workspaceForm.value.name.trim() || !workspaceForm.value.directory.trim()) {
+    workspaceFormError.value = '请填写名称和目录'
+    return
+  }
+  workspaceSaving.value = true
+  try {
+    const editing = Boolean(workspaceForm.value.id)
+    const response = await fetch(editing ? `/api/v1/workspaces/${encodeURIComponent(workspaceForm.value.id)}` : '/api/v1/workspaces', {
+      method: editing ? 'PATCH' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: workspaceForm.value.name.trim(),
+        directory: workspaceForm.value.directory.trim(),
+        enabled: workspaceForm.value.enabled,
+        active: workspaceForm.value.active,
+        writeEnabled: workspaceForm.value.writeEnabled,
+        maxReadBytes: Number(workspaceForm.value.maxReadBytes),
+        maxWriteBytes: Number(workspaceForm.value.maxWriteBytes),
+        maxProcessTimeoutSeconds: Number(workspaceForm.value.maxProcessTimeoutSeconds),
+        maxProcessOutputBytes: Number(workspaceForm.value.maxProcessOutputBytes),
+        allowedCommands: workspaceForm.value.allowedCommands.split(',').map((item) => item.trim()).filter(Boolean)
+      })
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload.message || payload.error || 'Workspace 保存失败')
+    const index = workspaces.value.findIndex((item) => item.id === payload.id)
+    if (index >= 0) workspaces.value[index] = payload
+    else workspaces.value.push(payload)
+    resetWorkspaceForm()
+  } catch (requestError) {
+    workspaceFormError.value = requestError.message
+  } finally {
+    workspaceSaving.value = false
+  }
+}
+
+async function activateWorkspace(workspace) {
+  const response = await fetch(`/api/v1/workspaces/${encodeURIComponent(workspace.id)}/activate`, { method: 'POST' })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) return
+  await refreshWorkspaces()
+  workspaceForm.value.active = payload.active
+}
+
+async function toggleWorkspace(workspace) {
+  const response = await fetch(`/api/v1/workspaces/${encodeURIComponent(workspace.id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled: !workspace.enabled })
+  })
+  if (response.ok) await refreshWorkspaces()
+}
+
+async function deleteWorkspace(workspace) {
+  const response = await fetch(`/api/v1/workspaces/${encodeURIComponent(workspace.id)}`, { method: 'DELETE' })
+  if (!response.ok) return
+  workspaces.value = workspaces.value.filter((item) => item.id !== workspace.id)
+  if (workspaceForm.value.id === workspace.id) resetWorkspaceForm()
+  await refreshWorkspaces()
+}
+
 function editModel(model) {
   modelForm.value = {
     id: model.id,
@@ -2086,6 +2206,7 @@ onMounted(() => {
   refreshMcpServers()
   refreshSkills()
   refreshModels()
+  refreshWorkspaces()
   refreshConversations()
   refreshAgents()
   refreshSubAgents()
@@ -2371,6 +2492,7 @@ onUnmounted(() => {
         <button :class="{ active: capabilityTab === 'mcp' }" type="button" @click="capabilityTab = 'mcp'">MCP Servers</button>
         <button :class="{ active: capabilityTab === 'skills' }" type="button" @click="capabilityTab = 'skills'">Skills</button>
         <button :class="{ active: capabilityTab === 'models' }" type="button" @click="capabilityTab = 'models'">Models</button>
+        <button :class="{ active: capabilityTab === 'workspaces' }" type="button" @click="capabilityTab = 'workspaces'; refreshWorkspaces()">Workspaces</button>
         <button :class="{ active: capabilityTab === 'agents' }" type="button" @click="capabilityTab = 'agents'">Agents</button>
         <button :class="{ active: capabilityTab === 'sub-agents' }" type="button" @click="capabilityTab = 'sub-agents'">Sub-agents</button>
         <button :class="{ active: capabilityTab === 'memory' }" type="button" @click="capabilityTab = 'memory'">Memory</button>
@@ -2626,6 +2748,61 @@ onUnmounted(() => {
           <div class="tool-form-footer">
             <button class="secondary-button" type="button" @click="resetModelForm">Reset</button>
             <button class="send-button" type="submit" :disabled="modelSaving"><span>{{ modelSaving ? 'Saving' : 'Save model' }}</span><span class="send-arrow">↗</span></button>
+          </div>
+        </form>
+      </div>
+
+      <div v-if="capabilityTab === 'workspaces'" class="tool-manager-list">
+        <div v-for="workspace in workspaces" :key="workspace.id" class="managed-tool model-item">
+          <div class="managed-tool-copy">
+            <div class="managed-tool-title">
+              <strong>{{ workspace.name }}</strong>
+              <span :class="['tool-source', workspace.active ? 'connected' : '']">{{ workspace.active ? 'ACTIVE' : 'workspace' }}</span>
+            </div>
+            <p>{{ workspace.directory }}<br />{{ workspace.writeEnabled ? 'read/write' : 'read-only' }} · read {{ workspace.maxReadBytes }} B · write {{ workspace.maxWriteBytes }} B · process {{ workspace.maxProcessTimeoutSeconds }}s<br />commands: {{ (workspace.allowedCommands || []).join(', ') || 'none' }}</p>
+          </div>
+          <div class="managed-tool-actions model-actions">
+            <button v-if="!workspace.active && workspace.enabled" class="secondary-button compact" type="button" @click="activateWorkspace(workspace)">Activate</button>
+            <button class="secondary-button compact" type="button" @click="editWorkspace(workspace)">Edit</button>
+            <label class="tool-toggle" :title="workspace.enabled ? 'Disable workspace' : 'Enable workspace'">
+              <input type="checkbox" :checked="workspace.enabled" @change="toggleWorkspace(workspace)" />
+              <span></span>
+            </label>
+            <button v-if="workspaces.length > 1" class="delete-tool-button" type="button" title="Delete workspace" aria-label="Delete workspace" @click="deleteWorkspace(workspace)">×</button>
+          </div>
+        </div>
+        <p v-if="workspaces.length === 0" class="tool-manager-empty">No workspaces configured.</p>
+
+        <form class="tool-create-form inline-form" @submit.prevent="saveWorkspace">
+          <div class="tool-form-heading">
+            <div>
+              <div class="eyebrow">WORKSPACE PROFILE</div>
+              <h3>{{ workspaceForm.id ? 'Edit workspace' : 'Add workspace' }}</h3>
+            </div>
+            <span class="tool-form-note">sandbox root</span>
+          </div>
+          <div class="tool-form-grid">
+            <label><span>Name</span><input v-model="workspaceForm.name" placeholder="Project workspace" autocomplete="off" /></label>
+            <label><span>Directory</span><input v-model="workspaceForm.directory" placeholder="/Users/me/IdeaProjects/project" autocomplete="off" /></label>
+          </div>
+          <div class="tool-form-grid">
+            <label><span>Max read bytes</span><input v-model="workspaceForm.maxReadBytes" type="number" min="1" max="50000000" /></label>
+            <label><span>Max write bytes</span><input v-model="workspaceForm.maxWriteBytes" type="number" min="1" max="50000000" /></label>
+          </div>
+          <div class="tool-form-grid">
+            <label><span>Process timeout (s)</span><input v-model="workspaceForm.maxProcessTimeoutSeconds" type="number" min="1" max="3600" /></label>
+            <label><span>Process output bytes</span><input v-model="workspaceForm.maxProcessOutputBytes" type="number" min="1" max="50000000" /></label>
+          </div>
+          <label><span>Allowlisted commands</span><input v-model="workspaceForm.allowedCommands" placeholder="git, npm, gradle" autocomplete="off" /></label>
+          <div class="tool-form-grid model-capabilities">
+            <label class="plan-approval-toggle"><input v-model="workspaceForm.enabled" type="checkbox" /> Enabled</label>
+            <label class="plan-approval-toggle"><input v-model="workspaceForm.writeEnabled" type="checkbox" /> Allow file writes</label>
+            <label class="plan-approval-toggle"><input v-model="workspaceForm.active" type="checkbox" /> Activate after save</label>
+          </div>
+          <p v-if="workspaceFormError" class="tool-form-error">{{ workspaceFormError }}</p>
+          <div class="tool-form-footer">
+            <button class="secondary-button" type="button" @click="resetWorkspaceForm">Reset</button>
+            <button class="send-button" type="submit" :disabled="workspaceSaving"><span>{{ workspaceSaving ? 'Saving' : 'Save workspace' }}</span><span class="send-arrow">↗</span></button>
           </div>
         </form>
       </div>

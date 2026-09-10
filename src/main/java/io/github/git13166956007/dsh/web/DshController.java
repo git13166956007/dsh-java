@@ -55,6 +55,8 @@ import io.github.git13166956007.dsh.plan.PlanExecutor;
 import io.github.git13166956007.dsh.plan.PlanRegistry;
 import io.github.git13166956007.dsh.tool.ToolInfo;
 import io.github.git13166956007.dsh.tool.ToolRegistry;
+import io.github.git13166956007.dsh.workspace.WorkspaceProfile;
+import io.github.git13166956007.dsh.workspace.WorkspaceRegistry;
 import io.github.git13166956007.dsh.core.DshRuntime;
 import io.github.git13166956007.dsh.provider.deepseek.ModelConfigurationException;
 import io.github.git13166956007.dsh.provider.deepseek.ModelQuotaException;
@@ -85,6 +87,7 @@ public final class DshController {
     private final McpClientManager mcpClientManager;
     private final SkillRegistry skillRegistry;
     private final ModelRegistry modelRegistry;
+    private final WorkspaceRegistry workspaceRegistry;
     private final AgentProfileRegistry agentProfileRegistry;
     private final PlanRegistry planRegistry;
     private final PlanExecutor planExecutor;
@@ -104,6 +107,7 @@ public final class DshController {
                          ToolRegistry toolRegistry, McpServerRegistry mcpServerRegistry,
                          McpClientManager mcpClientManager, SkillRegistry skillRegistry,
                          ModelRegistry modelRegistry, AgentProfileRegistry agentProfileRegistry,
+                         WorkspaceRegistry workspaceRegistry,
                          PlanRegistry planRegistry, PlanExecutor planExecutor,
                          SubAgentProfileRegistry subAgentProfileRegistry, SubAgentRunner subAgentRunner,
                          SubAgentSessionManager subAgentSessionManager, AdaptivePlanService adaptivePlanService,
@@ -117,6 +121,7 @@ public final class DshController {
         this.mcpClientManager = mcpClientManager;
         this.skillRegistry = skillRegistry;
         this.modelRegistry = modelRegistry;
+        this.workspaceRegistry = workspaceRegistry;
         this.agentProfileRegistry = agentProfileRegistry;
         this.planRegistry = planRegistry;
         this.planExecutor = planExecutor;
@@ -410,6 +415,56 @@ public final class DshController {
     @GetMapping("/models")
     public java.util.List<ModelProfile> models() {
         return modelRegistry.list();
+    }
+
+    @GetMapping("/workspaces")
+    public java.util.List<WorkspaceProfile> workspaces() {
+        return workspaceRegistry.list();
+    }
+
+    @PostMapping("/workspaces")
+    public WorkspaceProfile createWorkspace(@RequestBody WorkspaceRequest request) {
+        if (request == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "workspace profile must not be null");
+        try {
+            return workspaceRegistry.create(request.name(), request.directory(), request.enabled(), request.active(),
+                    request.writeEnabled(), request.maxReadBytes(), request.maxWriteBytes(),
+                    request.maxProcessTimeoutSeconds(), request.maxProcessOutputBytes(), request.allowedCommands());
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
+        }
+    }
+
+    @PatchMapping("/workspaces/{id}")
+    public WorkspaceProfile updateWorkspace(@PathVariable String id, @RequestBody JsonNode request) {
+        try {
+            return workspaceRegistry.update(id, request);
+        } catch (IllegalArgumentException exception) {
+            HttpStatus status = exception.getMessage() != null && exception.getMessage().startsWith("unknown workspace:")
+                    ? HttpStatus.NOT_FOUND : HttpStatus.BAD_REQUEST;
+            throw new ResponseStatusException(status, exception.getMessage(), exception);
+        }
+    }
+
+    @PostMapping("/workspaces/{id}/activate")
+    public WorkspaceProfile activateWorkspace(@PathVariable String id) {
+        try {
+            return workspaceRegistry.activate(id);
+        } catch (IllegalArgumentException exception) {
+            HttpStatus status = exception.getMessage() != null && exception.getMessage().startsWith("unknown workspace:")
+                    ? HttpStatus.NOT_FOUND : HttpStatus.BAD_REQUEST;
+            throw new ResponseStatusException(status, exception.getMessage(), exception);
+        }
+    }
+
+    @DeleteMapping("/workspaces/{id}")
+    public void deleteWorkspace(@PathVariable String id) {
+        try {
+            if (!workspaceRegistry.delete(id)) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown workspace: " + id);
+            }
+        } catch (IllegalStateException exception) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, exception.getMessage(), exception);
+        }
     }
 
     @GetMapping("/models/{id}")
@@ -1309,6 +1364,12 @@ public final class DshController {
     }
 
     public record ModelTestResponse(String modelId, boolean ok, String message, String content) {
+    }
+
+    public record WorkspaceRequest(String name, String directory, Boolean enabled, Boolean active,
+                                   Boolean writeEnabled, Long maxReadBytes, Long maxWriteBytes,
+                                   Integer maxProcessTimeoutSeconds, Long maxProcessOutputBytes,
+                                   java.util.Set<String> allowedCommands) {
     }
 
     public record ResourceSubscriptionRequest(String uri) {

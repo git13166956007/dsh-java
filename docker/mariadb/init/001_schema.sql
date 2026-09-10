@@ -1,6 +1,23 @@
 CREATE DATABASE IF NOT EXISTS dsh CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE dsh;
 
+CREATE TABLE IF NOT EXISTS dsh_workspace_profile (
+    id VARCHAR(64) NOT NULL PRIMARY KEY,
+    name VARCHAR(128) NOT NULL UNIQUE,
+    directory VARCHAR(1000) NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    active BOOLEAN NOT NULL DEFAULT FALSE,
+    write_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    max_read_bytes BIGINT NOT NULL DEFAULT 1000000,
+    max_write_bytes BIGINT NOT NULL DEFAULT 1000000,
+    max_process_timeout_seconds INT NOT NULL DEFAULT 120,
+    max_process_output_bytes BIGINT NOT NULL DEFAULT 1000000,
+    allowed_commands TEXT NULL,
+    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    INDEX idx_dsh_workspace_active (active, enabled)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS dsh_conversation (
     id CHAR(36) NOT NULL PRIMARY KEY,
     title VARCHAR(255) NOT NULL,

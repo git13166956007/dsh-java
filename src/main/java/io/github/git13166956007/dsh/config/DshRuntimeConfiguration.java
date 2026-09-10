@@ -74,6 +74,10 @@ import io.github.git13166956007.dsh.tool.ToolProfileStore;
 import io.github.git13166956007.dsh.plugin.DshServices;
 import io.github.git13166956007.dsh.tool.WorkspaceToolProvider;
 import io.github.git13166956007.dsh.tool.WorkspaceProcessToolProvider;
+import io.github.git13166956007.dsh.workspace.InMemoryWorkspaceStore;
+import io.github.git13166956007.dsh.workspace.MariaDbWorkspaceStore;
+import io.github.git13166956007.dsh.workspace.WorkspaceRegistry;
+import io.github.git13166956007.dsh.workspace.WorkspaceStore;
 import java.nio.file.Path;
 import java.time.OffsetDateTime;
 import java.util.Arrays;
@@ -89,7 +93,8 @@ public class DshRuntimeConfiguration {
                                 McpServerRegistry mcpServerRegistry, SkillRegistry skillRegistry,
                                 AgentProfileRegistry agentProfileRegistry,
                                 SubAgentProfileRegistry subAgentProfileRegistry, MemoryManager memoryManager,
-                                ContextManager contextManager, RunManager runManager, Environment environment) {
+                                ContextManager contextManager, RunManager runManager, WorkspaceRegistry workspaces,
+                                Environment environment) {
         DshRuntime runtime = new DshRuntime();
         runtime.provide(DshServices.TOOLS, toolRegistry);
         runtime.provide(DshServices.MODELS, modelRegistry);
@@ -100,6 +105,7 @@ public class DshRuntimeConfiguration {
         runtime.provide(DshServices.MEMORIES, memoryManager);
         runtime.provide(DshServices.CONTEXT, contextManager);
         runtime.provide(DshServices.RUNS, runManager);
+        runtime.provide(DshServices.WORKSPACES, workspaces);
         try {
             runtime.loadPlugins(Path.of(environment.getProperty("dsh.plugins.directory", "plugins")));
         } catch (Exception exception) {
@@ -131,31 +137,42 @@ public class DshRuntimeConfiguration {
 
     @Bean
     public WorkspaceToolProvider workspaceToolProvider(ToolRegistry tools, ObjectMapper objectMapper,
+                                                       WorkspaceRegistry workspaces,
                                                        Environment environment) {
         boolean enabled = Boolean.parseBoolean(environment.getProperty("dsh.tools.workspace.enabled", "false"));
-        WorkspaceToolProvider provider = new WorkspaceToolProvider(
-                Path.of(environment.getProperty("dsh.tools.workspace.directory", ".")),
-                Long.parseLong(environment.getProperty("dsh.tools.workspace.max-read-bytes", "1000000")),
-                Long.parseLong(environment.getProperty("dsh.tools.workspace.max-write-bytes", "1000000")),
-                Boolean.parseBoolean(environment.getProperty("dsh.tools.workspace.write-enabled", "false")),
-                objectMapper);
+        WorkspaceToolProvider provider = new WorkspaceToolProvider(workspaces, objectMapper);
         if (enabled) provider.register(tools);
         return provider;
     }
 
     @Bean(destroyMethod = "close")
     public WorkspaceProcessToolProvider workspaceProcessToolProvider(ToolRegistry tools, ObjectMapper objectMapper,
+                                                                      WorkspaceRegistry workspaces,
                                                                       Environment environment) {
         boolean enabled = Boolean.parseBoolean(environment.getProperty("dsh.tools.process.enabled", "false"));
-        Set<String> commands = Arrays.stream(environment.getProperty("dsh.tools.process.allowed-commands", "")
-                        .split(","))
-                .map(String::trim).filter(value -> !value.isEmpty()).collect(java.util.stream.Collectors.toSet());
-        WorkspaceProcessToolProvider provider = new WorkspaceProcessToolProvider(
-                Path.of(environment.getProperty("dsh.tools.workspace.directory", ".")), commands,
-                Integer.parseInt(environment.getProperty("dsh.tools.process.max-timeout-seconds", "120")),
-                Long.parseLong(environment.getProperty("dsh.tools.process.max-output-bytes", "1000000")), objectMapper);
+        WorkspaceProcessToolProvider provider = new WorkspaceProcessToolProvider(workspaces, objectMapper);
         if (enabled) provider.register(tools);
         return provider;
+    }
+
+    @Bean
+    public WorkspaceStore workspaceStore(Environment environment) {
+        boolean enabled = Boolean.parseBoolean(environment.getProperty("dsh.persistence.enabled", "false"));
+        if (!enabled) return new InMemoryWorkspaceStore();
+        return new MariaDbWorkspaceStore(environment.getProperty("dsh.persistence.jdbc-url"),
+                environment.getProperty("dsh.persistence.username"), environment.getProperty("dsh.persistence.password"));
+    }
+
+    @Bean
+    public WorkspaceRegistry workspaceRegistry(WorkspaceStore store, Environment environment) {
+        Set<String> commands = Arrays.stream(environment.getProperty("dsh.tools.process.allowed-commands", "").split(","))
+                .map(String::trim).filter(value -> !value.isEmpty()).collect(java.util.stream.Collectors.toSet());
+        return new WorkspaceRegistry(store, environment.getProperty("dsh.tools.workspace.directory", "."),
+                Long.parseLong(environment.getProperty("dsh.tools.workspace.max-read-bytes", "1000000")),
+                Long.parseLong(environment.getProperty("dsh.tools.workspace.max-write-bytes", "1000000")),
+                Boolean.parseBoolean(environment.getProperty("dsh.tools.workspace.write-enabled", "false")),
+                Integer.parseInt(environment.getProperty("dsh.tools.process.max-timeout-seconds", "120")),
+                Long.parseLong(environment.getProperty("dsh.tools.process.max-output-bytes", "1000000")), commands);
     }
 
     @Bean

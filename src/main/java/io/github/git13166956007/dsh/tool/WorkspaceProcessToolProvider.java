@@ -1,5 +1,7 @@
 package io.github.git13166956007.dsh.tool;
 
+import io.github.git13166956007.dsh.workspace.WorkspaceProfile;
+import io.github.git13166956007.dsh.workspace.WorkspaceRegistry;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -28,25 +30,25 @@ public final class WorkspaceProcessToolProvider implements AutoCloseable {
     private static final String SOURCE = "workspace-process";
     private static final int MAX_ARGUMENTS = 64;
     private static final int MAX_ARGUMENT_LENGTH = 4096;
-    private final Path root;
-    private final Set<String> allowedCommands;
-    private final int maxTimeoutSeconds;
-    private final long maxOutputBytes;
+    private final WorkspaceRegistry workspaces;
+    private final WorkspaceProfile fixedProfile;
     private final ObjectMapper objectMapper;
     private final ExecutorService readers = Executors.newCachedThreadPool();
 
     public WorkspaceProcessToolProvider(Path root, Set<String> allowedCommands, int maxTimeoutSeconds,
                                         long maxOutputBytes, ObjectMapper objectMapper) {
-        this.root = initializeRoot(root);
-        this.allowedCommands = normalizeCommands(allowedCommands);
-        if (maxTimeoutSeconds < 1 || maxTimeoutSeconds > 3600) {
-            throw new IllegalArgumentException("maxTimeoutSeconds must be between 1 and 3600");
-        }
-        if (maxOutputBytes < 1 || maxOutputBytes > 50_000_000) {
-            throw new IllegalArgumentException("maxOutputBytes must be between 1 and 50000000");
-        }
-        this.maxTimeoutSeconds = maxTimeoutSeconds;
-        this.maxOutputBytes = maxOutputBytes;
+        Path initialized = initializeRoot(root);
+        validateTimeout(maxTimeoutSeconds);
+        validateBytes(maxOutputBytes);
+        this.workspaces = null;
+        this.fixedProfile = new WorkspaceProfile("fixed", "Fixed workspace", initialized.toString(), true, true,
+                false, 1_000_000, 1_000_000, maxTimeoutSeconds, maxOutputBytes, normalizeCommands(allowedCommands));
+        this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper");
+    }
+
+    public WorkspaceProcessToolProvider(WorkspaceRegistry workspaces, ObjectMapper objectMapper) {
+        this.workspaces = Objects.requireNonNull(workspaces, "workspaces");
+        this.fixedProfile = null;
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper");
     }
 
@@ -64,7 +66,8 @@ public final class WorkspaceProcessToolProvider implements AutoCloseable {
         String command = arguments.path("command").asText(null);
         if (command == null || command.isBlank()) throw new IllegalArgumentException("command is required");
         command = command.trim();
-        if (command.contains("/") || command.contains("\\") || !allowedCommands.contains(command)) {
+        WorkspaceProfile profile = profile();
+        if (command.contains("/") || command.contains("\\") || !profile.allowedCommands().contains(command)) {
             throw new IllegalArgumentException("command is not allowlisted: " + command);
         }
 
@@ -81,13 +84,14 @@ public final class WorkspaceProcessToolProvider implements AutoCloseable {
                 commandLine.add(value.asText());
             }
         }
-        int timeoutSeconds = arguments.path("timeoutSeconds").asInt(maxTimeoutSeconds);
-        if (timeoutSeconds < 1 || timeoutSeconds > maxTimeoutSeconds) {
-            throw new IllegalArgumentException("timeoutSeconds must be between 1 and " + maxTimeoutSeconds);
+        int timeoutSeconds = arguments.path("timeoutSeconds").asInt(profile.maxProcessTimeoutSeconds());
+        if (timeoutSeconds < 1 || timeoutSeconds > profile.maxProcessTimeoutSeconds()) {
+            throw new IllegalArgumentException("timeoutSeconds must be between 1 and " + profile.maxProcessTimeoutSeconds());
         }
 
-        Process process = new ProcessBuilder(commandLine).directory(root.toFile()).redirectErrorStream(true).start();
-        Future<ProcessOutput> output = readers.submit(() -> readOutput(process.getInputStream()));
+        long maxOutputBytes = profile.maxProcessOutputBytes();
+        Process process = new ProcessBuilder(commandLine).directory(Path.of(profile.directory()).toFile()).redirectErrorStream(true).start();
+        Future<ProcessOutput> output = readers.submit(() -> readOutput(process.getInputStream(), maxOutputBytes));
         boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
         if (!finished) {
             process.descendants().forEach(child -> child.destroyForcibly());
@@ -107,7 +111,7 @@ public final class WorkspaceProcessToolProvider implements AutoCloseable {
         return objectMapper.writeValueAsString(result);
     }
 
-    private ProcessOutput readOutput(InputStream input) throws IOException {
+    private ProcessOutput readOutput(InputStream input, long maxOutputBytes) throws IOException {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         byte[] buffer = new byte[8192];
         long remaining = maxOutputBytes;
@@ -148,6 +152,22 @@ public final class WorkspaceProcessToolProvider implements AutoCloseable {
             result.add(command);
         }
         return Set.copyOf(result);
+    }
+
+    private WorkspaceProfile profile() {
+        return workspaces == null ? fixedProfile : workspaces.active();
+    }
+
+    private static void validateTimeout(int value) {
+        if (value < 1 || value > 3600) {
+            throw new IllegalArgumentException("maxTimeoutSeconds must be between 1 and 3600");
+        }
+    }
+
+    private static void validateBytes(long value) {
+        if (value < 1 || value > 50_000_000) {
+            throw new IllegalArgumentException("maxOutputBytes must be between 1 and 50000000");
+        }
     }
 
     private static ObjectNode schema(ObjectMapper mapper) {

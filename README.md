@@ -117,7 +117,7 @@ Sub-agent Profile 管理接口为 `GET/POST/PATCH/DELETE /api/v1/sub-agents`。�
 
 自定义调试工具在启用 MariaDB 持久化时会保存名称、描述、JSON Schema、固定返回值和启用状态，重启后自动恢复；内置工具和已连接 MCP 工具仍由运行时负责注册。MCP Server 配置同样会保存，启用的 Server 会在应用启动后异步尝试恢复连接，失败不会阻塞应用启动；仍可显式调用 `POST /api/v1/mcp/servers/{id}/connect` 重试。
 
-工作区文件工具是受控的真实执行适配器，默认关闭。启用后会注册 `workspace_list_files` 和 `workspace_read_file`；再启用写入开关后才会注册 `workspace_write_file`。所有路径都必须位于 `DSH_WORKSPACE_DIR` 下；读取和写入分别受字节数上限约束，符号链接和绝对路径会被拒绝。写工具每次调用都会进入现有工具审批流程：
+工作区文件工具是受控的真实执行适配器，默认关闭。启用后会注册 `workspace_list_files`、`workspace_read_file` 和 `workspace_write_file`；写工具是否真正可用由当前 Workspace Profile 的写入开关决定。Workspace Profile 保存名称、目录、启用/激活状态、读写字节上限、进程超时/输出上限和命令白名单，启用 MariaDB 后保存到 `dsh_workspace_profile`，页面的 Workspaces 面板可以新增、编辑、激活、禁用和删除。所有路径都必须位于当前 Profile 目录下；符号链接和绝对路径会被拒绝。写工具每次调用都会进入现有工具审批流程：
 
 ```bash
 export DSH_WORKSPACE_TOOLS_ENABLED=true
@@ -127,7 +127,7 @@ export DSH_WORKSPACE_MAX_READ_BYTES=1000000
 export DSH_WORKSPACE_MAX_WRITE_BYTES=1000000
 ```
 
-如果需要让 Agent 执行本地命令，可额外启用受控的 `workspace_exec` 工具。它只执行 `DSH_WORKSPACE_PROCESS_COMMANDS` 中的程序名，直接使用 `ProcessBuilder` 传递参数，不经过 shell；调用默认需要人工审批，并受超时和输出大小限制。命令的文件系统权限仍由操作系统用户决定，因此只应在专用工作区和低权限账户下开启：
+如果需要让 Agent 执行本地命令，可额外启用受控的 `workspace_exec` 工具。它只执行当前 Workspace Profile 命令白名单中的程序名，直接使用 `ProcessBuilder` 传递参数，不经过 shell；调用默认需要人工审批，并受 Profile 的超时和输出大小限制。命令的文件系统权限仍由操作系统用户决定，因此只应在专用工作区和低权限账户下开启：
 
 ```bash
 export DSH_WORKSPACE_PROCESS_ENABLED=true
@@ -136,7 +136,7 @@ export DSH_WORKSPACE_PROCESS_MAX_TIMEOUT_SECONDS=120
 export DSH_WORKSPACE_PROCESS_MAX_OUTPUT_BYTES=1000000
 ```
 
-工作区工具不允许通过 HTTP 直接绕过 Agent 审批执行；插件和 MCP 工具也继续复用统一的 `ToolRegistry`、白名单、审批和 Run Trace 边界。
+工作区管理接口为 `GET/POST /api/v1/workspaces`、`PATCH/DELETE /api/v1/workspaces/{id}` 和 `POST /api/v1/workspaces/{id}/activate`。工作区工具不允许通过 HTTP 直接绕过 Agent 审批执行；插件和 MCP 工具也继续复用统一的 `ToolRegistry`、白名单、审批和 Run Trace 边界。
 
 上下文窗口同时受 `DSH_MAX_HISTORY_MESSAGES` 和 `DSH_MAX_CONTEXT_TOKENS` 限制，按最新消息优先裁剪；长对话会在聊天前尝试生成滚动摘要，摘要独立保存于会话记录并在读取上下文时临时注入，不会改写原始消息。`POST /api/v1/conversations/{id}/compact` 可以手动触发压缩，`GET /api/v1/conversations/{id}/context` 可以查看当前消息数、估算 token 数和是否发生裁剪。摘要模型不可用时会回退到原有裁剪策略；默认使用兼容估算，Provider 可通过 `ModelTokenizer` 提供更精确的实现。会话还支持 `GET /api/v1/conversations/{id}/messages` 完整回放、`GET /api/v1/conversations/{id}/search?query=...` 文本搜索，以及 `POST /api/v1/conversations/{id}/fork` 分叉；分叉会复制消息和滚动摘要并生成新的持久化 Conversation ID。
 

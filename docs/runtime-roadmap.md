@@ -4,7 +4,7 @@
 
 | Area | Current implementation | Missing for a usable runtime |
 | --- | --- | --- |
-| Tools | In-process `ToolRegistry`, local `time_now`, durable custom debug tools, management API, sandboxed workspace list/read/write adapters, allowlisted `workspace_exec`, unified approval and allowlist enforcement | Richer permission policies and controlled reload |
+| Tools | In-process `ToolRegistry`, local `time_now`, durable custom debug tools, management API, durable Workspace Profiles with active switching, sandboxed workspace list/read/write adapters, per-profile allowlisted `workspace_exec`, unified approval and allowlist enforcement | Richer permission policies and controlled reload |
 | MCP | Java SDK client with stdio/SSE/Streamable HTTP, durable profiles, encrypted credentials, startup reconnect with backoff, initialize/list-tools/call-tool, resource/prompt inspection, durable resource subscriptions and update capture, lifecycle API, Server-level approval policy, persistent health telemetry and ToolRegistry synchronization | Richer transport diagnostics |
 | Skills | Filesystem `skills/<name>/SKILL.md`, front matter with version, resource indexing, durable enable/disable state and system-prompt injection, safe package install/update/remove API | Remote package registry and signature verification |
 | Models | Persisted profiles with active selection, built-in and plugin-registered Provider routing, encrypted API keys, proxy/request parameters, capability flags, context budgets, Provider extension JSON, input/output Token pricing, connectivity tests, policy-driven fallback routing, durable health counters and per-model usage/cost accounting | Exact tokenizer implementations for individual providers |
