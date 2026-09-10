@@ -1,0 +1,54 @@
+README.md
+  h_eb697744b14c1b 87,107,113
+docker/mariadb/init/001_schema.sql
+  h_eb697744b14c1b 131
+docs/runtime-roadmap.md
+  h_eb697744b14c1b 8,10
+frontend/src/App.vue
+  h_eb697744b14c1b 100-101,768-807,847-848,874-875,911-912,1510-1511,1514-1529,1627
+frontend/src/style.css
+  h_eb697744b14c1b 148-154
+src/main/java/io/github/git13166956007/dsh/config/DshRuntimeConfiguration.java
+  h_eb697744b14c1b 282-284
+src/main/java/io/github/git13166956007/dsh/mcp/McpClientManager.java
+  h_eb697744b14c1b 20-21,30,66-145,226-235,358
+src/main/java/io/github/git13166956007/dsh/mcp/McpPromptInfo.java
+  h_eb697744b14c1b 1-14
+src/main/java/io/github/git13166956007/dsh/mcp/McpPromptMessage.java
+  h_eb697744b14c1b 1-6
+src/main/java/io/github/git13166956007/dsh/mcp/McpPromptResult.java
+  h_eb697744b14c1b 1-11
+src/main/java/io/github/git13166956007/dsh/mcp/McpResourceContent.java
+  h_eb697744b14c1b 1-8
+src/main/java/io/github/git13166956007/dsh/mcp/McpResourceInfo.java
+  h_eb697744b14c1b 1-11
+src/main/java/io/github/git13166956007/dsh/model/MariaDbModelProfileStore.java
+  h_eb697744b14c1b 36,46-47,60-61,69-70,96,123,150
+src/main/java/io/github/git13166956007/dsh/model/ModelProfile.java
+  h_eb697744b14c1b 23-24,28,36
+src/main/java/io/github/git13166956007/dsh/model/ModelProfileData.java
+  h_eb697744b14c1b 23-24,28
+src/main/java/io/github/git13166956007/dsh/model/ModelRegistry.java
+  h_eb697744b14c1b 10-11,26,51,59,68-79,92-93,102,110,119-130,153-154,168,210,303-323
+src/main/java/io/github/git13166956007/dsh/model/ModelRouter.java
+  h_eb697744b14c1b 57,62-63
+src/main/java/io/github/git13166956007/dsh/provider/deepseek/DeepSeekChatModel.java
+  h_eb697744b14c1b 29-37,39-40
+src/main/java/io/github/git13166956007/dsh/provider/openai/OpenAiCompatibleChatModel.java
+  h_eb697744b14c1b 44,56-64,75,176,192-203
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 22-25,198-218,290,303,759-760
+src/test/java/io/github/git13166956007/dsh/model/ModelRouterTest.java
+  h_eb697744b14c1b 40-41,54-55,71-81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "4720fa0610e2f8730269d490e644992d9c279caf",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
