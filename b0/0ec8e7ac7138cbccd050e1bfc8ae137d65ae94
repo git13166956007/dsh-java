@@ -1,0 +1,20 @@
+README.md
+  h_eb697744b14c1b 30-32
+src/main/java/io/github/git13166956007/dsh/config/DshRuntimeConfiguration.java
+  h_eb697744b14c1b 45-49
+src/main/java/io/github/git13166956007/dsh/provider/deepseek/DeepSeekChatModel.java
+  h_eb697744b14c1b 13-14,30-34,39-43
+src/main/resources/application.yml
+  h_eb697744b14c1b 13-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b00ec8e7ac7138cbccd050e1bfc8ae137d65ae94",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
