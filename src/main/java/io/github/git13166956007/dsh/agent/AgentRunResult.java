@@ -17,4 +17,13 @@ public record AgentRunResult(String answer, List<AgentTraceEvent> trace, int tur
     public AgentRunResult {
         trace = Collections.unmodifiableList(new ArrayList<AgentTraceEvent>(trace));
     }
+
+    /** Returns the latest model reasoning block so callers can persist the final assistant turn. */
+    public String reasoningContent() {
+        for (int index = trace.size() - 1; index >= 0; index--) {
+            AgentTraceEvent event = trace.get(index);
+            if ("model".equals(event.type())) return event.reasoningContent();
+        }
+        return null;
+    }
 }

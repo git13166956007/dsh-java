@@ -4,6 +4,7 @@ import io.github.git13166956007.dsh.agent.ChatMessage;
 import io.github.git13166956007.dsh.agent.ChatModel;
 import io.github.git13166956007.dsh.agent.ModelResponse;
 import io.github.git13166956007.dsh.agent.ModelStreamListener;
+import io.github.git13166956007.dsh.model.ModelCatalogEntry;
 import io.github.git13166956007.dsh.provider.openai.OpenAiCompatibleChatModel;
 import io.github.git13166956007.dsh.tool.ToolDefinition;
 import tools.jackson.databind.ObjectMapper;
@@ -55,5 +56,9 @@ public final class DeepSeekChatModel implements ChatModel {
     public ModelResponse stream(List<ChatMessage> messages, List<ToolDefinition> tools,
                                 String requestApiKey, ModelStreamListener listener) throws Exception {
         return delegate.stream(messages, tools, requestApiKey, listener);
+    }
+
+    public List<ModelCatalogEntry> listModels(String requestApiKey) throws Exception {
+        return delegate.listModels(requestApiKey);
     }
 }

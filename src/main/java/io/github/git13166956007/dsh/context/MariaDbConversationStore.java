@@ -43,7 +43,7 @@ public final class MariaDbConversationStore implements ConversationStore {
         List<ChatMessage> messages = new ArrayList<ChatMessage>();
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(
-                     "SELECT role, content, tool_call_id FROM dsh_message "
+                     "SELECT role, content, reasoning_content, tool_call_id FROM dsh_message "
                              + "WHERE conversation_id = ? ORDER BY turn_no DESC, id DESC LIMIT ?")) {
             statement.setString(1, conversationId);
             statement.setInt(2, limit);
@@ -51,6 +51,7 @@ public final class MariaDbConversationStore implements ConversationStore {
                 while (result.next()) {
                     ChatMessage message = readMessage(
                             result.getString("role"), result.getString("content"),
+                            result.getString("reasoning_content"),
                             result.getString("tool_call_id"));
                     if (message != null) messages.add(0, message);
                 }
@@ -74,13 +75,14 @@ public final class MariaDbConversationStore implements ConversationStore {
                 }
                 try (PreparedStatement statement = connection.prepareStatement(
                         "INSERT INTO dsh_message "
-                                + "(conversation_id, turn_no, role, content, tool_call_id) "
-                                + "VALUES (?, ?, ?, ?, ?)", Statement.RETURN_GENERATED_KEYS)) {
+                                + "(conversation_id, turn_no, role, content, reasoning_content, tool_call_id) "
+                                + "VALUES (?, ?, ?, ?, ?, ?)", Statement.RETURN_GENERATED_KEYS)) {
                     statement.setString(1, conversationId);
                     statement.setInt(2, turnNo);
                     statement.setString(3, message.role().value());
                     statement.setString(4, message.content());
-                    statement.setString(5, message.toolCallId());
+                    statement.setString(5, message.reasoningContent());
+                    statement.setString(6, message.toolCallId());
                     statement.executeUpdate();
                 }
                 connection.commit();
@@ -137,14 +139,18 @@ public final class MariaDbConversationStore implements ConversationStore {
                     "ALTER TABLE dsh_conversation ADD COLUMN IF NOT EXISTS summary_message_count INT NOT NULL DEFAULT 0")) {
                 alter.executeUpdate();
             }
+            try (PreparedStatement alter = connection.prepareStatement(
+                    "ALTER TABLE dsh_message ADD COLUMN IF NOT EXISTS reasoning_content LONGTEXT NULL")) {
+                alter.executeUpdate();
+            }
         } catch (SQLException exception) {
             throw new IllegalStateException("failed to initialize conversation summary schema", exception);
         }
     }
 
-    private static ChatMessage readMessage(String role, String content, String toolCallId) {
+    private static ChatMessage readMessage(String role, String content, String reasoningContent, String toolCallId) {
         if ("user".equals(role)) return ChatMessage.user(content == null ? "" : content);
-        if ("assistant".equals(role)) return ChatMessage.assistant(content, List.of());
+        if ("assistant".equals(role)) return ChatMessage.assistant(content, List.of(), reasoningContent);
         if ("tool".equals(role)) return ChatMessage.tool(toolCallId, content == null ? "" : content);
         return null;
     }

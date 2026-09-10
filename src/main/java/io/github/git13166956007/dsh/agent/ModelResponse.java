@@ -8,6 +8,7 @@ public final class ModelResponse {
     private final String content;
     private final List<ToolCall> toolCalls;
     private final String finishReason;
+    private final String reasoningContent;
     private final Integer promptTokens;
     private final Integer completionTokens;
     private final Integer totalTokens;
@@ -18,9 +19,16 @@ public final class ModelResponse {
 
     public ModelResponse(String content, List<ToolCall> toolCalls, String finishReason,
                          Integer promptTokens, Integer completionTokens, Integer totalTokens) {
+        this(content, toolCalls, finishReason, promptTokens, completionTokens, totalTokens, null);
+    }
+
+    public ModelResponse(String content, List<ToolCall> toolCalls, String finishReason,
+                         Integer promptTokens, Integer completionTokens, Integer totalTokens,
+                         String reasoningContent) {
         this.content = content;
         this.toolCalls = Collections.unmodifiableList(new ArrayList<ToolCall>(toolCalls));
         this.finishReason = finishReason;
+        this.reasoningContent = reasoningContent;
         this.promptTokens = promptTokens;
         this.completionTokens = completionTokens;
         this.totalTokens = totalTokens;
@@ -36,6 +44,10 @@ public final class ModelResponse {
 
     public String finishReason() {
         return finishReason;
+    }
+
+    public String reasoningContent() {
+        return reasoningContent;
     }
 
     public Integer promptTokens() {

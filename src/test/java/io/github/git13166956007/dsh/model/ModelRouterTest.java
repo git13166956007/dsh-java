@@ -7,6 +7,7 @@ import com.sun.net.httpserver.HttpServer;
 import io.github.git13166956007.dsh.agent.ChatMessage;
 import io.github.git13166956007.dsh.agent.ChatModel;
 import io.github.git13166956007.dsh.agent.ModelResponse;
+import io.github.git13166956007.dsh.agent.ModelStreamListener;
 import java.net.InetSocketAddress;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -25,7 +26,7 @@ class ModelRouterTest {
         server.createContext("/v1/chat/completions", exchange -> {
             authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
             requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
-            byte[] response = ("{\"choices\":[{\"message\":{\"content\":\"pong\"},\"finish_reason\":\"stop\"}],"
+            byte[] response = ("{\"choices\":[{\"message\":{\"content\":\"pong\",\"reasoning_content\":\"checked locally\"},\"finish_reason\":\"stop\"}],"
                     + "\"usage\":{\"prompt_tokens\":11,\"completion_tokens\":7,\"total_tokens\":18}}")
                     .getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set("Content-Type", "application/json");
@@ -50,6 +51,7 @@ class ModelRouterTest {
                     List.of(ChatMessage.user("ping")), List.of(), "request-key", profile.id());
 
             assertEquals("pong", result.content());
+            assertEquals("checked locally", result.reasoningContent());
             assertEquals(11, result.promptTokens());
             assertEquals(7, result.completionTokens());
             assertEquals(18, result.totalTokens());
@@ -73,10 +75,78 @@ class ModelRouterTest {
     }
 
     @Test
+    void discoversModelsFromAnOpenAiCompatibleCatalog() throws Exception {
+        AtomicReference<String> authorization = new AtomicReference<String>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/models", exchange -> {
+            authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            byte[] response = ("{\"object\":\"list\",\"data\":["
+                    + "{\"id\":\"deepseek-v4-flash\",\"object\":\"model\",\"owned_by\":\"deepseek\"},"
+                    + "{\"id\":\"deepseek-reasoner\",\"object\":\"model\",\"created\":1730000000}]}")
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+        try {
+            ModelRegistry registry = new ModelRegistry(new InMemoryModelProfileStore(),
+                    "https://api.deepseek.com", "deepseek", "fallback", "stored-key", "", 0);
+            ModelProfile profile = registry.create("Catalog", "openai_compatible",
+                    "http://127.0.0.1:" + server.getAddress().getPort() + "/v1", "selected-model",
+                    "stored-key", "", 0, true, false);
+            new ModelRouter(registry, new ObjectMapper());
+
+            List<ModelCatalogEntry> entries = registry.catalog(profile.id(), "request-key", new ObjectMapper());
+
+            assertEquals(2, entries.size());
+            assertEquals("deepseek-v4-flash", entries.get(0).id());
+            assertEquals("deepseek", entries.get(0).ownedBy());
+            assertEquals(1730000000L, entries.get(1).created());
+            assertEquals("Bearer request-key", authorization.get());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void discoversCatalogForDisabledProfilesWithoutMakingThemRunnable() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/models", exchange -> {
+            byte[] response = "{\"data\":[{\"id\":\"disabled-model\"}]}"
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+        try {
+            ModelRegistry registry = new ModelRegistry(new InMemoryModelProfileStore(),
+                    "https://api.deepseek.com", "deepseek", "fallback", "stored-key", "", 0);
+            ModelProfile profile = registry.create("Disabled", "openai_compatible",
+                    "http://127.0.0.1:" + server.getAddress().getPort() + "/v1", "disabled-model",
+                    "stored-key", "", 0, false, false);
+            new ModelRouter(registry, new ObjectMapper());
+
+            List<ModelCatalogEntry> entries = registry.catalog(profile.id(), null, new ObjectMapper());
+
+            assertEquals(1, entries.size());
+            assertEquals("disabled-model", entries.get(0).id());
+            assertThrows(IllegalStateException.class, () -> registry.resolve(profile.id()));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void readsUsageFromStreamingResponses() throws Exception {
+        AtomicReference<String> reasoning = new AtomicReference<String>();
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/v1/chat/completions", exchange -> {
-            byte[] response = ("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n"
+            byte[] response = ("data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"think\"}}]}\n\n"
+                    + "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n"
                     + "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],"
                     + "\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":2,\"total_tokens\":7}}\n\n"
                     + "data: [DONE]\n\n").getBytes(StandardCharsets.UTF_8);
@@ -94,12 +164,66 @@ class ModelRouterTest {
                     "key", "", 0, true, false);
 
             ModelResponse result = new ModelRouter(registry, new ObjectMapper()).stream(
-                    List.of(ChatMessage.user("ping")), List.of(), null, profile.id(), ignored -> { });
+                    List.of(ChatMessage.user("ping")), List.of(), null, profile.id(), new ModelStreamListener() {
+                        @Override
+                        public void onText(String delta) {
+                        }
+
+                        @Override
+                        public void onReasoning(String delta) {
+                            reasoning.set(delta);
+                        }
+                    });
 
             assertEquals("ok", result.content());
+            assertEquals("think", reasoning.get());
+            assertEquals("think", result.reasoningContent());
             assertEquals(5, result.promptTokens());
             assertEquals(2, result.completionTokens());
             assertEquals(7, registry.usage(profile.id()).totalTokens());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void forwardsNormalJsonFallbackResponsesThroughTheStreamListener() throws Exception {
+        AtomicReference<String> content = new AtomicReference<String>();
+        AtomicReference<String> reasoning = new AtomicReference<String>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            byte[] response = "{\"choices\":[{\"message\":{\"content\":\"fallback\",\"reasoning_content\":\"checked\"},\"finish_reason\":\"stop\"}]}"
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+        try {
+            ModelRegistry registry = new ModelRegistry(new InMemoryModelProfileStore(),
+                    "https://api.deepseek.com", "deepseek", "fallback", "key", "", 0);
+            ModelProfile profile = registry.create("JSON fallback", "openai_compatible",
+                    "http://127.0.0.1:" + server.getAddress().getPort() + "/v1", "fallback-model",
+                    "key", "", 0, true, false);
+
+            ModelResponse result = new ModelRouter(registry, new ObjectMapper()).stream(
+                    List.of(ChatMessage.user("ping")), List.of(), null, profile.id(), new ModelStreamListener() {
+                        @Override
+                        public void onText(String delta) {
+                            content.set(delta);
+                        }
+
+                        @Override
+                        public void onReasoning(String delta) {
+                            reasoning.set(delta);
+                        }
+                    });
+
+            assertEquals("fallback", result.content());
+            assertEquals("fallback", content.get());
+            assertEquals("checked", result.reasoningContent());
+            assertEquals("checked", reasoning.get());
         } finally {
             server.stop(0);
         }

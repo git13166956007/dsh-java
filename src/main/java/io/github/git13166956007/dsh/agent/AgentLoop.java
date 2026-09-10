@@ -220,8 +220,8 @@ public final class AgentLoop implements AutoCloseable {
                 budget.check();
                 ModelResponse response = model.complete(messages, definitions, apiKey, options.modelId());
                 recordEvent(runId, "model_response", response.content());
-                messages.add(ChatMessage.assistant(response.content(), response.toolCalls()));
-                if (response.content() != null && !response.content().isEmpty()) {
+                messages.add(ChatMessage.assistant(response.content(), response.toolCalls(), response.reasoningContent()));
+                if (hasModelOutput(response)) {
                     trace.add(AgentTraceEvent.model(response.content(), response));
                 }
                 if (response.toolCalls().isEmpty()) {
@@ -277,6 +277,11 @@ public final class AgentLoop implements AutoCloseable {
         if (prompt == null || prompt.trim().isEmpty()) {
             throw new IllegalArgumentException("prompt must not be blank");
         }
+    }
+
+    private static boolean hasModelOutput(ModelResponse response) {
+        return response != null && ((response.content() != null && !response.content().isEmpty())
+                || (response.reasoningContent() != null && !response.reasoningContent().isEmpty()));
     }
 
     private static RunOptions runOptions(AgentExecutionOptions options, AgentRunContext context) {
@@ -336,13 +341,22 @@ public final class AgentLoop implements AutoCloseable {
 
             for (int turn = 0; turn < options.maxTurns(); turn++) {
                 budget.check();
-                ModelResponse response = model.stream(messages, definitions, apiKey, options.modelId(), delta -> {
-                    recordEventUnchecked(runId, "model_delta", delta);
-                    listener.onText(delta);
+                ModelResponse response = model.stream(messages, definitions, apiKey, options.modelId(), new ModelStreamListener() {
+                    @Override
+                    public void onText(String delta) {
+                        recordEventUnchecked(runId, "model_delta", delta);
+                        listener.onText(delta);
+                    }
+
+                    @Override
+                    public void onReasoning(String delta) {
+                        recordEventUnchecked(runId, "reasoning_delta", delta);
+                        listener.onReasoning(delta);
+                    }
                 });
                 recordEvent(runId, "model_response", response.content());
-                messages.add(ChatMessage.assistant(response.content(), response.toolCalls()));
-                if (response.content() != null && !response.content().isEmpty()) {
+                messages.add(ChatMessage.assistant(response.content(), response.toolCalls(), response.reasoningContent()));
+                if (hasModelOutput(response)) {
                     trace.add(AgentTraceEvent.model(response.content(), response));
                 }
                 if (response.toolCalls().isEmpty()) {
@@ -484,8 +498,8 @@ public final class AgentLoop implements AutoCloseable {
             ModelResponse response = model.complete(pending.messages, pending.definitions, pending.apiKey,
                     pending.options.modelId());
             recordEvent(pending.runId, "model_response", response.content());
-            pending.messages.add(ChatMessage.assistant(response.content(), response.toolCalls()));
-            if (response.content() != null && !response.content().isEmpty()) {
+            pending.messages.add(ChatMessage.assistant(response.content(), response.toolCalls(), response.reasoningContent()));
+            if (hasModelOutput(response)) {
                 pending.trace.add(AgentTraceEvent.model(response.content(), response));
             }
             if (response.toolCalls().isEmpty()) {
@@ -811,6 +825,7 @@ public final class AgentLoop implements AutoCloseable {
             ObjectNode node = array.addObject();
             node.put("role", message.role().value());
             putNullable(node, "content", message.content());
+            putNullable(node, "reasoningContent", message.reasoningContent());
             putNullable(node, "toolCallId", message.toolCallId());
             ArrayNode calls = node.putArray("toolCalls");
             for (ToolCall call : message.toolCalls()) {
@@ -828,9 +843,10 @@ public final class AgentLoop implements AutoCloseable {
         for (JsonNode node : array) {
             String role = node.path("role").asString("user");
             String content = node.path("content").asString(null);
+            String reasoningContent = node.path("reasoningContent").asString(null);
             switch (role) {
                 case "system" -> messages.add(ChatMessage.system(content));
-                case "assistant" -> messages.add(ChatMessage.assistant(content, readToolCalls(node.path("toolCalls"))));
+                case "assistant" -> messages.add(ChatMessage.assistant(content, readToolCalls(node.path("toolCalls")), reasoningContent));
                 case "tool" -> messages.add(ChatMessage.tool(node.path("toolCallId").asString(null), content));
                 default -> messages.add(ChatMessage.user(content));
             }
@@ -854,6 +870,7 @@ public final class AgentLoop implements AutoCloseable {
             putNullable(node, "type", event.type());
             putNullable(node, "name", event.name());
             putNullable(node, "content", event.content());
+            putNullable(node, "reasoningContent", event.reasoningContent());
             putNullable(node, "result", event.result());
             putNullable(node, "promptTokens", event.promptTokens());
             putNullable(node, "completionTokens", event.completionTokens());
@@ -870,7 +887,7 @@ public final class AgentLoop implements AutoCloseable {
                     node.has("arguments") ? node.path("arguments").deepCopy() : null,
                     node.path("content").asString(null), node.path("result").asString(null),
                     integerValue(node, "promptTokens"), integerValue(node, "completionTokens"),
-                    integerValue(node, "totalTokens")));
+                    integerValue(node, "totalTokens"), node.path("reasoningContent").asString(null)));
         }
         return trace;
     }

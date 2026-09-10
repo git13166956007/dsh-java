@@ -71,16 +71,27 @@ public final class ModelRouter implements ChatModel {
             List<ToolDefinition> effectiveTools = effectiveTools(profile, tools);
             long started = System.nanoTime();
             try {
-                ModelStreamListener guardedListener = delta -> {
-                    if (delta != null && !delta.isEmpty()) emitted.set(true);
-                    listener.onText(delta);
+                ModelStreamListener guardedListener = new ModelStreamListener() {
+                    @Override
+                    public void onText(String delta) {
+                        if (delta != null && !delta.isEmpty()) emitted.set(true);
+                        listener.onText(delta);
+                    }
+
+                    @Override
+                    public void onReasoning(String delta) {
+                        if (delta != null && !delta.isEmpty()) emitted.set(true);
+                        listener.onReasoning(delta);
+                    }
                 };
                 ModelResponse response;
                 if (!profile.supportsStreaming()) {
                     response = client(profile).complete(messages, effectiveTools, apiKey);
-                    if (response.content() != null && !response.content().isEmpty()) guardedListener.onText(response.content());
+                    emitResponse(response, guardedListener);
                 } else {
                     response = client(profile).stream(messages, effectiveTools, apiKey, guardedListener);
+                    // Some compatible endpoints return a normal JSON completion despite stream=true.
+                    if (!emitted.get()) emitResponse(response, guardedListener);
                 }
                 registry.recordSuccess(profile.id(), elapsedMs(started));
                 registry.recordUsage(profile.id(), messages, response);
@@ -98,6 +109,16 @@ public final class ModelRouter implements ChatModel {
 
     private static List<ToolDefinition> effectiveTools(ModelProfileData profile, List<ToolDefinition> tools) {
         return profile.supportsTools() ? tools : List.of();
+    }
+
+    private static void emitResponse(ModelResponse response, ModelStreamListener listener) {
+        if (response == null) return;
+        if (response.reasoningContent() != null && !response.reasoningContent().isEmpty()) {
+            listener.onReasoning(response.reasoningContent());
+        }
+        if (response.content() != null && !response.content().isEmpty()) {
+            listener.onText(response.content());
+        }
     }
 
     private static long elapsedMs(long started) {
@@ -146,6 +167,15 @@ public final class ModelRouter implements ChatModel {
                         profile.maxTokens(), profile.frequencyPenalty(), profile.presencePenalty(),
                         profile.timeoutSeconds(), profile.requestOptionsJson());
             }
+
+            @Override
+            public List<ModelCatalogEntry> listModels(ModelProfileData profile, String requestApiKey,
+                                                      ObjectMapper mapper) throws Exception {
+                return new DeepSeekChatModel(mapper, profile.baseUrl(), profile.apiKey(), profile.model(),
+                        profile.proxyHost(), profile.proxyPort(), profile.temperature(), profile.topP(),
+                        profile.maxTokens(), profile.frequencyPenalty(), profile.presencePenalty(),
+                        profile.timeoutSeconds(), profile.requestOptionsJson()).listModels(requestApiKey);
+            }
         });
         registry.registerProvider(new ModelProvider() {
             @Override
@@ -156,6 +186,12 @@ public final class ModelRouter implements ChatModel {
             @Override
             public ChatModel create(ModelProfileData profile, ObjectMapper mapper) {
                 return openAi(profile, mapper);
+            }
+
+            @Override
+            public List<ModelCatalogEntry> listModels(ModelProfileData profile, String requestApiKey,
+                                                      ObjectMapper mapper) throws Exception {
+                return openAiClient(profile, mapper).listModels(requestApiKey);
             }
         });
         registry.registerProvider(new ModelProvider() {
@@ -168,10 +204,20 @@ public final class ModelRouter implements ChatModel {
             public ChatModel create(ModelProfileData profile, ObjectMapper mapper) {
                 return openAi(profile, mapper);
             }
+
+            @Override
+            public List<ModelCatalogEntry> listModels(ModelProfileData profile, String requestApiKey,
+                                                      ObjectMapper mapper) throws Exception {
+                return openAiClient(profile, mapper).listModels(requestApiKey);
+            }
         });
     }
 
     private static ChatModel openAi(ModelProfileData profile, ObjectMapper mapper) {
+        return openAiClient(profile, mapper);
+    }
+
+    private static OpenAiCompatibleChatModel openAiClient(ModelProfileData profile, ObjectMapper mapper) {
         return new OpenAiCompatibleChatModel(mapper, profile.provider(), profile.baseUrl(), profile.apiKey(),
                 profile.model(), profile.proxyHost(), profile.proxyPort(), profile.temperature(), profile.topP(),
                 profile.maxTokens(), profile.frequencyPenalty(), profile.presencePenalty(), profile.timeoutSeconds(),

@@ -84,6 +84,31 @@ public final class ModelRegistry {
         return providers.keySet().stream().sorted().toList();
     }
 
+    public List<ModelCatalogEntry> catalog(String id, String requestApiKey, tools.jackson.databind.ObjectMapper objectMapper)
+            throws Exception {
+        // Catalog discovery is a management operation; disabled profiles can still be edited and inspected.
+        ModelProfileData profile = require(id);
+        return catalog(profile, requestApiKey, objectMapper);
+    }
+
+    public List<ModelCatalogEntry> catalog(String providerId, String baseUrl, String apiKey, String proxyHost,
+                                           Integer proxyPort, Integer timeoutSeconds,
+                                           tools.jackson.databind.ObjectMapper objectMapper) throws Exception {
+        ModelProfileData profile = new ModelProfileData("catalog", "catalog", normalizeProvider(providerId),
+                normalizeUrl(baseUrl), "catalog", blankToNull(apiKey), blankToNull(proxyHost),
+                validProxyPort(proxyPort == null ? 0 : proxyPort), true, false, true, true, false, 0,
+                null, null, null, null, null, validTimeoutSeconds(timeoutSeconds == null ? 120 : timeoutSeconds),
+                null);
+        return catalog(profile, apiKey, objectMapper);
+    }
+
+    private List<ModelCatalogEntry> catalog(ModelProfileData profile, String requestApiKey,
+                                            tools.jackson.databind.ObjectMapper objectMapper) throws Exception {
+        ModelProvider provider = provider(profile.provider());
+        if (provider == null) throw new IllegalArgumentException("unsupported model provider: " + profile.provider());
+        return provider.listModels(profile, requestApiKey, objectMapper);
+    }
+
     public synchronized ModelTokenizer tokenizer(String id) {
         ModelProfileData profile = resolve(id);
         ModelProvider provider = provider(profile.provider());

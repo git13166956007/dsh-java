@@ -4,6 +4,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.nio.file.Path;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 import io.github.git13166956007.dsh.agent.AgentLoop;
 import io.github.git13166956007.dsh.agent.AgentRunHandle;
@@ -45,6 +46,7 @@ import io.github.git13166956007.dsh.model.ModelProfile;
 import io.github.git13166956007.dsh.model.ModelHealth;
 import io.github.git13166956007.dsh.model.ModelUsage;
 import io.github.git13166956007.dsh.model.ModelRegistry;
+import io.github.git13166956007.dsh.model.ModelCatalogEntry;
 import io.github.git13166956007.dsh.plan.Plan;
 import io.github.git13166956007.dsh.plan.AdaptivePlanService;
 import io.github.git13166956007.dsh.plan.PlanExecutor;
@@ -91,6 +93,7 @@ public final class DshController {
     private final MemoryManager memoryManager;
     private final RunManager runManager;
     private final ChatModel chatModel;
+    private final ObjectMapper objectMapper;
     private final Path pluginDirectory;
     private final boolean memoryAutoExtractEnabled;
     private final int memoryAutoExtractMaxRecords;
@@ -103,7 +106,7 @@ public final class DshController {
                          SubAgentProfileRegistry subAgentProfileRegistry, SubAgentRunner subAgentRunner,
                          SubAgentSessionManager subAgentSessionManager, AdaptivePlanService adaptivePlanService,
                          MemoryManager memoryManager, RunManager runManager, ChatModel chatModel,
-                         org.springframework.core.env.Environment environment) {
+                         ObjectMapper objectMapper, org.springframework.core.env.Environment environment) {
         this.runtime = runtime;
         this.agentLoop = agentLoop;
         this.contextManager = contextManager;
@@ -122,6 +125,7 @@ public final class DshController {
         this.memoryManager = memoryManager;
         this.runManager = runManager;
         this.chatModel = chatModel;
+        this.objectMapper = objectMapper;
         this.pluginDirectory = Path.of(environment.getProperty("dsh.plugins.directory", "plugins"));
         this.memoryAutoExtractEnabled = Boolean.parseBoolean(environment.getProperty("dsh.memory.auto-extract.enabled", "false"));
         this.memoryAutoExtractMaxRecords = Integer.parseInt(environment.getProperty("dsh.memory.auto-extract.max-records", "3"));
@@ -416,6 +420,38 @@ public final class DshController {
     @GetMapping("/models/providers")
     public java.util.List<String> modelProviders() {
         return modelRegistry.providerIds();
+    }
+
+    @PostMapping("/models/catalog")
+    public java.util.List<ModelCatalogEntry> modelCatalog(@RequestBody ModelCatalogRequest request) {
+        if (request == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "catalog request must not be null");
+        try {
+            return modelRegistry.catalog(request.provider(), request.baseUrl(), request.apiKey(), request.proxyHost(),
+                    request.proxyPort(), request.timeoutSeconds(), objectMapper);
+        } catch (UnsupportedOperationException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_IMPLEMENTED, exception.getMessage(), exception);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
+        } catch (Exception exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, exception.getMessage(), exception);
+        }
+    }
+
+    @PostMapping("/models/{id}/catalog")
+    public java.util.List<ModelCatalogEntry> savedModelCatalog(@PathVariable String id,
+                                                               @RequestBody(required = false) ModelCatalogKeyRequest request) {
+        try {
+            return modelRegistry.catalog(id, request == null ? null : request.apiKey(), objectMapper);
+        } catch (UnsupportedOperationException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_IMPLEMENTED, exception.getMessage(), exception);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(
+                    exception.getMessage() != null && exception.getMessage().startsWith("unknown model:")
+                            ? HttpStatus.NOT_FOUND : HttpStatus.BAD_REQUEST,
+                    exception.getMessage(), exception);
+        } catch (Exception exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, exception.getMessage(), exception);
+        }
     }
 
     @PostMapping("/models")
@@ -839,7 +875,8 @@ public final class DshController {
                     ? agentLoop.resumeApproval(id, request.approved(), request.apiKey())
                     : planExecutor.resumeApproval(id, request.approved(), request.apiKey());
             if (result.pendingApproval() == null && run.conversationId() != null) {
-                contextManager.append(run.conversationId(), ChatMessage.assistant(result.answer(), java.util.List.of()));
+                contextManager.append(run.conversationId(), ChatMessage.assistant(result.answer(), java.util.List.of(),
+                        result.reasoningContent()));
             }
             subAgentSessionManager.onApprovalResult(result);
             subAgentRunner.releaseCompletedReservations();
@@ -954,7 +991,8 @@ public final class DshController {
                     request.agentId(), mode, "conversation", conversationId,
                     io.github.git13166956007.dsh.agent.AgentRunContext.chat(conversationId, request.agentId()));
             if (result.pendingApproval() == null) {
-                contextManager.append(conversationId, ChatMessage.assistant(result.answer(), java.util.List.of()));
+                contextManager.append(conversationId, ChatMessage.assistant(result.answer(), java.util.List.of(),
+                        result.reasoningContent()));
                 extractMemories(conversationId, request, result.answer());
             }
             return new ChatResponse(conversationId, result.answer(), result.trace(), result.turns(), result.runId(),
@@ -1003,6 +1041,11 @@ public final class DshController {
                     }
 
                     @Override
+                    public void onReasoning(String delta) {
+                        send(emitter, "reasoning_delta", delta);
+                    }
+
+                    @Override
                     public void onToolCall(ToolCall call) {
                         Map<String, Object> data = new LinkedHashMap<String, Object>();
                         data.put("id", call.id());
@@ -1019,7 +1062,8 @@ public final class DshController {
                 if (result.pendingApproval() != null) {
                     send(emitter, "approval_required", result.pendingApproval());
                 } else {
-                    contextManager.append(finalConversationId, ChatMessage.assistant(result.answer(), java.util.List.of()));
+                    contextManager.append(finalConversationId, ChatMessage.assistant(result.answer(), java.util.List.of(),
+                            result.reasoningContent()));
                     extractMemories(finalConversationId, request, result.answer());
                 }
                 send(emitter, "done", new StreamResponse(finalConversationId, result.answer(), result.trace(), result.turns(),
@@ -1131,6 +1175,13 @@ public final class DshController {
                                Double frequencyPenalty, Double presencePenalty, Integer timeoutSeconds,
                                String requestOptionsJson, String fallbackModelId, String failoverPolicy,
                                Double inputPricePerMillionTokens, Double outputPricePerMillionTokens) {
+    }
+
+    public record ModelCatalogRequest(String provider, String baseUrl, String apiKey, String proxyHost,
+                                      Integer proxyPort, Integer timeoutSeconds) {
+    }
+
+    public record ModelCatalogKeyRequest(String apiKey) {
     }
 
     public record ModelTestRequest(String apiKey, String prompt) {

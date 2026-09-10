@@ -9,6 +9,7 @@ import io.github.git13166956007.dsh.agent.ChatModel;
 import io.github.git13166956007.dsh.agent.ModelResponse;
 import io.github.git13166956007.dsh.agent.ModelStreamListener;
 import io.github.git13166956007.dsh.agent.ToolCall;
+import io.github.git13166956007.dsh.model.ModelCatalogEntry;
 import io.github.git13166956007.dsh.provider.deepseek.ModelConfigurationException;
 import io.github.git13166956007.dsh.provider.deepseek.ModelQuotaException;
 import io.github.git13166956007.dsh.tool.ToolDefinition;
@@ -34,6 +35,7 @@ public final class OpenAiCompatibleChatModel implements ChatModel {
     private final String provider;
     private final String apiKey;
     private final String model;
+    private final URI baseEndpoint;
     private final URI endpoint;
     private final Double temperature;
     private final Double topP;
@@ -73,7 +75,8 @@ public final class OpenAiCompatibleChatModel implements ChatModel {
         this.presencePenalty = presencePenalty;
         this.timeoutSeconds = timeoutSeconds;
         this.requestOptionsJson = requestOptionsJson;
-        this.endpoint = URI.create(trimTrailingSlash(baseUrl) + "/chat/completions");
+        this.baseEndpoint = URI.create(trimTrailingSlash(baseUrl));
+        this.endpoint = URI.create(this.baseEndpoint + "/chat/completions");
         HttpClient.Builder client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15));
         if (proxyHost != null && !proxyHost.trim().isEmpty() && proxyPort > 0) {
             client.proxy(ProxySelector.of(new InetSocketAddress(proxyHost, proxyPort)));
@@ -118,6 +121,7 @@ public final class OpenAiCompatibleChatModel implements ChatModel {
         Integer promptTokens = null;
         Integer completionTokens = null;
         Integer totalTokens = null;
+        StringBuilder reasoning = new StringBuilder();
         boolean sawSsePayload = false;
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(
                 response.body(), StandardCharsets.UTF_8))) {
@@ -145,6 +149,12 @@ public final class OpenAiCompatibleChatModel implements ChatModel {
                 if (text != null && !text.isEmpty()) {
                     content.append(text);
                     listener.onText(text);
+                }
+                String reasoningDelta = textValue(delta, "reasoning_content");
+                if (reasoningDelta == null) reasoningDelta = textValue(delta, "reasoning");
+                if (reasoningDelta != null && !reasoningDelta.isEmpty()) {
+                    reasoning.append(reasoningDelta);
+                    listener.onReasoning(reasoningDelta);
                 }
                 if (!choice.path("finish_reason").isMissingNode()
                         && !choice.path("finish_reason").isNull()) {
@@ -188,23 +198,55 @@ public final class OpenAiCompatibleChatModel implements ChatModel {
             toolCalls.add(new ToolCall(partial.id, partial.name, objectMapper.readTree(arguments)));
         }
         return new ModelResponse(content.length() == 0 ? null : content.toString(), toolCalls, finishReason,
-                promptTokens, completionTokens, totalTokens);
+                promptTokens, completionTokens, totalTokens, reasoning.length() == 0 ? null : reasoning.toString());
+    }
+
+    public List<ModelCatalogEntry> listModels(String requestApiKey) throws Exception {
+        String effectiveApiKey = resolveApiKey(requestApiKey);
+        HttpRequest request = HttpRequest.newBuilder(modelsEndpoint())
+                .timeout(Duration.ofSeconds(timeoutSeconds))
+                .header("Authorization", "Bearer " + effectiveApiKey)
+                .header("Accept", "application/json")
+                .GET()
+                .build();
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        ensureSuccess(response.statusCode(), response.body());
+        JsonNode root = objectMapper.readTree(response.body());
+        JsonNode data = root != null && root.path("data").isArray() ? root.path("data") : root;
+        if (data == null || !data.isArray()) return List.of();
+        List<ModelCatalogEntry> result = new ArrayList<ModelCatalogEntry>();
+        for (JsonNode item : data) {
+            String id = item.path("id").asText(null);
+            if (id == null || id.isBlank()) continue;
+            Long created = item.path("created").isIntegralNumber() ? item.path("created").asLong() : null;
+            String ownedBy = item.path("owned_by").asText(null);
+            result.add(new ModelCatalogEntry(id, item.path("object").asText("model"), created, ownedBy));
+        }
+        return result;
     }
 
     private ModelResponse parseCompletion(JsonNode root) throws Exception {
         JsonNode choice = root.path("choices").path(0);
         JsonNode message = choice.path("message");
         String content = message.path("content").isNull() ? null : message.path("content").asText(null);
+        String reasoning = textValue(message, "reasoning_content");
+        if (reasoning == null) reasoning = textValue(message, "reasoning");
         List<ToolCall> toolCalls = parseToolCalls(message.path("tool_calls"));
         JsonNode usage = root.path("usage");
         return new ModelResponse(content, toolCalls, choice.path("finish_reason").asText(null),
                 integerValue(usage, "prompt_tokens", null), integerValue(usage, "completion_tokens", null),
-                integerValue(usage, "total_tokens", null));
+                integerValue(usage, "total_tokens", null), reasoning);
     }
 
     private static Integer integerValue(JsonNode object, String field, Integer fallback) {
         if (object == null || !object.isObject() || !object.has(field) || object.path(field).isNull()) return fallback;
         return object.path(field).isIntegralNumber() ? object.path(field).asInt() : fallback;
+    }
+
+    private static String textValue(JsonNode object, String field) {
+        if (object == null || !object.isObject() || !object.has(field) || object.path(field).isNull()) return null;
+        String value = object.path(field).asText(null);
+        return value == null || value.isEmpty() ? null : value;
     }
 
     private static String diagnostic(String body) {
@@ -261,6 +303,10 @@ public final class OpenAiCompatibleChatModel implements ChatModel {
                 .build();
     }
 
+    private URI modelsEndpoint() {
+        return URI.create(baseEndpoint + "/models");
+    }
+
     private void ensureSuccess(int statusCode, String body) {
         if (statusCode < 200 || statusCode >= 300) {
             if (statusCode == 402 || body.contains("Insufficient Balance")) {
@@ -277,6 +323,9 @@ public final class OpenAiCompatibleChatModel implements ChatModel {
             item.put("role", message.role().value());
             if (message.content() == null) item.putNull("content");
             else item.put("content", message.content());
+            if (message.reasoningContent() != null && !message.reasoningContent().isEmpty()) {
+                item.put("reasoning_content", message.reasoningContent());
+            }
             if (message.toolCallId() != null) item.put("tool_call_id", message.toolCallId());
             if (!message.toolCalls().isEmpty()) {
                 ArrayNode calls = item.putArray("tool_calls");

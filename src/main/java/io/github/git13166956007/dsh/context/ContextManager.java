@@ -213,6 +213,9 @@ public final class ContextManager {
 
     private static void appendTranscript(StringBuilder transcript, ChatMessage message) {
         transcript.append(message.role().value()).append(": ");
+        if (message.reasoningContent() != null && !message.reasoningContent().isBlank()) {
+            transcript.append("[reasoning] ").append(message.reasoningContent()).append(" ");
+        }
         if (message.content() != null) transcript.append(message.content());
         for (io.github.git13166956007.dsh.agent.ToolCall call : message.toolCalls()) {
             transcript.append(" [tool call ").append(call.name()).append(" ")

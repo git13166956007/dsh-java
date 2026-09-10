@@ -21,30 +21,37 @@ public final class ChatMessage {
 
     private final Role role;
     private final String content;
+    private final String reasoningContent;
     private final String toolCallId;
     private final List<ToolCall> toolCalls;
 
-    private ChatMessage(Role role, String content, String toolCallId, List<ToolCall> toolCalls) {
+    private ChatMessage(Role role, String content, String reasoningContent, String toolCallId,
+                        List<ToolCall> toolCalls) {
         this.role = role;
         this.content = content;
+        this.reasoningContent = reasoningContent;
         this.toolCallId = toolCallId;
         this.toolCalls = Collections.unmodifiableList(new ArrayList<ToolCall>(toolCalls));
     }
 
     public static ChatMessage system(String content) {
-        return new ChatMessage(Role.SYSTEM, content, null, Collections.<ToolCall>emptyList());
+        return new ChatMessage(Role.SYSTEM, content, null, null, Collections.<ToolCall>emptyList());
     }
 
     public static ChatMessage user(String content) {
-        return new ChatMessage(Role.USER, content, null, Collections.<ToolCall>emptyList());
+        return new ChatMessage(Role.USER, content, null, null, Collections.<ToolCall>emptyList());
     }
 
     public static ChatMessage assistant(String content, List<ToolCall> toolCalls) {
-        return new ChatMessage(Role.ASSISTANT, content, null, toolCalls);
+        return assistant(content, toolCalls, null);
+    }
+
+    public static ChatMessage assistant(String content, List<ToolCall> toolCalls, String reasoningContent) {
+        return new ChatMessage(Role.ASSISTANT, content, reasoningContent, null, toolCalls);
     }
 
     public static ChatMessage tool(String toolCallId, String content) {
-        return new ChatMessage(Role.TOOL, content, toolCallId, Collections.<ToolCall>emptyList());
+        return new ChatMessage(Role.TOOL, content, null, toolCallId, Collections.<ToolCall>emptyList());
     }
 
     public Role role() {
@@ -53,6 +60,10 @@ public final class ChatMessage {
 
     public String content() {
         return content;
+    }
+
+    public String reasoningContent() {
+        return reasoningContent;
     }
 
     public String toolCallId() {

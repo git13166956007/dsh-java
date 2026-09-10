@@ -146,6 +146,11 @@ const modelForm = ref({
 const modelFormError = ref('')
 const modelSaving = ref(false)
 const modelTesting = ref(null)
+const modelCatalog = ref([])
+const modelCatalogLoading = ref(false)
+const modelCatalogError = ref('')
+const modelCatalogSelection = ref([])
+const modelCatalogSaving = ref(false)
 const mcpForm = ref({ name: '', transport: 'stdio', endpoint: '', command: '', arguments: '', credentialRef: '', headers: '{}', environment: '{}', approvalRequired: true })
 const mcpFormError = ref('')
 const mcpSaving = ref(false)
@@ -1343,6 +1348,9 @@ function resetModelForm() {
     outputPricePerMillionTokens: ''
   }
   modelFormError.value = ''
+  modelCatalog.value = []
+  modelCatalogError.value = ''
+  modelCatalogSelection.value = []
 }
 
 function editModel(model) {
@@ -1375,6 +1383,117 @@ function editModel(model) {
     outputPricePerMillionTokens: model.outputPricePerMillionTokens ?? ''
   }
   modelFormError.value = ''
+  modelCatalog.value = []
+  modelCatalogError.value = ''
+  modelCatalogSelection.value = []
+}
+
+async function fetchModelCatalog() {
+  modelCatalogError.value = ''
+  modelCatalogLoading.value = true
+  try {
+    const editing = Boolean(modelForm.value.id)
+    const response = await fetch(editing
+      ? `/api/v1/models/${encodeURIComponent(modelForm.value.id)}/catalog`
+      : '/api/v1/models/catalog', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(editing
+        ? { apiKey: modelForm.value.apiKey.trim() || apiKey.value.trim() || null }
+        : {
+            provider: modelForm.value.provider.trim(),
+            baseUrl: modelForm.value.baseUrl.trim(),
+            apiKey: modelForm.value.apiKey.trim() || apiKey.value.trim() || null,
+            proxyHost: modelForm.value.proxyHost.trim() || null,
+            proxyPort: Number(modelForm.value.proxyPort) || 0,
+            timeoutSeconds: Number(modelForm.value.timeoutSeconds) || 120
+          })
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload.message || payload.error || '模型目录获取失败')
+    modelCatalog.value = payload
+    modelCatalogSelection.value = payload.map((entry) => entry.id)
+    if (payload.length === 0) modelCatalogError.value = '供应商没有返回可用模型'
+  } catch (requestError) {
+    modelCatalog.value = []
+    modelCatalogError.value = requestError.message
+  } finally {
+    modelCatalogLoading.value = false
+  }
+}
+
+function selectCatalogModel(entry) {
+  modelForm.value.model = entry.id
+  if (!modelForm.value.name.trim()) modelForm.value.name = entry.id
+}
+
+function buildModelRequest(modelId, name) {
+  return {
+    name,
+    provider: modelForm.value.provider.trim(),
+    baseUrl: modelForm.value.baseUrl.trim(),
+    model: modelId,
+    proxyHost: modelForm.value.proxyHost.trim() || null,
+    proxyPort: Number(modelForm.value.proxyPort) || 0,
+    enabled: modelForm.value.enabled,
+    active: false,
+    supportsTools: modelForm.value.supportsTools,
+    supportsStreaming: modelForm.value.supportsStreaming,
+    supportsVision: modelForm.value.supportsVision,
+    contextWindow: Number(modelForm.value.contextWindow) || 0,
+    temperature: modelForm.value.temperature === '' ? null : Number(modelForm.value.temperature),
+    topP: modelForm.value.topP === '' ? null : Number(modelForm.value.topP),
+    maxTokens: modelForm.value.maxTokens === '' ? null : Number(modelForm.value.maxTokens),
+    frequencyPenalty: modelForm.value.frequencyPenalty === '' ? null : Number(modelForm.value.frequencyPenalty),
+    presencePenalty: modelForm.value.presencePenalty === '' ? null : Number(modelForm.value.presencePenalty),
+    timeoutSeconds: Number(modelForm.value.timeoutSeconds) || 120,
+    requestOptionsJson: modelForm.value.requestOptionsJson.trim() || null,
+    fallbackModelId: null,
+    failoverPolicy: modelForm.value.failoverPolicy,
+    inputPricePerMillionTokens: modelForm.value.inputPricePerMillionTokens === '' ? null : Number(modelForm.value.inputPricePerMillionTokens),
+    outputPricePerMillionTokens: modelForm.value.outputPricePerMillionTokens === '' ? null : Number(modelForm.value.outputPricePerMillionTokens),
+    ...(modelForm.value.apiKey.trim() ? { apiKey: modelForm.value.apiKey.trim() } : {})
+  }
+}
+
+async function addSelectedCatalogModels() {
+  modelCatalogError.value = ''
+  const selected = modelCatalogSelection.value
+  if (selected.length === 0) {
+    modelCatalogError.value = '请选择至少一个模型'
+    return
+  }
+  const provider = modelForm.value.provider.trim()
+  const existing = new Set(models.value
+    .filter((model) => model.provider === provider)
+    .map((model) => model.model))
+  const ids = selected.filter((id) => !existing.has(id))
+  if (ids.length === 0) {
+    modelCatalogError.value = '所选模型已经存在于当前供应商配置中'
+    return
+  }
+  modelCatalogSaving.value = true
+  try {
+    for (const id of ids) {
+      const name = ids.length === 1 && modelForm.value.name.trim()
+        ? modelForm.value.name.trim()
+        : `${provider} · ${id}`
+      const response = await fetch('/api/v1/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildModelRequest(id, name))
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload.message || payload.error || `模型 ${id} 保存失败`)
+    }
+    modelCatalog.value = modelCatalog.value.filter((entry) => !ids.includes(entry.id))
+    modelCatalogSelection.value = []
+    await refreshModels()
+  } catch (requestError) {
+    modelCatalogError.value = requestError.message
+  } finally {
+    modelCatalogSaving.value = false
+  }
 }
 
 async function saveModel() {
@@ -1494,7 +1613,7 @@ async function sendMessage() {
   draft.value = ''
   error.value = ''
   messages.value.push({ role: 'user', content: prompt })
-  const assistantMessage = { role: 'assistant', content: '' }
+  const assistantMessage = { role: 'assistant', content: '', reasoningContent: '' }
   messages.value.push(assistantMessage)
   trace.value = []
   sending.value = true
@@ -1521,6 +1640,8 @@ async function sendMessage() {
     await consumeSse(response, (event, data) => {
       if (event === 'delta') {
         assistantMessage.content += typeof data === 'string' ? data : ''
+      } else if (event === 'reasoning_delta') {
+        assistantMessage.reasoningContent += typeof data === 'string' ? data : ''
       } else if (event === 'tool_call') {
         const toolMessage = {
           role: 'tool',
@@ -1551,6 +1672,8 @@ async function sendMessage() {
         assistantMessage.content = data.answer || assistantMessage.content
         assistantMessage.runId = data.runId
         trace.value = data.trace || trace.value
+        const finalModelTrace = [...trace.value].reverse().find((item) => item.type === 'model')
+        assistantMessage.reasoningContent = finalModelTrace?.reasoningContent || assistantMessage.reasoningContent
         syncToolMessages(trace.value)
         const pendingTool = [...messages.value].reverse().find((item) => item.role === 'tool' && item.result === null)
         if (data.pendingApproval) {
@@ -1914,7 +2037,13 @@ onUnmounted(() => {
               <strong>{{ item.role === 'user' ? 'You' : item.role === 'error' ? 'Runtime' : item.role === 'tool' ? 'Tool execution' : 'DSH Agent' }}</strong>
               <span>{{ item.role === 'user' ? 'prompt' : item.role === 'error' ? 'error' : item.role === 'tool' ? item.state : 'answer' }}</span>
             </div>
-            <div v-if="item.role === 'assistant'" class="message-content markdown-content" v-html="renderMarkdown(item.content)"></div>
+            <div v-if="item.role === 'assistant'" class="assistant-message-content">
+              <details v-if="item.reasoningContent" class="reasoning-block" :open="sending">
+                <summary>Thinking</summary>
+                <div class="message-content markdown-content reasoning-content" v-html="renderMarkdown(item.reasoningContent)"></div>
+              </details>
+              <div class="message-content markdown-content" v-html="renderMarkdown(item.content)"></div>
+            </div>
             <div v-else-if="item.role === 'tool'" class="tool-message-content">
               <div class="tool-message-title"><strong>{{ item.name }}</strong><span>{{ item.state === 'running' ? 'Running' : item.state === 'awaiting_approval' || item.state === 'approving' ? 'Approval required' : 'Completed' }}</span></div>
               <div class="tool-message-label">INPUT</div>
@@ -1978,7 +2107,14 @@ onUnmounted(() => {
               <strong>{{ event.type === 'tool' ? event.name : 'Model response' }}</strong>
               <span>#{{ index + 1 }}</span>
             </div>
-            <p v-if="event.type === 'model'" class="trace-content">{{ event.content }}<small v-if="event.totalTokens != null">{{ event.promptTokens ?? '?' }} in · {{ event.completionTokens ?? '?' }} out · {{ event.totalTokens }} total tokens</small></p>
+            <div v-if="event.type === 'model'" class="trace-content">
+              <details v-if="event.reasoningContent" class="reasoning-block trace-reasoning">
+                <summary>Thinking</summary>
+                <div class="markdown-content" v-html="renderMarkdown(event.reasoningContent)"></div>
+              </details>
+              <div class="markdown-content" v-html="renderMarkdown(event.content)"></div>
+              <small v-if="event.totalTokens != null">{{ event.promptTokens ?? '?' }} in · {{ event.completionTokens ?? '?' }} out · {{ event.totalTokens }} total tokens</small>
+            </div>
             <template v-else>
               <div class="trace-block-label">ARGUMENTS</div>
               <pre>{{ formatArguments(event.arguments) }}</pre>
@@ -2213,6 +2349,21 @@ onUnmounted(() => {
           </div>
           <label><span>Base URL</span><input v-model="modelForm.baseUrl" placeholder="https://api.deepseek.com" autocomplete="off" /></label>
           <label><span>Model</span><input v-model="modelForm.model" placeholder="deepseek-v4-flash" autocomplete="off" /></label>
+          <div class="model-catalog-toolbar">
+            <button class="secondary-button compact" type="button" :disabled="modelCatalogLoading" @click="fetchModelCatalog">{{ modelCatalogLoading ? 'Fetching models' : 'Fetch available models' }}</button>
+            <span class="tool-form-note">Uses the form settings and temporary debug key</span>
+          </div>
+          <div v-if="modelCatalog.length" class="model-catalog-list">
+            <div v-for="entry in modelCatalog" :key="entry.id" class="model-catalog-item">
+              <label><input v-model="modelCatalogSelection" type="checkbox" :value="entry.id" /><span><strong>{{ entry.id }}</strong><small>{{ entry.ownedBy || entry.object || 'model' }}</small></span></label>
+              <button class="secondary-button compact" type="button" @click="selectCatalogModel(entry)">Use</button>
+            </div>
+            <div class="model-catalog-actions">
+              <span class="tool-form-note">{{ modelCatalogSelection.length }} selected</span>
+              <button class="secondary-button compact" type="button" :disabled="modelCatalogSaving" @click="addSelectedCatalogModels">{{ modelCatalogSaving ? 'Adding models' : 'Add selected models' }}</button>
+            </div>
+          </div>
+          <p v-if="modelCatalogError" class="tool-form-error">{{ modelCatalogError }}</p>
           <label><span>Fallback model</span><select v-model="modelForm.fallbackModelId"><option value="">No fallback</option><option v-for="candidate in models.filter((candidate) => candidate.id !== modelForm.id)" :key="candidate.id" :value="candidate.id">{{ candidate.name }} · {{ candidate.model }}</option></select></label>
           <label><span>Failover policy</span><select v-model="modelForm.failoverPolicy"><option value="any_failure">Any failure</option><option value="transient_failure">Transient failures only</option><option value="disabled">Disabled</option></select></label>
           <label><span>API Key</span><input v-model="modelForm.apiKey" type="password" autocomplete="new-password" :placeholder="modelForm.id ? 'Leave blank to keep current key' : 'Optional; request key can override'" /></label>

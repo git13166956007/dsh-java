@@ -21,6 +21,8 @@ public interface ModelTokenizer {
         private static final ModelTokenizer INSTANCE = message -> {
             int characters = message.content() == null ? 0
                     : message.content().codePointCount(0, message.content().length());
+            characters += message.reasoningContent() == null ? 0
+                    : message.reasoningContent().codePointCount(0, message.reasoningContent().length());
             for (ToolCall call : message.toolCalls()) {
                 characters += call.name() == null ? 0 : call.name().length();
                 characters += call.arguments() == null ? 0 : call.arguments().toString().length();

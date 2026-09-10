@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS dsh_message (
     turn_no INT NOT NULL,
     role VARCHAR(16) NOT NULL,
     content LONGTEXT NULL,
+    reasoning_content LONGTEXT NULL,
     tool_calls_json LONGTEXT NULL,
     tool_call_id VARCHAR(128) NULL,
     created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),

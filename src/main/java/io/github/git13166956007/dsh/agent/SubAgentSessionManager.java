@@ -150,7 +150,8 @@ public final class SubAgentSessionManager {
         try {
             Run run = runs.find(runId);
             if (run != null && run.conversationId() != null && result.answer() != null && !result.answer().isBlank()) {
-                contexts.append(run.conversationId(), ChatMessage.assistant(result.answer(), List.of()));
+                contexts.append(run.conversationId(), ChatMessage.assistant(result.answer(), List.of(),
+                        result.reasoningContent()));
             }
             activeRuns.remove(sessionId, runId);
             touch(store.find(sessionId));
