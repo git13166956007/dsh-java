@@ -17,6 +17,7 @@ const messages = ref([
 const trace = ref([])
 const history = ref([])
 const runtime = ref({ runtimeStarted: false, pluginCount: 0 })
+const pluginLoading = ref(false)
 const tools = ref([])
 const toolManagerOpen = ref(false)
 const capabilityTab = ref('tools')
@@ -139,6 +140,21 @@ async function refreshHealth() {
     runtime.value = await response.json()
   } catch {
     runtime.value = { runtimeStarted: false, pluginCount: 0 }
+  }
+}
+
+async function loadPlugins() {
+  if (pluginLoading.value) return
+  pluginLoading.value = true
+  try {
+    const response = await fetch('/api/v1/plugins/load', { method: 'POST' })
+    const payload = await response.json().catch(() => [])
+    if (!response.ok) throw new Error(payload.message || payload.error || '插件加载失败')
+    runtime.value = { ...runtime.value, pluginCount: payload.length, plugins: payload }
+  } catch (requestError) {
+    error.value = requestError.message
+  } finally {
+    pluginLoading.value = false
   }
 }
 
@@ -1265,6 +1281,7 @@ onUnmounted(() => clearTimeout(planPollTimer))
           <span class="runtime-port">:{{ apiPort }}</span>
         </div>
         <div class="runtime-meta">{{ runtime.pluginCount }} plugins registered</div>
+        <button class="secondary-button compact runtime-plugin-button" type="button" :disabled="pluginLoading" @click="loadPlugins">{{ pluginLoading ? 'Loading' : 'Load plugins' }}</button>
       </div>
 
       <button class="new-run-button" type="button" @click="clearConversation">
