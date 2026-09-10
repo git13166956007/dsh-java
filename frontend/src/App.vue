@@ -172,6 +172,9 @@ const conversationSearchQuery = ref('')
 const conversationSearchResults = ref([])
 const conversationActionError = ref('')
 const conversationActionLoading = ref(false)
+const conversations = ref([])
+const conversationListQuery = ref('')
+const conversationListResults = ref([])
 const apiPort = (() => {
   const target = import.meta.env.VITE_API_TARGET || 'http://localhost:8080'
   try {
@@ -1688,6 +1691,7 @@ async function sendMessage() {
         void scrollTranscript()
       } else if (event === 'done') {
         conversationId.value = data.conversationId || conversationId.value
+        void refreshConversations()
         void refreshContext()
         assistantMessage.content = data.answer || assistantMessage.content
         assistantMessage.runId = data.runId
@@ -1832,6 +1836,88 @@ function handleComposerKeydown(event) {
   }
 }
 
+async function refreshConversations() {
+  try {
+    const response = await fetch('/api/v1/conversations?limit=50')
+    if (!response.ok) throw new Error('Conversation list unavailable')
+    conversations.value = await response.json()
+  } catch (requestError) {
+    conversationActionError.value = requestError.message
+  }
+}
+
+async function selectConversation(conversation) {
+  if (!conversation?.id || sending.value || conversationActionLoading.value) return
+  conversationId.value = conversation.id
+  conversationListResults.value = []
+  conversationListQuery.value = ''
+  trace.value = []
+  error.value = ''
+  await replayConversation()
+}
+
+async function searchAllConversations() {
+  const query = conversationListQuery.value.trim()
+  if (!query || conversationActionLoading.value) return
+  conversationActionLoading.value = true
+  conversationActionError.value = ''
+  try {
+    const params = new URLSearchParams({ query, limit: '30' })
+    const response = await fetch(`/api/v1/conversations/search?${params}`)
+    const payload = await response.json().catch(() => [])
+    if (!response.ok) throw new Error(payload.message || payload.error || 'Conversation search failed')
+    conversationListResults.value = payload
+  } catch (requestError) {
+    conversationActionError.value = requestError.message
+  } finally {
+    conversationActionLoading.value = false
+  }
+}
+
+async function renameConversation(conversation) {
+  if (!conversation?.id || conversationActionLoading.value) return
+  const title = window.prompt('Conversation title', conversation.title)
+  if (title === null || !title.trim()) return
+  conversationActionLoading.value = true
+  conversationActionError.value = ''
+  try {
+    const response = await fetch(`/api/v1/conversations/${encodeURIComponent(conversation.id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: title.trim() })
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload.message || payload.error || 'Conversation rename failed')
+    const index = conversations.value.findIndex((item) => item.id === conversation.id)
+    if (index >= 0) conversations.value[index] = payload
+    conversationListResults.value = conversationListResults.value.map((item) =>
+      item.conversationId === conversation.id ? { ...item, conversationTitle: payload.title } : item)
+  } catch (requestError) {
+    conversationActionError.value = requestError.message
+  } finally {
+    conversationActionLoading.value = false
+  }
+}
+
+async function deleteConversation(conversation) {
+  if (!conversation?.id || conversationActionLoading.value) return
+  if (!window.confirm(`Delete conversation "${conversation.title}"?`)) return
+  conversationActionLoading.value = true
+  conversationActionError.value = ''
+  try {
+    const response = await fetch(`/api/v1/conversations/${encodeURIComponent(conversation.id)}`, { method: 'DELETE' })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload.message || payload.error || 'Conversation delete failed')
+    conversations.value = conversations.value.filter((item) => item.id !== conversation.id)
+    conversationListResults.value = conversationListResults.value.filter((item) => item.conversationId !== conversation.id)
+    if (conversationId.value === conversation.id) clearConversation()
+  } catch (requestError) {
+    conversationActionError.value = requestError.message
+  } finally {
+    conversationActionLoading.value = false
+  }
+}
+
 function clearConversation() {
   messages.value = []
   trace.value = []
@@ -1841,6 +1927,7 @@ function clearConversation() {
   contextError.value = ''
   conversationSearchQuery.value = ''
   conversationSearchResults.value = []
+  conversationListResults.value = []
   conversationActionError.value = ''
 }
 
@@ -1888,6 +1975,7 @@ async function forkConversation() {
     const payload = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(payload.message || payload.error || 'Conversation fork failed')
     conversationId.value = payload.conversationId
+    void refreshConversations()
     conversationActionLoading.value = false
     await replayConversation()
   } catch (requestError) {
@@ -1998,6 +2086,7 @@ onMounted(() => {
   refreshMcpServers()
   refreshSkills()
   refreshModels()
+  refreshConversations()
   refreshAgents()
   refreshSubAgents()
   refreshMemories()
@@ -2043,6 +2132,34 @@ onUnmounted(() => {
         <span class="button-icon">+</span>
         New run
       </button>
+
+      <div class="sidebar-section conversation-list-section">
+        <div class="section-label conversation-list-heading">
+          <span>CONVERSATIONS</span>
+          <button class="icon-button compact-icon" type="button" title="Refresh conversations" aria-label="Refresh conversations" @click="refreshConversations">↻</button>
+        </div>
+        <form class="conversation-list-search" @submit.prevent="searchAllConversations">
+          <input v-model="conversationListQuery" type="search" placeholder="Search all conversations" :disabled="conversationActionLoading" />
+          <button class="icon-button compact-icon" type="submit" title="Search all conversations" aria-label="Search all conversations" :disabled="conversationActionLoading || !conversationListQuery.trim()">⌕</button>
+        </form>
+        <div v-if="conversationListResults.length" class="conversation-list-results">
+          <button v-for="result in conversationListResults" :key="`${result.conversationId}-${result.messageIndex}`" class="conversation-list-result" type="button" @click="selectConversation({ id: result.conversationId })">
+            <strong>{{ result.conversationTitle || result.conversationId }}</strong>
+            <span>{{ result.role }} · {{ result.content }}</span>
+          </button>
+        </div>
+        <p v-else-if="conversations.length === 0" class="empty-history">No conversations yet</p>
+        <div v-else class="conversation-list">
+          <div v-for="conversation in conversations" :key="conversation.id" class="conversation-list-item" :class="{ selected: conversation.id === conversationId }">
+            <button class="conversation-list-select" type="button" :disabled="conversationActionLoading" @click="selectConversation(conversation)">
+              <strong>{{ conversation.title }}</strong>
+              <span>{{ conversation.messageCount }} messages · {{ formatTime(new Date(conversation.updatedAt)) }}</span>
+            </button>
+            <button class="icon-button compact-icon conversation-list-action" type="button" title="Rename conversation" aria-label="Rename conversation" :disabled="conversationActionLoading" @click="renameConversation(conversation)">✎</button>
+            <button class="icon-button compact-icon conversation-list-action danger" type="button" title="Delete conversation" aria-label="Delete conversation" :disabled="conversationActionLoading" @click="deleteConversation(conversation)">×</button>
+          </div>
+        </div>
+      </div>
 
       <div class="sidebar-section">
         <div class="section-label">RECENT RUNS</div>

@@ -8,6 +8,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -46,6 +47,81 @@ public final class MariaDbConversationStore implements ConversationStore {
             statement.executeUpdate();
         }
         return id;
+    }
+
+    @Override
+    public List<ConversationInfo> list(int limit) throws SQLException {
+        if (limit <= 0) return List.of();
+        List<ConversationInfo> result = new ArrayList<ConversationInfo>();
+        try (Connection connection = connection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "SELECT c.id, c.title, c.created_at, c.updated_at, COUNT(m.id) AS message_count "
+                             + "FROM dsh_conversation c LEFT JOIN dsh_message m ON m.conversation_id = c.id "
+                             + "GROUP BY c.id, c.title, c.created_at, c.updated_at "
+                             + "ORDER BY c.updated_at DESC, c.id LIMIT ?")) {
+            statement.setInt(1, limit);
+            try (ResultSet rows = statement.executeQuery()) {
+                while (rows.next()) result.add(readInfo(rows));
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public void rename(String conversationId, String title) throws SQLException {
+        try (Connection connection = connection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "UPDATE dsh_conversation SET title=? WHERE id=?")) {
+            statement.setString(1, shorten(title));
+            statement.setString(2, conversationId);
+            if (statement.executeUpdate() == 0) throw new IllegalArgumentException("unknown conversation: " + conversationId);
+        }
+    }
+
+    @Override
+    public boolean delete(String conversationId) throws SQLException {
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            try (PreparedStatement messages = connection.prepareStatement(
+                    "DELETE FROM dsh_message WHERE conversation_id=?");
+                 PreparedStatement conversation = connection.prepareStatement(
+                         "DELETE FROM dsh_conversation WHERE id=?")) {
+                messages.setString(1, conversationId);
+                messages.executeUpdate();
+                conversation.setString(1, conversationId);
+                boolean deleted = conversation.executeUpdate() > 0;
+                connection.commit();
+                return deleted;
+            } catch (SQLException | RuntimeException exception) {
+                connection.rollback();
+                throw exception;
+            }
+        }
+    }
+
+    @Override
+    public List<ConversationSearchResult> search(String query, int limit) throws SQLException {
+        if (limit <= 0) return List.of();
+        List<ConversationSearchResult> result = new ArrayList<ConversationSearchResult>();
+        try (Connection connection = connection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "SELECT c.id, c.title, m.role, m.content, "
+                             + "(SELECT COUNT(*) FROM dsh_message before_message "
+                             + "WHERE before_message.conversation_id=m.conversation_id "
+                             + "AND (before_message.turn_no < m.turn_no "
+                             + "OR (before_message.turn_no=m.turn_no AND before_message.id <= m.id))) - 1 AS message_index "
+                             + "FROM dsh_message m JOIN dsh_conversation c ON c.id=m.conversation_id "
+                             + "WHERE LOWER(COALESCE(m.content, '')) LIKE ? "
+                             + "ORDER BY c.updated_at DESC, m.turn_no, m.id LIMIT ?")) {
+            statement.setString(1, "%" + query.toLowerCase(java.util.Locale.ROOT) + "%");
+            statement.setInt(2, limit);
+            try (ResultSet rows = statement.executeQuery()) {
+                while (rows.next()) result.add(new ConversationSearchResult(rows.getString("id"),
+                        rows.getInt("message_index"), rows.getString("role"), rows.getString("content"),
+                        rows.getString("title")));
+            }
+        }
+        return result;
     }
 
     @Override
@@ -144,6 +220,13 @@ public final class MariaDbConversationStore implements ConversationStore {
 
     private Connection connection() throws SQLException {
         return DriverManager.getConnection(jdbcUrl, username, password);
+    }
+
+    private static ConversationInfo readInfo(ResultSet rows) throws SQLException {
+        Timestamp created = rows.getTimestamp("created_at");
+        Timestamp updated = rows.getTimestamp("updated_at");
+        return new ConversationInfo(rows.getString("id"), rows.getString("title"), rows.getInt("message_count"),
+                created.toInstant(), updated.toInstant());
     }
 
     private void ensureSchema() {

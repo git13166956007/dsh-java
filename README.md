@@ -113,7 +113,7 @@ Sub-agent Profile 管理接口为 `GET/POST/PATCH/DELETE /api/v1/sub-agents`。�
 
 运行追踪接口为 `GET /api/v1/runs`、`GET /api/v1/runs/{id}`、`GET /api/v1/runs/{id}/events`、`GET /api/v1/runs/{id}/events/stream`、`GET /api/v1/runs/{id}/tree` 和 `POST /api/v1/runs/{id}/cancel`。聊天响应和流式 `done` 事件会返回 `runId`；计划执行和后台子智能体会创建父子运行树，可按 `planId` 或 `parentRunId` 查询。每个运行会记录模型响应、工具调用、工具结果、重试和终态，启用 MariaDB 时会持久化到 `dsh_run` 与 `dsh_run_event`。事件流会先回放历史事件，再推送实时事件，前端 Plan Inspector 和 Sub-agent Run Inspector 用它显示步骤进度。
 
-同一个 `conversationId` 会复用最近的历史消息；不传时服务会创建新的会话 ID。工具管理接口为 `GET /api/v1/tools` 和 `PATCH /api/v1/tools/{name}`，请求体示例为 `{"enabled":false}`。
+同一个 `conversationId` 会复用最近的历史消息；不传时服务会创建新的会话 ID。会话管理接口为 `GET /api/v1/conversations`、`PATCH /api/v1/conversations/{id}`、`DELETE /api/v1/conversations/{id}` 和 `GET /api/v1/conversations/search?query=...`，支持列表、重命名、删除和跨会话搜索；删除会话时同时删除其消息。工具管理接口为 `GET /api/v1/tools` 和 `PATCH /api/v1/tools/{name}`，请求体示例为 `{"enabled":false}`。
 
 自定义调试工具在启用 MariaDB 持久化时会保存名称、描述、JSON Schema、固定返回值和启用状态，重启后自动恢复；内置工具和已连接 MCP 工具仍由运行时负责注册。MCP Server 配置同样会保存，启用的 Server 会在应用启动后异步尝试恢复连接，失败不会阻塞应用启动；仍可显式调用 `POST /api/v1/mcp/servers/{id}/connect` 重试。
 

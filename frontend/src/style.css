@@ -30,6 +30,28 @@ button { cursor: pointer; }
 .new-run-button:hover { background: #263235; border-color: #6b8984; }
 .button-icon { color: #9ce3ca; font-size: 17px; line-height: 10px; }
 .sidebar-section { flex: 1; min-height: 0; }
+.conversation-list-section { flex: 0 0 auto; max-height: 310px; overflow: auto; margin: 18px 0 20px; }
+.conversation-list-heading { display: flex; align-items: center; justify-content: space-between; }
+.conversation-list-search { display: flex; align-items: center; gap: 5px; margin-top: 9px; }
+.conversation-list-search input { width: 100%; min-width: 0; padding: 7px 8px; border: 1px solid #354246; outline: 0; background: #101618; color: #dce6e3; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.conversation-list-search input:focus { border-color: #6a9f92; box-shadow: 0 0 0 3px rgba(106, 159, 146, .09); }
+.conversation-list { margin-top: 9px; }
+.conversation-list-item { display: flex; align-items: center; gap: 3px; margin-top: 3px; border-left: 2px solid transparent; }
+.conversation-list-item.selected { border-left-color: #8fd7bf; background: #1c2528; }
+.conversation-list-select { min-width: 0; flex: 1; padding: 8px 6px; border: 0; background: transparent; color: #bdc7c6; text-align: left; }
+.conversation-list-select:hover { background: #1c2528; }
+.conversation-list-select strong, .conversation-list-select span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conversation-list-select strong { color: #cbd7d3; font-size: 11px; font-weight: 600; }
+.conversation-list-select span { margin-top: 4px; color: #687678; font: 9px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.conversation-list-action { flex: 0 0 auto; color: #81908d; }
+.conversation-list-action:hover { color: #c7eee0; }
+.conversation-list-action.danger:hover { color: #e79487; }
+.conversation-list-results { margin-top: 9px; }
+.conversation-list-result { display: grid; gap: 4px; width: 100%; margin-top: 4px; padding: 7px 6px; border: 1px solid #29383a; background: transparent; color: #b9c7c3; text-align: left; }
+.conversation-list-result:hover { border-color: #6a9f92; background: #172221; }
+.conversation-list-result strong, .conversation-list-result span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conversation-list-result strong { color: #cdd9d5; font-size: 10px; }
+.conversation-list-result span { color: #718083; font-size: 10px; }
 .empty-history { color: #667276; font-size: 12px; padding: 17px 8px; }
 .history-item { display: block; width: 100%; margin-top: 7px; padding: 10px 8px; border: 0; background: transparent; color: #bdc7c6; text-align: left; }
 .history-item:hover { background: #1c2528; }

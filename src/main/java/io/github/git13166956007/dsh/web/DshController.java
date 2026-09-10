@@ -25,6 +25,7 @@ import io.github.git13166956007.dsh.context.ContextManager;
 import io.github.git13166956007.dsh.context.ContextRequest;
 import io.github.git13166956007.dsh.context.ContextSnapshot;
 import io.github.git13166956007.dsh.context.ContextWindow;
+import io.github.git13166956007.dsh.context.ConversationInfo;
 import io.github.git13166956007.dsh.context.ConversationSearchResult;
 import io.github.git13166956007.dsh.mcp.McpServerInfo;
 import io.github.git13166956007.dsh.mcp.McpServerRegistry;
@@ -726,6 +727,45 @@ public final class DshController {
                 window.truncated());
     }
 
+    @GetMapping("/conversations")
+    public java.util.List<ConversationInfo> conversations(
+            @RequestParam(defaultValue = "50") int limit) throws Exception {
+        return contextManager.conversations(limit);
+    }
+
+    @GetMapping("/conversations/search")
+    public java.util.List<ConversationSearchResult> searchAllConversations(
+            @RequestParam String query, @RequestParam(defaultValue = "20") int limit) throws Exception {
+        try {
+            return contextManager.searchAll(query, limit);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
+        }
+    }
+
+    @PatchMapping("/conversations/{id}")
+    public ConversationInfo renameConversation(@PathVariable String id,
+                                                @RequestBody ConversationRenameRequest request) throws Exception {
+        if (request == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "conversation title is required");
+        try {
+            return contextManager.rename(id, request.title());
+        } catch (IllegalArgumentException exception) {
+            HttpStatus status = exception.getMessage() != null && exception.getMessage().startsWith("unknown conversation:")
+                    ? HttpStatus.NOT_FOUND : HttpStatus.BAD_REQUEST;
+            throw new ResponseStatusException(status, exception.getMessage(), exception);
+        }
+    }
+
+    @DeleteMapping("/conversations/{id}")
+    public void deleteConversation(@PathVariable String id) throws Exception {
+        try {
+            if (!contextManager.delete(id)) throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "unknown conversation: " + id);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
+        }
+    }
+
     @GetMapping("/conversations/{id}/messages")
     public java.util.List<ChatMessage> replayConversation(@PathVariable String id) throws Exception {
         try {
@@ -1275,6 +1315,9 @@ public final class DshController {
     }
 
     public record ConversationForkRequest(String title) {
+    }
+
+    public record ConversationRenameRequest(String title) {
     }
 
     public record AgentProfileRequest(String name, String mode, String modelId, String systemPrompt,

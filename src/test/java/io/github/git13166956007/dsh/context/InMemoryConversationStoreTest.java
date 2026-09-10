@@ -184,4 +184,22 @@ class InMemoryConversationStoreTest {
         assertEquals(List.of("The release is Friday.", "Prepare the migration checklist."),
                 context.replay(fork).stream().map(ChatMessage::content).toList());
     }
+
+    @Test
+    void listsRenamesSearchesAcrossAndDeletesConversations() throws Exception {
+        InMemoryConversationStore store = new InMemoryConversationStore();
+        ContextManager context = new ContextManager(store, 10);
+        String first = context.open(null, "Release notes");
+        context.append(first, ChatMessage.user("Prepare the migration checklist."));
+        String second = context.open(null, "Design review");
+        context.append(second, ChatMessage.user("Review the migration rollout."));
+
+        assertEquals(2, context.conversations(20).size());
+        assertEquals(2, context.searchAll("migration", 20).size());
+        ConversationInfo renamed = context.rename(first, "Release planning");
+        assertEquals("Release planning", renamed.title());
+        assertTrue(context.delete(second));
+        assertEquals(1, context.conversations(20).size());
+        assertEquals(first, context.conversations(20).get(0).id());
+    }
 }

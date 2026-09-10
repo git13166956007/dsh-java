@@ -103,6 +103,24 @@ public final class ContextManager {
         return store.open(normalizedId, title);
     }
 
+    public List<ConversationInfo> conversations(int limit) throws Exception {
+        return store.list(validLimit(limit));
+    }
+
+    public ConversationInfo rename(String conversationId, String title) throws Exception {
+        requireConversation(conversationId);
+        String normalizedTitle = title == null ? "" : title.trim();
+        if (normalizedTitle.isEmpty()) throw new IllegalArgumentException("conversation title must not be blank");
+        store.rename(conversationId, normalizedTitle);
+        return store.list(Integer.MAX_VALUE).stream().filter(info -> info.id().equals(conversationId)).findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("unknown conversation: " + conversationId));
+    }
+
+    public boolean delete(String conversationId) throws Exception {
+        requireConversation(conversationId);
+        return store.delete(conversationId);
+    }
+
     public List<ChatMessage> history(String conversationId) throws Exception {
         return history(conversationId, 0);
     }
@@ -117,7 +135,7 @@ public final class ContextManager {
     }
 
     public List<ConversationSearchResult> search(String conversationId, String query, int limit) throws Exception {
-        if (!store.exists(conversationId)) throw new IllegalArgumentException("unknown conversation: " + conversationId);
+        requireConversation(conversationId);
         String normalizedQuery = query == null ? "" : query.trim().toLowerCase(java.util.Locale.ROOT);
         if (normalizedQuery.isEmpty()) throw new IllegalArgumentException("query must not be blank");
         if (limit <= 0) return List.of();
@@ -131,6 +149,23 @@ public final class ContextManager {
             }
         }
         return List.copyOf(result);
+    }
+
+    public List<ConversationSearchResult> searchAll(String query, int limit) throws Exception {
+        String normalizedQuery = query == null ? "" : query.trim();
+        if (normalizedQuery.isEmpty()) throw new IllegalArgumentException("query must not be blank");
+        return store.search(normalizedQuery, validLimit(limit));
+    }
+
+    private void requireConversation(String conversationId) throws Exception {
+        if (conversationId == null || !store.exists(conversationId)) {
+            throw new IllegalArgumentException("unknown conversation: " + conversationId);
+        }
+    }
+
+    private static int validLimit(int limit) {
+        if (limit <= 0) return 0;
+        return Math.min(limit, 200);
     }
 
     public List<ChatMessage> history(String conversationId, int modelContextWindow) throws Exception {

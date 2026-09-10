@@ -6,6 +6,22 @@ import java.util.List;
 public interface ConversationStore {
     String open(String conversationId, String title) throws Exception;
 
+    default List<ConversationInfo> list(int limit) throws Exception {
+        throw new UnsupportedOperationException("conversation listing is not supported");
+    }
+
+    default void rename(String conversationId, String title) throws Exception {
+        throw new UnsupportedOperationException("conversation renaming is not supported");
+    }
+
+    default boolean delete(String conversationId) throws Exception {
+        throw new UnsupportedOperationException("conversation deletion is not supported");
+    }
+
+    default List<ConversationSearchResult> search(String query, int limit) throws Exception {
+        throw new UnsupportedOperationException("conversation search is not supported");
+    }
+
     List<ChatMessage> load(String conversationId, int limit) throws Exception;
 
     void append(String conversationId, ChatMessage message) throws Exception;
