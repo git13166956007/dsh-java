@@ -1,0 +1,28 @@
+README.md
+  h_eb697744b14c1b 141
+src/main/java/io/github/git13166956007/dsh/context/ContextManager.java
+  h_eb697744b14c1b 110-135
+src/main/java/io/github/git13166956007/dsh/context/ConversationSearchResult.java
+  h_eb697744b14c1b 1-4
+src/main/java/io/github/git13166956007/dsh/context/ConversationStore.java
+  h_eb697744b14c1b 13-29
+src/main/java/io/github/git13166956007/dsh/context/InMemoryConversationStore.java
+  h_eb697744b14c1b 38-42
+src/main/java/io/github/git13166956007/dsh/context/MariaDbConversationStore.java
+  h_eb697744b14c1b 108-119
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 28,729-764,1277-1279
+src/test/java/io/github/git13166956007/dsh/context/InMemoryConversationStoreTest.java
+  h_eb697744b14c1b 170-186
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "0bce932397c58b5f983d93c9e8c112771e3fb846",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
