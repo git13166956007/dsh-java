@@ -1,0 +1,25 @@
+src/main/java/io/github/git13166956007/dsh/agent/AgentLoop.java
+  s_5f0247805a0da5::t_7c02020788d7f8 4,11,15-18,22,45,86,117-120
+src/main/java/io/github/git13166956007/dsh/mcp/McpServerRegistry.java
+  s_5f0247805a0da5::t_461962972acebd 32-35,59-66
+src/main/java/io/github/git13166956007/dsh/skill/SkillInfo.java
+  s_5f0247805a0da5::t_dfd7cc56f1a48c 1-4
+src/main/java/io/github/git13166956007/dsh/skill/SkillRegistry.java
+  s_5f0247805a0da5::t_6c8d992fdfd7d9 1-72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "3c874ab2d2470b4d39a6591c1fb7bc4838e37bca",
+  "prompts": {},
+  "sessions": {
+    "s_5f0247805a0da5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08906-b39d-77f1-894a-72f28e58decc",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
