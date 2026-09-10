@@ -1,0 +1,26 @@
+frontend/src/App.vue
+  h_eb697744b14c1b 58,342-344,346-348,352-353,362-377,380-383,2041-2044,2048,2052
+src/main/java/io/github/git13166956007/dsh/memory/InMemoryMemoryStore.java
+  h_eb697744b14c1b 15-19
+src/main/java/io/github/git13166956007/dsh/memory/MariaDbMemoryStore.java
+  h_eb697744b14c1b 25-36,104-106
+src/main/java/io/github/git13166956007/dsh/memory/MemoryManager.java
+  h_eb697744b14c1b 45-58
+src/main/java/io/github/git13166956007/dsh/memory/MemoryStore.java
+  h_eb697744b14c1b 6-7
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 602-612,1021-1023
+src/test/java/io/github/git13166956007/dsh/memory/MemoryManagerTest.java
+  h_eb697744b14c1b 37-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "adfe8a2031b60f9b4dd28b506652604c8e194526",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
