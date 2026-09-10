@@ -15,4 +15,9 @@ public final class InMemorySkillStateStore implements SkillStateStore {
     public synchronized void save(String skillId, boolean enabled) {
         states.put(skillId, enabled);
     }
+
+    @Override
+    public synchronized void delete(String skillId) {
+        states.remove(skillId);
+    }
 }

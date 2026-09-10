@@ -42,6 +42,17 @@ public final class MariaDbSkillStateStore implements SkillStateStore {
         }
     }
 
+    @Override
+    public void delete(String skillId) {
+        try (Connection connection = connection();
+             PreparedStatement statement = connection.prepareStatement("DELETE FROM dsh_skill_state WHERE skill_id = ?")) {
+            statement.setString(1, skillId);
+            statement.executeUpdate();
+        } catch (SQLException exception) {
+            throw new IllegalStateException("failed to delete skill state", exception);
+        }
+    }
+
     private void ensureSchema() {
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(

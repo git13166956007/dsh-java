@@ -6,4 +6,7 @@ public interface SkillStateStore {
     Map<String, Boolean> list() throws Exception;
 
     void save(String skillId, boolean enabled) throws Exception;
+
+    default void delete(String skillId) {
+    }
 }

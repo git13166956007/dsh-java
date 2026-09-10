@@ -154,6 +154,8 @@ enabled: true
 
 Skills 管理接口为 `GET /api/v1/skills`、`PATCH /api/v1/skills/{id}` 和 `POST /api/v1/skills/refresh`，前端的 `MCP`、`Skills` 入口也可以直接管理它们。
 
+前端 `Skills` 入口还支持通过 `POST /api/v1/skills` 安装或更新受控的 `skills/<id>/SKILL.md`，以及通过 `DELETE /api/v1/skills/{id}` 卸载 Skill 包。ID 只允许安全目录名，正文上限为 1 MB；卸载会同时清理持久化启用状态。
+
 启用 MariaDB 持久化后，Skill 的启用/禁用状态会保存到 `dsh_skill_state`；Skill 正文和附属资源仍从 `DSH_SKILLS_DIR` 读取，应用重启后不会自动执行远程或本地 Skill，只恢复配置状态。
 
 调试前端可以在页面输入框临时填写 API Key。它只随当前请求提交，不保存到浏览器、本地配置或 Git；未填写时使用 `DEEPSEEK_API_KEY` 环境变量。

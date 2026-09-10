@@ -339,6 +339,34 @@ public final class DshController {
         return skillRegistry.list();
     }
 
+    @PostMapping("/skills")
+    public SkillInfo installSkill(@RequestBody SkillCreateRequest request) {
+        if (request == null || request.id() == null || request.content() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "id and content are required");
+        }
+        try {
+            return skillRegistry.install(request.id(), request.name(), request.version(), request.description(),
+                    request.content(), request.enabled());
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
+        } catch (java.io.IOException exception) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "failed to write skill package", exception);
+        }
+    }
+
+    @DeleteMapping("/skills/{id}")
+    public void removeSkill(@PathVariable String id) {
+        try {
+            if (!skillRegistry.remove(id)) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown skill: " + id);
+            }
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
+        } catch (java.io.IOException exception) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "failed to remove skill package", exception);
+        }
+    }
+
     @PatchMapping("/skills/{id}")
     public SkillInfo updateSkill(@PathVariable String id, @RequestBody SkillUpdateRequest request) {
         if (request == null || request.enabled() == null) {
@@ -913,6 +941,10 @@ public final class DshController {
     }
 
     public record SkillUpdateRequest(Boolean enabled) {
+    }
+
+    public record SkillCreateRequest(String id, String name, String version, String description,
+                                     String content, Boolean enabled) {
     }
 
     public record ModelRequest(String name, String provider, String baseUrl, String model, String apiKey,

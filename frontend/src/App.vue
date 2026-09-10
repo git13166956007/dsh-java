@@ -23,6 +23,10 @@ const toolManagerOpen = ref(false)
 const capabilityTab = ref('tools')
 const mcpServers = ref([])
 const skills = ref([])
+const skillForm = ref({ id: '', name: '', version: '0.1.0', description: '', content: '', enabled: true })
+const skillEditingId = ref(null)
+const skillFormError = ref('')
+const skillSaving = ref(false)
 const models = ref([])
 const modelProviders = ref([])
 const contextInfo = ref(null)
@@ -968,6 +972,65 @@ async function toggleSkill(skill) {
   Object.assign(skill, await response.json())
 }
 
+function resetSkillForm() {
+  skillForm.value = { id: '', name: '', version: '0.1.0', description: '', content: '', enabled: true }
+  skillEditingId.value = null
+  skillFormError.value = ''
+}
+
+function editSkill(skill) {
+  skillForm.value = {
+    id: skill.id,
+    name: skill.name || '',
+    version: skill.version || '0.1.0',
+    description: skill.description || '',
+    content: skill.content || '',
+    enabled: skill.enabled !== false
+  }
+  skillEditingId.value = skill.id
+  skillFormError.value = ''
+}
+
+async function saveSkill() {
+  skillFormError.value = ''
+  if (!skillForm.value.id.trim() || !skillForm.value.content.trim()) {
+    skillFormError.value = '请填写 Skill ID 和正文'
+    return
+  }
+  skillSaving.value = true
+  try {
+    const response = await fetch('/api/v1/skills', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: skillForm.value.id.trim(),
+        name: skillForm.value.name.trim() || null,
+        version: skillForm.value.version.trim() || null,
+        description: skillForm.value.description.trim() || null,
+        content: skillForm.value.content,
+        enabled: skillForm.value.enabled
+      })
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload.message || payload.error || 'Skill 保存失败')
+    const index = skills.value.findIndex((skill) => skill.id === payload.id)
+    if (index >= 0) skills.value[index] = payload
+    else skills.value.push(payload)
+    resetSkillForm()
+  } catch (requestError) {
+    skillFormError.value = requestError.message
+  } finally {
+    skillSaving.value = false
+  }
+}
+
+async function deleteSkill(skill) {
+  const response = await fetch(`/api/v1/skills/${encodeURIComponent(skill.id)}`, { method: 'DELETE' })
+  if (!response.ok) return
+  skills.value = skills.value.filter((item) => item.id !== skill.id)
+  if (skillEditingId.value === skill.id) resetSkillForm()
+}
+
 function resetModelForm() {
   modelForm.value = {
     id: null,
@@ -1735,10 +1798,36 @@ onUnmounted(() => {
             <p>{{ skill.description }}<span v-if="skill.resources?.length"> · {{ skill.resources.length }} resource{{ skill.resources.length === 1 ? '' : 's' }}</span></p>
             <details><summary>查看 SKILL.md</summary><pre class="skill-content">{{ skill.content }}</pre></details>
           </div>
-          <label class="tool-toggle" :title="skill.enabled ? 'Disable skill' : 'Enable skill'"><input type="checkbox" :checked="skill.enabled" @change="toggleSkill(skill)" /><span></span></label>
+          <div class="managed-tool-actions">
+            <button class="secondary-button compact" type="button" @click="editSkill(skill)">Edit</button>
+            <label class="tool-toggle" :title="skill.enabled ? 'Disable skill' : 'Enable skill'"><input type="checkbox" :checked="skill.enabled" @change="toggleSkill(skill)" /><span></span></label>
+            <button class="delete-tool-button" type="button" title="Uninstall skill" aria-label="Uninstall skill" @click="deleteSkill(skill)">×</button>
+          </div>
         </div>
         <p v-if="skills.length === 0" class="tool-manager-empty">No skills found. Add skills/&lt;name&gt;/SKILL.md and refresh.</p>
         <div class="tool-form-footer skill-footer"><button class="secondary-button" type="button" @click="refreshSkills">Refresh skills</button></div>
+
+        <form class="tool-create-form inline-form" @submit.prevent="saveSkill">
+          <div class="tool-form-heading">
+            <div>
+              <div class="eyebrow">SKILL PACKAGE</div>
+              <h3>{{ skillEditingId ? 'Edit skill' : 'Install skill' }}</h3>
+            </div>
+            <span class="tool-form-note">SKILL.md</span>
+          </div>
+          <div class="tool-form-grid">
+            <label><span>ID</span><input v-model="skillForm.id" :disabled="Boolean(skillEditingId)" placeholder="research" autocomplete="off" /></label>
+            <label><span>Name</span><input v-model="skillForm.name" placeholder="Research assistant" autocomplete="off" /></label>
+          </div>
+          <div class="tool-form-grid">
+            <label><span>Version</span><input v-model="skillForm.version" placeholder="0.1.0" autocomplete="off" /></label>
+            <label><span>Description</span><input v-model="skillForm.description" placeholder="When to use this skill" autocomplete="off" /></label>
+          </div>
+          <label><span>Instructions</span><textarea v-model="skillForm.content" rows="8" spellcheck="false" placeholder="Write the instructions injected into the agent system prompt."></textarea></label>
+          <label class="plan-approval-toggle"><input v-model="skillForm.enabled" type="checkbox" /> Enable after install</label>
+          <p v-if="skillFormError" class="tool-form-error">{{ skillFormError }}</p>
+          <div class="tool-form-footer"><button class="secondary-button" type="button" @click="resetSkillForm">Reset</button><button class="send-button" type="submit" :disabled="skillSaving"><span>{{ skillSaving ? 'Saving' : 'Save skill' }}</span><span class="send-arrow">↗</span></button></div>
+        </form>
       </div>
 
       <div v-if="capabilityTab === 'models'" class="tool-manager-list">

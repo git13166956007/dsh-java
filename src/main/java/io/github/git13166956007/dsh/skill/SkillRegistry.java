@@ -1,10 +1,12 @@
 package io.github.git13166956007.dsh.skill;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -70,6 +72,63 @@ public final class SkillRegistry {
         return updated;
     }
 
+    public synchronized SkillInfo install(String id, String name, String version, String description,
+                                          String content, Boolean enabled) throws IOException {
+        String normalizedId = normalizeId(id);
+        String normalizedContent = required(content, "content");
+        if (normalizedContent.length() > 1_000_000) {
+            throw new IllegalArgumentException("content must not exceed 1000000 characters");
+        }
+        Path root = directory.toAbsolutePath().normalize();
+        Path skillDirectory = root.resolve(normalizedId).normalize();
+        if (!root.equals(skillDirectory.getParent())) {
+            throw new IllegalArgumentException("invalid skill id");
+        }
+        if (Files.exists(skillDirectory) && Files.isSymbolicLink(skillDirectory)) {
+            throw new IllegalArgumentException("skill directory must not be a symbolic link");
+        }
+        Files.createDirectories(root);
+        Files.createDirectories(skillDirectory);
+        Path skillFile = skillDirectory.resolve("SKILL.md");
+        boolean nextEnabled = enabled == null
+                ? skills.containsKey(normalizedId) ? skills.get(normalizedId).enabled() : true : enabled;
+        String document = frontMatter(name, version, description, nextEnabled) + normalizedContent + "\n";
+        Path temporary = Files.createTempFile(root, "." + normalizedId + ".", ".tmp");
+        try {
+            Files.writeString(temporary, document, StandardCharsets.UTF_8);
+            try {
+                Files.move(temporary, skillFile, java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            } catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
+                Files.move(temporary, skillFile, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            }
+        } finally {
+            Files.deleteIfExists(temporary);
+        }
+        refresh();
+        return require(normalizedId);
+    }
+
+    public synchronized boolean remove(String id) throws IOException {
+        String normalizedId = normalizeId(id);
+        Path skillDirectory = directory.toAbsolutePath().normalize().resolve(normalizedId).normalize();
+        if (!Files.isDirectory(skillDirectory, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+            return false;
+        }
+        if (Files.isSymbolicLink(skillDirectory)) {
+            throw new IllegalArgumentException("skill directory must not be a symbolic link");
+        }
+        try (var paths = Files.walk(skillDirectory)) {
+            List<Path> all = paths.peek(path -> {
+                if (Files.isSymbolicLink(path)) throw new IllegalArgumentException("skill resources must not contain symbolic links");
+            }).sorted(Comparator.reverseOrder()).toList();
+            for (Path path : all) Files.deleteIfExists(path);
+        }
+        skills.remove(normalizedId);
+        if (stateStore != null) stateStore.delete(normalizedId);
+        return true;
+    }
+
     public synchronized String systemPrompt() {
         return systemPrompt(null);
     }
@@ -105,5 +164,35 @@ public final class SkillRegistry {
     private static SkillInfo withEnabled(SkillInfo skill, boolean enabled) {
         return new SkillInfo(skill.id(), skill.name(), skill.version(), skill.description(), enabled,
                 skill.content(), skill.resources());
+    }
+
+    private static String normalizeId(String value) {
+        String normalized = required(value, "id");
+        if (!normalized.matches("[A-Za-z0-9][A-Za-z0-9_-]{0,63}")) {
+            throw new IllegalArgumentException("id must contain only letters, numbers, '_' or '-'");
+        }
+        return normalized;
+    }
+
+    private static String required(String value, String field) {
+        if (value == null || value.trim().isEmpty()) throw new IllegalArgumentException(field + " must not be blank");
+        return value.trim();
+    }
+
+    private static String singleLine(String value, String fallback) {
+        String normalized = value == null || value.isBlank() ? fallback : value.trim();
+        if (normalized.contains("\r") || normalized.contains("\n")) {
+            throw new IllegalArgumentException("skill metadata must be single-line");
+        }
+        return normalized;
+    }
+
+    private static String frontMatter(String name, String version, String description, boolean enabled) {
+        return "---\n"
+                + "name: " + singleLine(name, "Skill") + "\n"
+                + "version: " + singleLine(version, "0.1.0") + "\n"
+                + "description: " + singleLine(description, "") + "\n"
+                + "enabled: " + enabled + "\n"
+                + "---\n\n";
     }
 }
