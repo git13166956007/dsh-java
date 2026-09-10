@@ -12,6 +12,7 @@ import io.github.git13166956007.dsh.agent.SubAgentProfileRegistry;
 import io.github.git13166956007.dsh.agent.AgentStreamListener;
 import io.github.git13166956007.dsh.agent.AgentRunResult;
 import io.github.git13166956007.dsh.agent.ChatMessage;
+import io.github.git13166956007.dsh.agent.ChatModel;
 import io.github.git13166956007.dsh.agent.ToolCall;
 import io.github.git13166956007.dsh.context.ContextManager;
 import io.github.git13166956007.dsh.context.ContextWindow;
@@ -70,6 +71,7 @@ public final class DshController {
     private final AdaptivePlanService adaptivePlanService;
     private final MemoryManager memoryManager;
     private final RunManager runManager;
+    private final ChatModel chatModel;
 
     public DshController(DshRuntime runtime, AgentLoop agentLoop, ContextManager contextManager,
                          ToolRegistry toolRegistry, McpServerRegistry mcpServerRegistry,
@@ -77,7 +79,7 @@ public final class DshController {
                          ModelRegistry modelRegistry, AgentProfileRegistry agentProfileRegistry,
                          PlanRegistry planRegistry, PlanExecutor planExecutor,
                          SubAgentProfileRegistry subAgentProfileRegistry, AdaptivePlanService adaptivePlanService,
-                         MemoryManager memoryManager, RunManager runManager) {
+                         MemoryManager memoryManager, RunManager runManager, ChatModel chatModel) {
         this.runtime = runtime;
         this.agentLoop = agentLoop;
         this.contextManager = contextManager;
@@ -93,6 +95,7 @@ public final class DshController {
         this.adaptivePlanService = adaptivePlanService;
         this.memoryManager = memoryManager;
         this.runManager = runManager;
+        this.chatModel = chatModel;
     }
 
     @GetMapping("/health")
@@ -255,7 +258,8 @@ public final class DshController {
     public ModelProfile createModel(@RequestBody ModelRequest request) {
         try {
             return modelRegistry.create(request.name(), request.provider(), request.baseUrl(), request.model(),
-                    request.apiKey(), request.proxyHost(), request.proxyPort(), request.enabled(), request.active());
+                    request.apiKey(), request.proxyHost(), request.proxyPort(), request.enabled(), request.active(),
+                    request.supportsTools(), request.supportsStreaming(), request.supportsVision(), request.contextWindow());
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
         }
@@ -265,7 +269,8 @@ public final class DshController {
     public ModelProfile updateModel(@PathVariable String id, @RequestBody ModelRequest request) {
         try {
             return modelRegistry.update(id, request.name(), request.provider(), request.baseUrl(), request.model(),
-                    request.apiKey(), request.proxyHost(), request.proxyPort(), request.enabled(), request.active());
+                    request.apiKey(), request.proxyHost(), request.proxyPort(), request.enabled(), request.active(),
+                    request.supportsTools(), request.supportsStreaming(), request.supportsVision(), request.contextWindow());
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
         }
@@ -286,6 +291,24 @@ public final class DshController {
             if (!modelRegistry.delete(id)) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown model: " + id);
         } catch (IllegalStateException exception) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, exception.getMessage(), exception);
+        }
+    }
+
+    @PostMapping("/models/{id}/test")
+    public ModelTestResponse testModel(@PathVariable String id, @RequestBody(required = false) ModelTestRequest request) {
+        try {
+            ModelProfile profile = modelRegistry.find(id);
+            if (profile == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown model: " + id);
+            String prompt = request == null || request.prompt() == null || request.prompt().isBlank()
+                    ? "Reply with OK." : request.prompt().trim();
+            io.github.git13166956007.dsh.agent.ModelResponse response = chatModel.complete(
+                    java.util.List.of(ChatMessage.system("You are a connectivity test."), ChatMessage.user(prompt)),
+                    java.util.List.of(), request == null ? null : request.apiKey(), id);
+            return new ModelTestResponse(id, true, "Model responded successfully", response.content());
+        } catch (ResponseStatusException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            return new ModelTestResponse(id, false, exception.getMessage(), null);
         }
     }
 
@@ -674,7 +697,15 @@ public final class DshController {
     }
 
     public record ModelRequest(String name, String provider, String baseUrl, String model, String apiKey,
-                               String proxyHost, Integer proxyPort, Boolean enabled, Boolean active) {
+                               String proxyHost, Integer proxyPort, Boolean enabled, Boolean active,
+                               Boolean supportsTools, Boolean supportsStreaming, Boolean supportsVision,
+                               Integer contextWindow) {
+    }
+
+    public record ModelTestRequest(String apiKey, String prompt) {
+    }
+
+    public record ModelTestResponse(String modelId, boolean ok, String message, String content) {
     }
 
     public record AgentProfileRequest(String name, String mode, String modelId, String systemPrompt,

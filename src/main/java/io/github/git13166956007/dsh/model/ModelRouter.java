@@ -26,13 +26,25 @@ public final class ModelRouter implements ChatModel {
     @Override
     public ModelResponse complete(List<ChatMessage> messages, List<ToolDefinition> tools,
                                   String apiKey, String modelId) throws Exception {
-        return client(registry.resolve(modelId)).complete(messages, tools, apiKey);
+        ModelProfileData profile = registry.resolve(modelId);
+        return client(profile).complete(messages, effectiveTools(profile, tools), apiKey);
     }
 
     @Override
     public ModelResponse stream(List<ChatMessage> messages, List<ToolDefinition> tools,
                                 String apiKey, String modelId, ModelStreamListener listener) throws Exception {
-        return client(registry.resolve(modelId)).stream(messages, tools, apiKey, listener);
+        ModelProfileData profile = registry.resolve(modelId);
+        List<ToolDefinition> effectiveTools = effectiveTools(profile, tools);
+        if (!profile.supportsStreaming()) {
+            ModelResponse response = client(profile).complete(messages, effectiveTools, apiKey);
+            if (response.content() != null && !response.content().isEmpty()) listener.onText(response.content());
+            return response;
+        }
+        return client(profile).stream(messages, effectiveTools, apiKey, listener);
+    }
+
+    private static List<ToolDefinition> effectiveTools(ModelProfileData profile, List<ToolDefinition> tools) {
+        return profile.supportsTools() ? tools : List.of();
     }
 
     private DeepSeekChatModel client(ModelProfileData profile) {

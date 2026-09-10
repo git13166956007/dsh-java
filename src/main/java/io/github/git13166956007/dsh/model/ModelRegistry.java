@@ -44,6 +44,14 @@ public final class ModelRegistry {
     public synchronized ModelProfile create(String name, String provider, String baseUrl, String model,
                                              String apiKey, String proxyHost, Integer proxyPort,
                                              Boolean enabled, Boolean active) {
+        return create(name, provider, baseUrl, model, apiKey, proxyHost, proxyPort, enabled, active,
+                true, true, false, 0);
+    }
+
+    public synchronized ModelProfile create(String name, String provider, String baseUrl, String model,
+                                             String apiKey, String proxyHost, Integer proxyPort,
+                                             Boolean enabled, Boolean active, Boolean supportsTools,
+                                             Boolean supportsStreaming, Boolean supportsVision, Integer contextWindow) {
         String id = UUID.randomUUID().toString();
         boolean nextEnabled = enabled == null || enabled;
         boolean nextActive = nextEnabled && (Boolean.TRUE.equals(active)
@@ -51,7 +59,9 @@ public final class ModelRegistry {
         if (nextActive) deactivateAll();
         ModelProfileData profile = new ModelProfileData(id, required(name, "name"), normalizeProvider(provider),
                 normalizeUrl(baseUrl), required(model, "model"), blankToNull(apiKey), blankToNull(proxyHost),
-                validProxyPort(proxyPort == null ? 0 : proxyPort), nextEnabled, nextActive);
+                validProxyPort(proxyPort == null ? 0 : proxyPort), nextEnabled, nextActive,
+                supportsTools == null || supportsTools, supportsStreaming == null || supportsStreaming,
+                Boolean.TRUE.equals(supportsVision), validContextWindow(contextWindow == null ? 0 : contextWindow));
         save(profile);
         return ModelProfile.from(profile);
     }
@@ -59,6 +69,14 @@ public final class ModelRegistry {
     public synchronized ModelProfile update(String id, String name, String provider, String baseUrl, String model,
                                              String apiKey, String proxyHost, Integer proxyPort,
                                              Boolean enabled, Boolean active) {
+        return update(id, name, provider, baseUrl, model, apiKey, proxyHost, proxyPort, enabled, active,
+                null, null, null, null);
+    }
+
+    public synchronized ModelProfile update(String id, String name, String provider, String baseUrl, String model,
+                                             String apiKey, String proxyHost, Integer proxyPort,
+                                             Boolean enabled, Boolean active, Boolean supportsTools,
+                                             Boolean supportsStreaming, Boolean supportsVision, Integer contextWindow) {
         ModelProfileData current = require(id);
         boolean nextActive = active == null ? current.active() : active;
         boolean nextEnabled = enabled == null ? current.enabled() : enabled;
@@ -71,7 +89,11 @@ public final class ModelRegistry {
                 model == null ? current.model() : required(model, "model"),
                 apiKey == null ? current.apiKey() : blankToNull(apiKey),
                 proxyHost == null ? current.proxyHost() : blankToNull(proxyHost),
-                validProxyPort(proxyPort == null ? current.proxyPort() : proxyPort), nextEnabled, nextActive);
+                validProxyPort(proxyPort == null ? current.proxyPort() : proxyPort), nextEnabled, nextActive,
+                supportsTools == null ? current.supportsTools() : supportsTools,
+                supportsStreaming == null ? current.supportsStreaming() : supportsStreaming,
+                supportsVision == null ? current.supportsVision() : supportsVision,
+                contextWindow == null ? current.contextWindow() : validContextWindow(contextWindow));
         save(updated);
         ensureActive();
         return ModelProfile.from(profiles.get(id));
@@ -82,7 +104,8 @@ public final class ModelRegistry {
         if (!target.enabled()) throw new IllegalArgumentException("model is disabled: " + id);
         deactivateAll();
         ModelProfileData active = new ModelProfileData(target.id(), target.name(), target.provider(), target.baseUrl(),
-                target.model(), target.apiKey(), target.proxyHost(), target.proxyPort(), true, true);
+                target.model(), target.apiKey(), target.proxyHost(), target.proxyPort(), true, true,
+                target.supportsTools(), target.supportsStreaming(), target.supportsVision(), target.contextWindow());
         save(active);
         return ModelProfile.from(active);
     }
@@ -121,7 +144,8 @@ public final class ModelRegistry {
         for (ModelProfileData profile : new ArrayList<ModelProfileData>(profiles.values())) {
             if (profile.active()) {
                 save(new ModelProfileData(profile.id(), profile.name(), profile.provider(), profile.baseUrl(),
-                        profile.model(), profile.apiKey(), profile.proxyHost(), profile.proxyPort(), profile.enabled(), false));
+                        profile.model(), profile.apiKey(), profile.proxyHost(), profile.proxyPort(), profile.enabled(), false,
+                        profile.supportsTools(), profile.supportsStreaming(), profile.supportsVision(), profile.contextWindow()));
             }
         }
     }
@@ -162,6 +186,11 @@ public final class ModelRegistry {
 
     private static int validProxyPort(int value) {
         if (value < 0 || value > 65535) throw new IllegalArgumentException("proxyPort must be between 0 and 65535");
+        return value;
+    }
+
+    private static int validContextWindow(int value) {
+        if (value < 0 || value > 2_000_000) throw new IllegalArgumentException("contextWindow must be between 0 and 2000000");
         return value;
     }
 

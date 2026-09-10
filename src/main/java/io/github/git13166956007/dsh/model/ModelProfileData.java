@@ -10,5 +10,14 @@ public record ModelProfileData(
         String proxyHost,
         int proxyPort,
         boolean enabled,
-        boolean active) {
+        boolean active,
+        boolean supportsTools,
+        boolean supportsStreaming,
+        boolean supportsVision,
+        int contextWindow) {
+    public ModelProfileData(String id, String name, String provider, String baseUrl, String model,
+                            String apiKey, String proxyHost, int proxyPort, boolean enabled, boolean active) {
+        this(id, name, provider, baseUrl, model, apiKey, proxyHost, proxyPort, enabled, active,
+                true, true, false, 0);
+    }
 }

@@ -109,6 +109,10 @@ CREATE TABLE IF NOT EXISTS dsh_model_profile (
     proxy_port INT NOT NULL DEFAULT 0,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
     active BOOLEAN NOT NULL DEFAULT FALSE,
+    supports_tools BOOLEAN NOT NULL DEFAULT TRUE,
+    supports_streaming BOOLEAN NOT NULL DEFAULT TRUE,
+    supports_vision BOOLEAN NOT NULL DEFAULT FALSE,
+    context_window INT NOT NULL DEFAULT 0,
     created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     INDEX idx_dsh_model_active (active, enabled)

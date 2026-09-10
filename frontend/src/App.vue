@@ -83,10 +83,15 @@ const modelForm = ref({
   proxyHost: '',
   proxyPort: '',
   enabled: true,
-  active: false
+  active: false,
+  supportsTools: true,
+  supportsStreaming: true,
+  supportsVision: false,
+  contextWindow: 0
 })
 const modelFormError = ref('')
 const modelSaving = ref(false)
+const modelTesting = ref(null)
 const mcpForm = ref({ name: '', transport: 'stdio', endpoint: '', command: '', arguments: '' })
 const mcpFormError = ref('')
 const mcpSaving = ref(false)
@@ -732,7 +737,11 @@ function resetModelForm() {
     proxyHost: '',
     proxyPort: '',
     enabled: true,
-    active: false
+    active: false,
+    supportsTools: true,
+    supportsStreaming: true,
+    supportsVision: false,
+    contextWindow: 0
   }
   modelFormError.value = ''
 }
@@ -748,7 +757,11 @@ function editModel(model) {
     proxyHost: model.proxyHost || '',
     proxyPort: model.proxyPort || '',
     enabled: model.enabled,
-    active: model.active
+    active: model.active,
+    supportsTools: model.supportsTools !== false,
+    supportsStreaming: model.supportsStreaming !== false,
+    supportsVision: model.supportsVision === true,
+    contextWindow: model.contextWindow || 0
   }
   modelFormError.value = ''
 }
@@ -774,7 +787,11 @@ async function saveModel() {
         proxyHost: modelForm.value.proxyHost.trim() || null,
         proxyPort: Number(modelForm.value.proxyPort) || 0,
         enabled: modelForm.value.enabled,
-        active: modelForm.value.active
+        active: modelForm.value.active,
+        supportsTools: modelForm.value.supportsTools,
+        supportsStreaming: modelForm.value.supportsStreaming,
+        supportsVision: modelForm.value.supportsVision,
+        contextWindow: Number(modelForm.value.contextWindow) || 0
       })
     })
     const payload = await response.json().catch(() => ({}))
@@ -800,6 +817,23 @@ async function activateModel(model) {
   if (!response.ok) return
   selectedModelId.value = model.id
   await refreshModels()
+}
+
+async function testModel(model) {
+  modelTesting.value = model.id
+  try {
+    const response = await fetch(`/api/v1/models/${encodeURIComponent(model.id)}/test`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiKey: apiKey.value.trim() || null })
+    })
+    const payload = await response.json().catch(() => ({}))
+    model.health = payload
+  } catch (requestError) {
+    model.health = { ok: false, message: requestError.message }
+  } finally {
+    modelTesting.value = null
+  }
 }
 
 async function toggleModel(model) {
@@ -1400,10 +1434,11 @@ onUnmounted(() => clearTimeout(planPollTimer))
               <strong>{{ model.name }}</strong>
               <span :class="['tool-source', model.active ? 'connected' : '']">{{ model.active ? 'DEFAULT' : model.provider }}</span>
             </div>
-            <p>{{ model.model }} · {{ model.baseUrl }}<br />{{ model.apiKeyConfigured ? 'API key configured' : 'Uses request or environment API key' }}</p>
+            <p>{{ model.model }} · {{ model.baseUrl }}<br />{{ model.apiKeyConfigured ? 'API key configured' : 'Uses request or environment API key' }} · {{ model.supportsTools ? 'tools' : 'no tools' }} · {{ model.supportsStreaming ? 'streaming' : 'non-streaming' }}</p>
           </div>
           <div class="managed-tool-actions model-actions">
             <button v-if="!model.active && model.enabled" class="secondary-button compact" type="button" @click="activateModel(model)">Default</button>
+            <button class="secondary-button compact" type="button" :disabled="modelTesting === model.id" @click="testModel(model)">{{ modelTesting === model.id ? 'Testing' : 'Test' }}</button>
             <button class="secondary-button compact" type="button" @click="editModel(model)">Edit</button>
             <label class="tool-toggle" :title="model.enabled ? 'Disable model' : 'Enable model'">
               <input type="checkbox" :checked="model.enabled" @change="toggleModel(model)" />
@@ -1411,6 +1446,7 @@ onUnmounted(() => clearTimeout(planPollTimer))
             </label>
             <button v-if="models.length > 1" class="delete-tool-button" type="button" title="Delete model" aria-label="Delete model" @click="deleteModel(model)">×</button>
           </div>
+          <p v-if="model.health" :class="['model-health', model.health.ok ? 'healthy' : 'unhealthy']">{{ model.health.ok ? 'OK' : 'Failed' }} · {{ model.health.message }}<span v-if="model.health.content"> · {{ model.health.content }}</span></p>
         </div>
         <p v-if="models.length === 0" class="tool-manager-empty">No models configured.</p>
 
@@ -1432,6 +1468,12 @@ onUnmounted(() => clearTimeout(planPollTimer))
           <div class="tool-form-grid">
             <label><span>Proxy Host</span><input v-model="modelForm.proxyHost" placeholder="127.0.0.1" autocomplete="off" /></label>
             <label><span>Proxy Port</span><input v-model="modelForm.proxyPort" inputmode="numeric" placeholder="7897" autocomplete="off" /></label>
+          </div>
+          <div class="tool-form-grid model-capabilities">
+            <label class="plan-approval-toggle"><input v-model="modelForm.supportsTools" type="checkbox" /> Tool calling</label>
+            <label class="plan-approval-toggle"><input v-model="modelForm.supportsStreaming" type="checkbox" /> Streaming</label>
+            <label class="plan-approval-toggle"><input v-model="modelForm.supportsVision" type="checkbox" /> Vision</label>
+            <label><span>Context window</span><input v-model="modelForm.contextWindow" type="number" min="0" max="2000000" placeholder="0 = unknown" /></label>
           </div>
           <p v-if="modelFormError" class="tool-form-error">{{ modelFormError }}</p>
           <div class="tool-form-footer">

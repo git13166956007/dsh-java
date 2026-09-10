@@ -34,6 +34,23 @@ class ModelRegistryTest {
     }
 
     @Test
+    void persistsModelCapabilities() {
+        InMemoryModelProfileStore store = new InMemoryModelProfileStore();
+        ModelRegistry registry = new ModelRegistry(store, "https://api.deepseek.com", "deepseek",
+                "deepseek-v4-flash", "", "", 0);
+        ModelProfile created = registry.create("Vision local", "openai_compatible", "http://localhost:9999/v1",
+                "vision-model", "", "", 0, true, false, false, false, true, 131072);
+
+        ModelRegistry restored = new ModelRegistry(store, "https://api.deepseek.com", "deepseek",
+                "deepseek-v4-flash", "", "", 0);
+        ModelProfile profile = restored.find(created.id());
+        assertFalse(profile.supportsTools());
+        assertFalse(profile.supportsStreaming());
+        assertTrue(profile.supportsVision());
+        assertEquals(131072, profile.contextWindow());
+    }
+
+    @Test
     void encryptsAndDecryptsSecretsWithoutExposingPlaintext() {
         SecretCipher cipher = new SecretCipher("local-master-key");
         String encrypted = cipher.encrypt("api-key-value");
