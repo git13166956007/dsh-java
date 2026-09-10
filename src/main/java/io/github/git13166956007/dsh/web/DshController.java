@@ -364,7 +364,8 @@ public final class DshController {
                     request.apiKey(), request.proxyHost(), request.proxyPort(), request.enabled(), request.active(),
                     request.supportsTools(), request.supportsStreaming(), request.supportsVision(), request.contextWindow(),
                     request.temperature(), request.topP(), request.maxTokens(), request.frequencyPenalty(),
-                    request.presencePenalty(), request.timeoutSeconds(), request.requestOptionsJson(), request.fallbackModelId());
+                    request.presencePenalty(), request.timeoutSeconds(), request.requestOptionsJson(), request.fallbackModelId(),
+                    request.failoverPolicy());
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
         }
@@ -512,8 +513,9 @@ public final class DshController {
     }
 
     @GetMapping("/conversations/{id}/context")
-    public ContextResponse conversationContext(@PathVariable String id) throws Exception {
-        ContextWindow window = contextManager.window(id);
+    public ContextResponse conversationContext(@PathVariable String id,
+                                               @RequestParam(required = false) String modelId) throws Exception {
+        ContextWindow window = contextManager.window(id, modelContextWindow(modelId, null), modelTokenizer(modelId, null));
         return new ContextResponse(id, window.messages().size(), window.estimatedTokens(), window.maxTokens(),
                 window.truncated());
     }
@@ -526,8 +528,8 @@ public final class DshController {
         String modelId = request == null ? null : request.modelId();
         try {
             boolean compacted = contextManager.compact(id, chatModel, apiKey, modelId,
-                    modelContextWindow(modelId, null));
-            ContextWindow window = contextManager.window(id, modelContextWindow(modelId, null));
+                    modelContextWindow(modelId, null), modelTokenizer(modelId, null));
+            ContextWindow window = contextManager.window(id, modelContextWindow(modelId, null), modelTokenizer(modelId, null));
             return new ContextCompactResponse(id, compacted, window.messages().size(), window.estimatedTokens(),
                     window.maxTokens(), window.truncated());
         } catch (IllegalArgumentException exception) {
@@ -736,7 +738,8 @@ public final class DshController {
             String conversationId = contextManager.open(request.conversationId(), request.message());
             compactConversationIfNeeded(conversationId, request);
             java.util.List<ChatMessage> history = contextManager.history(conversationId,
-                    modelContextWindow(request.modelId(), request.agentId()));
+                    modelContextWindow(request.modelId(), request.agentId()),
+                    modelTokenizer(request.modelId(), request.agentId()));
             contextManager.append(conversationId, ChatMessage.user(request.message()));
             AgentRunResult result = agentLoop.runDetailed(request.message(), request.apiKey(), history, request.modelId(),
                     request.agentId(), mode, "conversation", conversationId,
@@ -768,7 +771,8 @@ public final class DshController {
             conversationId = contextManager.open(request.conversationId(), request.message());
             compactConversationIfNeeded(conversationId, request);
             history = contextManager.history(conversationId,
-                    modelContextWindow(request.modelId(), request.agentId()));
+                    modelContextWindow(request.modelId(), request.agentId()),
+                    modelTokenizer(request.modelId(), request.agentId()));
             contextManager.append(conversationId, ChatMessage.user(request.message()));
         } catch (Exception exception) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, exception.getMessage(), exception);
@@ -843,10 +847,20 @@ public final class DshController {
         return modelRegistry.resolve(selectedModelId).contextWindow();
     }
 
+    private io.github.git13166956007.dsh.model.ModelTokenizer modelTokenizer(String modelId, String agentId) {
+        String selectedModelId = modelId;
+        if ((selectedModelId == null || selectedModelId.isBlank()) && agentId != null && !agentId.isBlank()) {
+            AgentProfile profile = agentProfileRegistry.find(agentId);
+            if (profile != null) selectedModelId = profile.modelId();
+        }
+        return modelRegistry.tokenizer(selectedModelId);
+    }
+
     private void compactConversationIfNeeded(String conversationId, ChatRequest request) {
         try {
             contextManager.compact(conversationId, chatModel, request.apiKey(), request.modelId(),
-                    modelContextWindow(request.modelId(), request.agentId()));
+                    modelContextWindow(request.modelId(), request.agentId()),
+                    modelTokenizer(request.modelId(), request.agentId()));
         } catch (Exception ignored) {
             // Context compaction is best effort; truncation remains the fallback when the model is unavailable.
         }
@@ -890,7 +904,7 @@ public final class DshController {
                                Boolean supportsTools, Boolean supportsStreaming, Boolean supportsVision,
                                Integer contextWindow, Double temperature, Double topP, Integer maxTokens,
                                Double frequencyPenalty, Double presencePenalty, Integer timeoutSeconds,
-                               String requestOptionsJson, String fallbackModelId) {
+                               String requestOptionsJson, String fallbackModelId, String failoverPolicy) {
     }
 
     public record ModelTestRequest(String apiKey, String prompt) {

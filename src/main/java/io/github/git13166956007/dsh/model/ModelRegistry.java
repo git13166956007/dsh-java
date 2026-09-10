@@ -75,6 +75,14 @@ public final class ModelRegistry {
         return providers.keySet().stream().sorted().toList();
     }
 
+    public synchronized ModelTokenizer tokenizer(String id) {
+        ModelProfileData profile = resolve(id);
+        ModelProvider provider = provider(profile.provider());
+        if (provider == null) return ModelTokenizer.approximate();
+        ModelTokenizer tokenizer = provider.tokenizer(profile);
+        return tokenizer == null ? ModelTokenizer.approximate() : tokenizer;
+    }
+
     public synchronized ModelProfile create(String name, String provider, String baseUrl, String model,
                                              String apiKey, String proxyHost, Integer proxyPort,
                                              Boolean enabled, Boolean active) {
@@ -110,7 +118,8 @@ public final class ModelRegistry {
                                              String requestOptionsJson) {
         return create(name, provider, baseUrl, model, apiKey, proxyHost, proxyPort, enabled, active,
                 supportsTools, supportsStreaming, supportsVision, contextWindow, temperature, topP, maxTokens,
-                frequencyPenalty, presencePenalty, timeoutSeconds, requestOptionsJson, null);
+                frequencyPenalty, presencePenalty, timeoutSeconds, requestOptionsJson, null,
+                ModelFailoverPolicy.ANY_FAILURE.value());
     }
 
     public synchronized ModelProfile create(String name, String provider, String baseUrl, String model,
@@ -120,6 +129,19 @@ public final class ModelRegistry {
                                              Double temperature, Double topP, Integer maxTokens,
                                              Double frequencyPenalty, Double presencePenalty, Integer timeoutSeconds,
                                              String requestOptionsJson, String fallbackModelId) {
+        return create(name, provider, baseUrl, model, apiKey, proxyHost, proxyPort, enabled, active,
+                supportsTools, supportsStreaming, supportsVision, contextWindow, temperature, topP, maxTokens,
+                frequencyPenalty, presencePenalty, timeoutSeconds, requestOptionsJson, fallbackModelId,
+                ModelFailoverPolicy.ANY_FAILURE.value());
+    }
+
+    public synchronized ModelProfile create(String name, String provider, String baseUrl, String model,
+                                             String apiKey, String proxyHost, Integer proxyPort,
+                                             Boolean enabled, Boolean active, Boolean supportsTools,
+                                             Boolean supportsStreaming, Boolean supportsVision, Integer contextWindow,
+                                             Double temperature, Double topP, Integer maxTokens,
+                                             Double frequencyPenalty, Double presencePenalty, Integer timeoutSeconds,
+                                             String requestOptionsJson, String fallbackModelId, String failoverPolicy) {
         String id = UUID.randomUUID().toString();
         boolean nextEnabled = enabled == null || enabled;
         boolean nextActive = nextEnabled && (Boolean.TRUE.equals(active)
@@ -132,7 +154,8 @@ public final class ModelRegistry {
                 validTemperature(temperature), validTopP(topP), validMaxTokens(maxTokens),
                 validPenalty(frequencyPenalty, "frequencyPenalty"), validPenalty(presencePenalty, "presencePenalty"),
                 validTimeoutSeconds(timeoutSeconds == null ? 120 : timeoutSeconds),
-                normalizeRequestOptions(requestOptionsJson), normalizeFallbackId(fallbackModelId));
+                normalizeRequestOptions(requestOptionsJson), normalizeFallbackId(fallbackModelId),
+                normalizeFailoverPolicy(failoverPolicy));
         validateFallback(profile.id(), profile.fallbackModelId());
         if (nextActive) deactivateAll();
         save(profile);
@@ -172,6 +195,18 @@ public final class ModelRegistry {
                                              Double temperature, Double topP, Integer maxTokens,
                                              Double frequencyPenalty, Double presencePenalty, Integer timeoutSeconds,
                                              String requestOptionsJson) {
+        return update(id, name, provider, baseUrl, model, apiKey, proxyHost, proxyPort, enabled, active,
+                supportsTools, supportsStreaming, supportsVision, contextWindow, temperature, topP, maxTokens,
+                frequencyPenalty, presencePenalty, timeoutSeconds, requestOptionsJson, null);
+    }
+
+    public synchronized ModelProfile update(String id, String name, String provider, String baseUrl, String model,
+                                             String apiKey, String proxyHost, Integer proxyPort,
+                                             Boolean enabled, Boolean active, Boolean supportsTools,
+                                             Boolean supportsStreaming, Boolean supportsVision, Integer contextWindow,
+                                             Double temperature, Double topP, Integer maxTokens,
+                                             Double frequencyPenalty, Double presencePenalty, Integer timeoutSeconds,
+                                             String requestOptionsJson, String failoverPolicy) {
         ModelProfileData current = require(id);
         boolean nextActive = active == null ? current.active() : active;
         boolean nextEnabled = enabled == null ? current.enabled() : enabled;
@@ -195,7 +230,8 @@ public final class ModelRegistry {
                 presencePenalty == null ? current.presencePenalty() : validPenalty(presencePenalty, "presencePenalty"),
                 timeoutSeconds == null ? current.timeoutSeconds() : validTimeoutSeconds(timeoutSeconds),
                 requestOptionsJson == null ? current.requestOptionsJson() : normalizeRequestOptions(requestOptionsJson),
-                current.fallbackModelId());
+                current.fallbackModelId(), failoverPolicy == null ? current.failoverPolicy()
+                        : normalizeFailoverPolicy(failoverPolicy));
         if (nextActive) deactivateAll();
         save(updated);
         ensureActive();
@@ -234,7 +270,10 @@ public final class ModelRegistry {
                         ? normalizeRequestOptions(patch.path("requestOptionsJson").asText())
                         : patch.has("requestOptionsJson") ? null : current.requestOptionsJson(),
                 patch.has("fallbackModelId") ? nullableText(patch, "fallbackModelId", current.fallbackModelId())
-                        : current.fallbackModelId());
+                        : current.fallbackModelId(),
+                patch.has("failoverPolicy") && !patch.path("failoverPolicy").isNull()
+                        ? normalizeFailoverPolicy(patch.path("failoverPolicy").asText())
+                        : current.failoverPolicy());
         validateFallback(updated.id(), updated.fallbackModelId());
         if (nextActive) deactivateAll();
         save(updated);
@@ -250,7 +289,8 @@ public final class ModelRegistry {
                 target.model(), target.apiKey(), target.proxyHost(), target.proxyPort(), true, true,
                 target.supportsTools(), target.supportsStreaming(), target.supportsVision(), target.contextWindow(),
                 target.temperature(), target.topP(), target.maxTokens(), target.frequencyPenalty(),
-                target.presencePenalty(), target.timeoutSeconds(), target.requestOptionsJson(), target.fallbackModelId());
+                target.presencePenalty(), target.timeoutSeconds(), target.requestOptionsJson(), target.fallbackModelId(),
+                target.failoverPolicy());
         save(active);
         return ModelProfile.from(active);
     }
@@ -348,7 +388,8 @@ public final class ModelRegistry {
                         profile.model(), profile.apiKey(), profile.proxyHost(), profile.proxyPort(), profile.enabled(), false,
                         profile.supportsTools(), profile.supportsStreaming(), profile.supportsVision(), profile.contextWindow(),
                         profile.temperature(), profile.topP(), profile.maxTokens(), profile.frequencyPenalty(),
-                        profile.presencePenalty(), profile.timeoutSeconds(), profile.requestOptionsJson(), profile.fallbackModelId()));
+                        profile.presencePenalty(), profile.timeoutSeconds(), profile.requestOptionsJson(), profile.fallbackModelId(),
+                        profile.failoverPolicy()));
             }
         }
     }
@@ -392,6 +433,10 @@ public final class ModelRegistry {
 
     private static String normalizeFallbackId(String value) {
         return blankToNull(value);
+    }
+
+    private static String normalizeFailoverPolicy(String value) {
+        return ModelFailoverPolicy.parse(value).value();
     }
 
     private static Map<String, ModelProfileData> index(List<ModelProfileData> values) {
@@ -536,7 +581,8 @@ public final class ModelRegistry {
             if (node == null || !node.isObject()) {
                 throw new IllegalArgumentException("requestOptionsJson must be a JSON object");
             }
-            for (String reserved : List.of("model", "messages", "stream", "tools", "tool_choice")) {
+            for (String reserved : List.of("model", "messages", "stream", "tools", "tool_choice",
+                    "temperature", "top_p", "max_tokens", "frequency_penalty", "presence_penalty")) {
                 if (node.has(reserved)) {
                     throw new IllegalArgumentException("requestOptionsJson must not define " + reserved);
                 }

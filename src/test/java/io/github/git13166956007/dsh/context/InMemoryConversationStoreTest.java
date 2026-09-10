@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.github.git13166956007.dsh.agent.ChatMessage;
 import io.github.git13166956007.dsh.agent.ChatModel;
 import io.github.git13166956007.dsh.agent.ModelResponse;
+import io.github.git13166956007.dsh.model.ModelTokenizer;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -82,5 +83,21 @@ class InMemoryConversationStoreTest {
         assertEquals(true, context.compact(id, summarizer, null, null));
         assertEquals(4, store.loadSummary(id).coveredMessageCount());
         assertTrue(prompt.get().contains("Existing conversation summary:"));
+    }
+
+    @Test
+    void usesProviderTokenizerForContextBudget() throws Exception {
+        InMemoryConversationStore store = new InMemoryConversationStore();
+        ContextManager context = new ContextManager(store, 10, 100);
+        String id = context.open(null, "provider tokenizer");
+        context.append(id, ChatMessage.user("one"));
+        context.append(id, ChatMessage.user("two"));
+
+        ModelTokenizer tokenizer = message -> 60;
+        ContextWindow window = context.window(id, 100, tokenizer);
+
+        assertEquals(1, window.messages().size());
+        assertEquals("two", window.messages().get(0).content());
+        assertTrue(window.truncated());
     }
 }

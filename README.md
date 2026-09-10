@@ -88,7 +88,7 @@ export DSH_PERSISTENCE_ENABLED=true
 export DSH_PERSISTENCE_ENABLED=true
 ```
 
-模型管理接口为 `GET/POST/PATCH/DELETE /api/v1/models`，`GET /api/v1/models/providers`，以及 `POST /api/v1/models/{id}/activate`、`POST /api/v1/models/{id}/test` 和 `GET /api/v1/models/{id}/health`。Profile 持久化 `provider`、`baseUrl`、`model`、`proxyHost`、`proxyPort`、`enabled`、`active`、`fallbackModelId`、工具调用/流式/Vision 能力、`contextWindow`、`temperature`、`topP`、`maxTokens`、频率惩罚、存在惩罚、请求超时和 Provider 扩展参数 `requestOptionsJson`。模型路由会持久化成功次数、失败次数、最近延迟、最近成功时间和最近错误；普通请求会沿备用模型链重试，流式请求在尚未输出任何 token 时才会切换，避免重复内容。备用模型不能形成环，也不能删除仍被引用的模型。扩展参数必须是 JSON 对象，不能覆盖 `model`、`messages`、`stream`、`tools` 或 `tool_choice`；可用于配置 `reasoning_effort`、`response_format`、`stop` 等 Provider-specific 字段。聊天请求可以传 `modelId` 选择模型；不传时使用当前 active 模型。页面中的 DEBUG API KEY 仍然只对当前请求生效，并优先于 Profile 中保存的 Key。内置 Provider 为 `deepseek`、`openai` 和 `openai_compatible`；插件可从 `DshServices.MODELS` 取得 `ModelRegistry` 并注册自定义 `ModelProvider`。
+模型管理接口为 `GET/POST/PATCH/DELETE /api/v1/models`，`GET /api/v1/models/providers`，以及 `POST /api/v1/models/{id}/activate`、`POST /api/v1/models/{id}/test` 和 `GET /api/v1/models/{id}/health`。Profile 持久化 `provider`、`baseUrl`、`model`、`proxyHost`、`proxyPort`、`enabled`、`active`、`fallbackModelId`、`failoverPolicy`、工具调用/流式/Vision 能力、`contextWindow`、`temperature`、`topP`、`maxTokens`、频率惩罚、存在惩罚、请求超时和 Provider 扩展参数 `requestOptionsJson`。Fallback 策略支持 `any_failure`、`transient_failure` 和 `disabled`；模型路由会持久化成功次数、失败次数、最近延迟、最近成功时间和最近错误。普通请求会沿备用模型链重试，流式请求在尚未输出任何 token 时才会切换，避免重复内容。备用模型不能形成环，也不能删除仍被引用的模型。扩展参数必须是 JSON 对象，不能覆盖 `model`、`messages`、`stream`、`tools`、`tool_choice` 或已单独配置的采样参数；可用于配置 `reasoning_effort`、`response_format`、`stop` 等 Provider-specific 字段。Provider 还可以提供 tokenizer，聊天上下文会按所选模型的 tokenizer 计算预算。聊天请求可以传 `modelId` 选择模型；不传时使用当前 active 模型。页面中的 DEBUG API KEY 仍然只对当前请求生效，并优先于 Profile 中保存的 Key。内置 Provider 为 `deepseek`、`openai` 和 `openai_compatible`；插件可从 `DshServices.MODELS` 取得 `ModelRegistry` 并注册自定义 `ModelProvider`。
 
 启用 MariaDB 时建议同时设置 `DSH_SECRET_KEY`。模型 API Key 会使用 AES-GCM 封装后保存，接口仍只返回 `apiKeyConfigured`；历史明文记录可以兼容读取，设置主密钥后更新一次模型即可转为加密存储。主密钥不会写入配置文件或 Git。
 
@@ -133,7 +133,7 @@ export DSH_WORKSPACE_PROCESS_MAX_OUTPUT_BYTES=1000000
 
 工作区工具不允许通过 HTTP 直接绕过 Agent 审批执行；插件和 MCP 工具也继续复用统一的 `ToolRegistry`、白名单、审批和 Run Trace 边界。
 
-上下文窗口同时受 `DSH_MAX_HISTORY_MESSAGES` 和 `DSH_MAX_CONTEXT_TOKENS` 限制，按最新消息优先裁剪；长对话会在聊天前尝试生成滚动摘要，摘要独立保存于会话记录并在读取上下文时临时注入，不会改写原始消息。`POST /api/v1/conversations/{id}/compact` 可以手动触发压缩，`GET /api/v1/conversations/{id}/context` 可以查看当前消息数、估算 token 数和是否发生裁剪。摘要模型不可用时会回退到原有裁剪策略；token 数是运行时估算值，不依赖特定模型 tokenizer。
+上下文窗口同时受 `DSH_MAX_HISTORY_MESSAGES` 和 `DSH_MAX_CONTEXT_TOKENS` 限制，按最新消息优先裁剪；长对话会在聊天前尝试生成滚动摘要，摘要独立保存于会话记录并在读取上下文时临时注入，不会改写原始消息。`POST /api/v1/conversations/{id}/compact` 可以手动触发压缩，`GET /api/v1/conversations/{id}/context` 可以查看当前消息数、估算 token 数和是否发生裁剪。摘要模型不可用时会回退到原有裁剪策略；默认使用兼容估算，Provider 可通过 `ModelTokenizer` 提供更精确的实现。
 
 前端右上角的 `Tools` 可以添加调试工具。启用 MariaDB 持久化后，自定义工具的名称、描述、JSON Schema、固定返回值、启用状态和审批策略会保存并在重启后恢复；真正的业务执行工具通过插件或 MCP 接入。
 

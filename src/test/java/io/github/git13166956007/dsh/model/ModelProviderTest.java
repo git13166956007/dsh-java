@@ -69,4 +69,30 @@ class ModelProviderTest {
             }
         }));
     }
+
+    @Test
+    void providerCanSupplyItsTokenizer() {
+        ModelRegistry registry = new ModelRegistry(new InMemoryModelProfileStore(),
+                "https://api.deepseek.com", "deepseek", "fallback", "key", "", 0);
+        registry.registerProvider(new ModelProvider() {
+            @Override
+            public String id() {
+                return "token_fixture";
+            }
+
+            @Override
+            public ChatModel create(ModelProfileData profile, ObjectMapper objectMapper) {
+                return (messages, tools) -> new ModelResponse("ok", List.of(), "stop");
+            }
+
+            @Override
+            public ModelTokenizer tokenizer(ModelProfileData profile) {
+                return message -> 42;
+            }
+        });
+        ModelProfile profile = registry.create("Tokenizer", "token_fixture", "https://example.com",
+                "token-model", "", "", 0, true, false);
+
+        assertEquals(42, registry.tokenizer(profile.id()).count(io.github.git13166956007.dsh.agent.ChatMessage.user("x")));
+    }
 }

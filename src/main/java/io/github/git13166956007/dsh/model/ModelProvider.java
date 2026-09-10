@@ -8,4 +8,8 @@ public interface ModelProvider {
     String id();
 
     ChatModel create(ModelProfileData profile, ObjectMapper objectMapper);
+
+    default ModelTokenizer tokenizer(ModelProfileData profile) {
+        return ModelTokenizer.approximate();
+    }
 }

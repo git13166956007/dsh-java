@@ -5,7 +5,11 @@ import io.github.git13166956007.dsh.agent.ChatModel;
 import io.github.git13166956007.dsh.agent.ModelResponse;
 import io.github.git13166956007.dsh.agent.ModelStreamListener;
 import io.github.git13166956007.dsh.provider.deepseek.DeepSeekChatModel;
+import io.github.git13166956007.dsh.provider.deepseek.ModelConfigurationException;
+import io.github.git13166956007.dsh.provider.deepseek.ModelQuotaException;
 import io.github.git13166956007.dsh.provider.openai.OpenAiCompatibleChatModel;
+import java.io.IOException;
+import java.net.http.HttpTimeoutException;
 import io.github.git13166956007.dsh.tool.ToolDefinition;
 import tools.jackson.databind.ObjectMapper;
 import java.util.List;
@@ -20,6 +24,10 @@ public final class ModelRouter implements ChatModel {
         this.registry = registry;
         this.objectMapper = objectMapper;
         registerBuiltInProviders();
+    }
+
+    public ModelTokenizer tokenizer(String modelId) {
+        return registry.tokenizer(modelId);
     }
 
     @Override
@@ -39,6 +47,7 @@ public final class ModelRouter implements ChatModel {
                 return response;
             } catch (Exception exception) {
                 registry.recordFailure(profile.id(), elapsedMs(started), exception);
+                if (!shouldFailover(profile, exception)) throw exception;
                 if (lastFailure != null) exception.addSuppressed(lastFailure);
                 lastFailure = exception;
             }
@@ -70,6 +79,7 @@ public final class ModelRouter implements ChatModel {
                 return response;
             } catch (Exception exception) {
                 registry.recordFailure(profile.id(), elapsedMs(started), exception);
+                if (!shouldFailover(profile, exception)) throw exception;
                 if (emitted.get()) throw exception;
                 if (lastFailure != null) exception.addSuppressed(lastFailure);
                 lastFailure = exception;
@@ -84,6 +94,26 @@ public final class ModelRouter implements ChatModel {
 
     private static long elapsedMs(long started) {
         return Math.max(0, (System.nanoTime() - started) / 1_000_000);
+    }
+
+    private static boolean shouldFailover(ModelProfileData profile, Exception exception) {
+        ModelFailoverPolicy policy = ModelFailoverPolicy.parse(profile.failoverPolicy());
+        return switch (policy) {
+            case ANY_FAILURE -> true;
+            case DISABLED -> false;
+            case TRANSIENT_FAILURE -> isTransient(exception);
+        };
+    }
+
+    private static boolean isTransient(Exception exception) {
+        if (exception instanceof ModelQuotaException || exception instanceof ModelConfigurationException) return false;
+        if (exception instanceof IOException || exception instanceof HttpTimeoutException) return true;
+        String message = exception.getMessage();
+        if (message == null) return false;
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("API returned (408|409|425|429|500|502|503|504):")
+                .matcher(message);
+        return matcher.find();
     }
 
     private ChatModel client(ModelProfileData profile) {

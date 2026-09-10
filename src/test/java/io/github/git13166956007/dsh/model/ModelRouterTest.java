@@ -5,10 +5,13 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.sun.net.httpserver.HttpServer;
 import io.github.git13166956007.dsh.agent.ChatMessage;
+import io.github.git13166956007.dsh.agent.ChatModel;
 import io.github.git13166956007.dsh.agent.ModelResponse;
 import java.net.InetSocketAddress;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
@@ -132,5 +135,74 @@ class ModelRouterTest {
         } finally {
             server.stop(0);
         }
+    }
+
+    @Test
+    void transientPolicyFallsBackForNetworkFailures() throws Exception {
+        AtomicInteger primaryCalls = new AtomicInteger();
+        AtomicInteger backupCalls = new AtomicInteger();
+        ModelRegistry registry = new ModelRegistry(new InMemoryModelProfileStore(),
+                "https://api.deepseek.com", "deepseek", "fallback", "key", "", 0);
+        registry.registerProvider(new ModelProvider() {
+            @Override
+            public String id() {
+                return "failure_fixture";
+            }
+
+            @Override
+            public ChatModel create(ModelProfileData profile, ObjectMapper objectMapper) {
+                return (messages, tools) -> {
+                    if (profile.model().equals("primary")) {
+                        primaryCalls.incrementAndGet();
+                        throw new IOException("temporary network failure");
+                    }
+                    backupCalls.incrementAndGet();
+                    return new ModelResponse("backup", List.of(), "stop");
+                };
+            }
+        });
+        ModelProfile primary = registry.create("Primary", "failure_fixture", "https://example.com",
+                "primary", "key", "", 0, true, false);
+        ModelProfile backup = registry.create("Backup", "failure_fixture", "https://example.com",
+                "backup", "key", "", 0, true, false);
+        registry.update(primary.id(), new ObjectMapper().readTree(
+                "{\"fallbackModelId\":\"" + backup.id() + "\",\"failoverPolicy\":\"transient_failure\"}"));
+
+        assertEquals("backup", new ModelRouter(registry, new ObjectMapper()).complete(
+                List.of(ChatMessage.user("ping")), List.of(), null, primary.id()).content());
+        assertEquals(1, primaryCalls.get());
+        assertEquals(1, backupCalls.get());
+    }
+
+    @Test
+    void transientPolicyDoesNotHideConfigurationFailures() {
+        AtomicInteger backupCalls = new AtomicInteger();
+        ModelRegistry registry = new ModelRegistry(new InMemoryModelProfileStore(),
+                "https://api.deepseek.com", "deepseek", "fallback", "key", "", 0);
+        registry.registerProvider(new ModelProvider() {
+            @Override
+            public String id() {
+                return "config_fixture";
+            }
+
+            @Override
+            public ChatModel create(ModelProfileData profile, ObjectMapper objectMapper) {
+                return (messages, tools) -> {
+                    if (profile.model().equals("primary")) throw new IllegalArgumentException("bad config");
+                    backupCalls.incrementAndGet();
+                    return new ModelResponse("backup", List.of(), "stop");
+                };
+            }
+        });
+        ModelProfile primary = registry.create("Primary", "config_fixture", "https://example.com",
+                "primary", "key", "", 0, true, false);
+        ModelProfile backup = registry.create("Backup", "config_fixture", "https://example.com",
+                "backup", "key", "", 0, true, false);
+        registry.update(primary.id(), new ObjectMapper().readTree(
+                "{\"fallbackModelId\":\"" + backup.id() + "\",\"failoverPolicy\":\"transient_failure\"}"));
+
+        assertThrows(IllegalArgumentException.class, () -> new ModelRouter(registry, new ObjectMapper()).complete(
+                List.of(ChatMessage.user("ping")), List.of(), null, primary.id()));
+        assertEquals(0, backupCalls.get());
     }
 }

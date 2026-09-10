@@ -107,7 +107,8 @@ const modelForm = ref({
   presencePenalty: '',
   timeoutSeconds: 120,
   requestOptionsJson: '',
-  fallbackModelId: ''
+  fallbackModelId: '',
+  failoverPolicy: 'any_failure'
 })
 const modelFormError = ref('')
 const modelSaving = ref(false)
@@ -990,7 +991,8 @@ function resetModelForm() {
     presencePenalty: '',
     timeoutSeconds: 120,
     requestOptionsJson: '',
-    fallbackModelId: ''
+    fallbackModelId: '',
+    failoverPolicy: 'any_failure'
   }
   modelFormError.value = ''
 }
@@ -1018,7 +1020,8 @@ function editModel(model) {
     presencePenalty: model.presencePenalty ?? '',
     timeoutSeconds: model.timeoutSeconds || 120,
     requestOptionsJson: model.requestOptionsJson || '',
-    fallbackModelId: model.fallbackModelId || ''
+    fallbackModelId: model.fallbackModelId || '',
+    failoverPolicy: model.failoverPolicy || 'any_failure'
   }
   modelFormError.value = ''
 }
@@ -1056,6 +1059,7 @@ async function saveModel() {
         timeoutSeconds: Number(modelForm.value.timeoutSeconds) || 120,
         requestOptionsJson: modelForm.value.requestOptionsJson.trim() || null,
         fallbackModelId: modelForm.value.fallbackModelId || null,
+        failoverPolicy: modelForm.value.failoverPolicy,
         ...(editing && !modelForm.value.apiKey.trim() ? {} : { apiKey: modelForm.value.apiKey.trim() || null })
       })
     })
@@ -1744,7 +1748,7 @@ onUnmounted(() => {
               <strong>{{ model.name }}</strong>
               <span :class="['tool-source', model.active ? 'connected' : '']">{{ model.active ? 'DEFAULT' : model.provider }}</span>
             </div>
-          <p>{{ model.model }} · {{ model.baseUrl }}<br />{{ model.apiKeyConfigured ? 'API key configured' : 'Uses request or environment API key' }} · {{ model.supportsTools ? 'tools' : 'no tools' }} · {{ model.supportsStreaming ? 'streaming' : 'non-streaming' }} · {{ model.contextWindow ? `${model.contextWindow} context` : 'context unknown' }}<br /><span v-if="model.fallbackModelId">fallback: {{ models.find((candidate) => candidate.id === model.fallbackModelId)?.name || model.fallbackModelId }}</span><span v-if="model.health">{{ model.fallbackModelId ? ' · ' : '' }}health {{ model.health.status.toLowerCase() }} · {{ model.health.successCount }}/{{ model.health.failureCount }} · {{ model.health.lastLatencyMs == null ? 'no latency' : `${model.health.lastLatencyMs}ms` }}</span></p>
+          <p>{{ model.model }} · {{ model.baseUrl }}<br />{{ model.apiKeyConfigured ? 'API key configured' : 'Uses request or environment API key' }} · {{ model.supportsTools ? 'tools' : 'no tools' }} · {{ model.supportsStreaming ? 'streaming' : 'non-streaming' }} · {{ model.contextWindow ? `${model.contextWindow} context` : 'context unknown' }}<br /><span v-if="model.fallbackModelId">fallback: {{ models.find((candidate) => candidate.id === model.fallbackModelId)?.name || model.fallbackModelId }} · {{ model.failoverPolicy || 'any_failure' }}</span><span v-if="model.health">{{ model.fallbackModelId ? ' · ' : '' }}health {{ model.health.status.toLowerCase() }} · {{ model.health.successCount }}/{{ model.health.failureCount }} · {{ model.health.lastLatencyMs == null ? 'no latency' : `${model.health.lastLatencyMs}ms` }}</span></p>
           </div>
           <div class="managed-tool-actions model-actions">
             <button v-if="!model.active && model.enabled" class="secondary-button compact" type="button" @click="activateModel(model)">Default</button>
@@ -1775,6 +1779,7 @@ onUnmounted(() => {
           <label><span>Base URL</span><input v-model="modelForm.baseUrl" placeholder="https://api.deepseek.com" autocomplete="off" /></label>
           <label><span>Model</span><input v-model="modelForm.model" placeholder="deepseek-v4-flash" autocomplete="off" /></label>
           <label><span>Fallback model</span><select v-model="modelForm.fallbackModelId"><option value="">No fallback</option><option v-for="candidate in models.filter((candidate) => candidate.id !== modelForm.id)" :key="candidate.id" :value="candidate.id">{{ candidate.name }} · {{ candidate.model }}</option></select></label>
+          <label><span>Failover policy</span><select v-model="modelForm.failoverPolicy"><option value="any_failure">Any failure</option><option value="transient_failure">Transient failures only</option><option value="disabled">Disabled</option></select></label>
           <label><span>API Key</span><input v-model="modelForm.apiKey" type="password" autocomplete="new-password" :placeholder="modelForm.id ? 'Leave blank to keep current key' : 'Optional; request key can override'" /></label>
           <div class="tool-form-grid">
             <label><span>Proxy Host</span><input v-model="modelForm.proxyHost" placeholder="127.0.0.1" autocomplete="off" /></label>

@@ -3,6 +3,7 @@ package io.github.git13166956007.dsh.context;
 import io.github.git13166956007.dsh.agent.ChatMessage;
 import io.github.git13166956007.dsh.agent.ChatModel;
 import io.github.git13166956007.dsh.agent.ModelResponse;
+import io.github.git13166956007.dsh.model.ModelTokenizer;
 import io.github.git13166956007.dsh.tool.ToolDefinition;
 import java.util.List;
 import java.util.UUID;
@@ -44,11 +45,21 @@ public final class ContextManager {
         return window(conversationId, modelContextWindow).messages();
     }
 
+    public List<ChatMessage> history(String conversationId, int modelContextWindow, ModelTokenizer tokenizer)
+            throws Exception {
+        return window(conversationId, modelContextWindow, tokenizer).messages();
+    }
+
     public ContextWindow window(String conversationId) throws Exception {
         return window(conversationId, 0);
     }
 
     public ContextWindow window(String conversationId, int modelContextWindow) throws Exception {
+        return window(conversationId, modelContextWindow, ModelTokenizer.approximate());
+    }
+
+    public ContextWindow window(String conversationId, int modelContextWindow, ModelTokenizer tokenizer) throws Exception {
+        ModelTokenizer effectiveTokenizer = tokenizer == null ? ModelTokenizer.approximate() : tokenizer;
         List<ChatMessage> loaded = store.load(conversationId, maxHistoryMessages);
         int contextTokens = modelContextWindow > 0 ? Math.min(maxContextTokens, modelContextWindow) : maxContextTokens;
         if (loaded.isEmpty()) return new ContextWindow(List.of(), 0, contextTokens, false);
@@ -56,7 +67,7 @@ public final class ContextManager {
         ConversationSummary summary = store.loadSummary(conversationId);
         ChatMessage summaryMessage = summary == null ? null
                 : ChatMessage.system("Conversation summary:\n" + summary.content());
-        int summaryTokens = summaryMessage == null ? 0 : estimateTokens(summaryMessage);
+        int summaryTokens = summaryMessage == null ? 0 : effectiveTokenizer.count(summaryMessage);
         boolean includeSummary = summaryMessage != null && summaryTokens <= contextTokens;
         int messageBudget = includeSummary ? contextTokens - summaryTokens : contextTokens;
         List<ChatMessage> selected = new java.util.ArrayList<ChatMessage>();
@@ -64,7 +75,7 @@ public final class ContextManager {
         boolean truncated = false;
         for (int index = loaded.size() - 1; index >= 0; index--) {
             ChatMessage message = loaded.get(index);
-            int messageTokens = estimateTokens(message);
+            int messageTokens = effectiveTokenizer.count(message);
             if (!selected.isEmpty() && tokens + messageTokens > messageBudget) {
                 truncated = true;
                 break;
@@ -94,13 +105,19 @@ public final class ContextManager {
 
     public boolean compact(String conversationId, ChatModel model, String apiKey, String modelId,
                            int modelContextWindow) throws Exception {
+        return compact(conversationId, model, apiKey, modelId, modelContextWindow, ModelTokenizer.approximate());
+    }
+
+    public boolean compact(String conversationId, ChatModel model, String apiKey, String modelId,
+                           int modelContextWindow, ModelTokenizer tokenizer) throws Exception {
+        ModelTokenizer effectiveTokenizer = tokenizer == null ? ModelTokenizer.approximate() : tokenizer;
         if (conversationId == null || conversationId.isBlank()) {
             throw new IllegalArgumentException("conversationId must not be blank");
         }
         if (model == null) throw new IllegalArgumentException("model must not be null");
         List<ChatMessage> all = store.load(conversationId, Integer.MAX_VALUE);
         int contextTokens = modelContextWindow > 0 ? Math.min(maxContextTokens, modelContextWindow) : maxContextTokens;
-        if (all.isEmpty() || estimateTokens(all) <= contextTokens) return false;
+        if (all.isEmpty() || effectiveTokenizer.count(all) <= contextTokens) return false;
 
         ConversationSummary previous = store.loadSummary(conversationId);
         int covered = previous == null ? 0 : Math.min(previous.coveredMessageCount(), all.size());
@@ -126,19 +143,6 @@ public final class ContextManager {
         if (content.isEmpty()) return false;
         store.saveSummary(conversationId, new ConversationSummary(content, all.size()));
         return true;
-    }
-
-    private static int estimateTokens(ChatMessage message) {
-        int characters = message.content() == null ? 0 : message.content().codePointCount(0, message.content().length());
-        for (io.github.git13166956007.dsh.agent.ToolCall call : message.toolCalls()) {
-            characters += call.name() == null ? 0 : call.name().length();
-            characters += call.arguments() == null ? 0 : call.arguments().toString().length();
-        }
-        return Math.max(1, (characters + 3) / 4);
-    }
-
-    private static int estimateTokens(List<ChatMessage> messages) {
-        return messages.stream().mapToInt(ContextManager::estimateTokens).sum();
     }
 
     private static void appendTranscript(StringBuilder transcript, ChatMessage message) {

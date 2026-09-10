@@ -113,4 +113,17 @@ class ModelRegistryTest {
         assertThrows(IllegalArgumentException.class,
                 () -> registry.update("default", mapper.readTree("{\"fallbackModelId\":\"default\"}")));
     }
+
+    @Test
+    void persistsFailoverPolicy() throws Exception {
+        InMemoryModelProfileStore store = new InMemoryModelProfileStore();
+        ModelRegistry registry = new ModelRegistry(store, "https://api.deepseek.com", "deepseek",
+                "deepseek-v4-flash", "", "", 0);
+        registry.update("default", new ObjectMapper().readTree("{\"failoverPolicy\":\"transient_failure\"}"));
+
+        ModelProfile restored = new ModelRegistry(store, "https://api.deepseek.com", "deepseek",
+                "deepseek-v4-flash", "", "", 0).find("default");
+
+        assertEquals("transient_failure", restored.failoverPolicy());
+    }
 }
