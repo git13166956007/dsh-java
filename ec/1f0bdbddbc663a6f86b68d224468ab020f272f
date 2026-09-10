@@ -1,0 +1,16 @@
+frontend/src/App.vue
+  h_eb697744b14c1b 247-248,270,272-281,283,288-293,296,311-312,510-511,514-515,518-526
+frontend/src/style.css
+  h_eb697744b14c1b 74-82
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "ec1f0bdbddbc663a6f86b68d224468ab020f272f",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
