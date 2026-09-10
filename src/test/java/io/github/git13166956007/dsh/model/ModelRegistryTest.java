@@ -87,6 +87,9 @@ class ModelRegistryTest {
         ModelProfile cleared = registry.find(created.id());
         assertEquals(null, cleared.temperature());
         assertEquals(null, cleared.requestOptionsJson());
+
+        registry.update(created.id(), mapper.readTree("{\"apiKey\":null}"));
+        assertFalse(registry.find(created.id()).apiKeyConfigured());
     }
 
     @Test

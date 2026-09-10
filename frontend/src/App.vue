@@ -121,6 +121,7 @@ const modelForm = ref({
   baseUrl: 'https://api.deepseek.com',
   model: 'deepseek-v4-flash',
   apiKey: '',
+  clearApiKey: false,
   proxyHost: '',
   proxyPort: '',
   enabled: true,
@@ -137,7 +138,9 @@ const modelForm = ref({
   timeoutSeconds: 120,
   requestOptionsJson: '',
   fallbackModelId: '',
-  failoverPolicy: 'any_failure'
+  failoverPolicy: 'any_failure',
+  inputPricePerMillionTokens: '',
+  outputPricePerMillionTokens: ''
 })
 const modelFormError = ref('')
 const modelSaving = ref(false)
@@ -1306,6 +1309,7 @@ function resetModelForm() {
     baseUrl: 'https://api.deepseek.com',
     model: 'deepseek-v4-flash',
     apiKey: '',
+    clearApiKey: false,
     proxyHost: '',
     proxyPort: '',
     enabled: true,
@@ -1354,6 +1358,7 @@ function editModel(model) {
     requestOptionsJson: model.requestOptionsJson || '',
     fallbackModelId: model.fallbackModelId || '',
     failoverPolicy: model.failoverPolicy || 'any_failure',
+    clearApiKey: false,
     inputPricePerMillionTokens: model.inputPricePerMillionTokens ?? '',
     outputPricePerMillionTokens: model.outputPricePerMillionTokens ?? ''
   }
@@ -1396,7 +1401,9 @@ async function saveModel() {
         failoverPolicy: modelForm.value.failoverPolicy,
         inputPricePerMillionTokens: modelForm.value.inputPricePerMillionTokens === '' ? null : Number(modelForm.value.inputPricePerMillionTokens),
         outputPricePerMillionTokens: modelForm.value.outputPricePerMillionTokens === '' ? null : Number(modelForm.value.outputPricePerMillionTokens),
-        ...(editing && !modelForm.value.apiKey.trim() ? {} : { apiKey: modelForm.value.apiKey.trim() || null })
+        ...(editing && !modelForm.value.apiKey.trim() && !modelForm.value.clearApiKey
+          ? {}
+          : { apiKey: modelForm.value.apiKey.trim() || null })
       })
     })
     const payload = await response.json().catch(() => ({}))
@@ -2163,7 +2170,7 @@ onUnmounted(() => {
               <strong>{{ model.name }}</strong>
               <span :class="['tool-source', model.active ? 'connected' : '']">{{ model.active ? 'DEFAULT' : model.provider }}</span>
             </div>
-          <p>{{ model.model }} · {{ model.baseUrl }}<br />{{ model.apiKeyConfigured ? 'API key configured' : 'Uses request or environment API key' }} · {{ model.supportsTools ? 'tools' : 'no tools' }} · {{ model.supportsStreaming ? 'streaming' : 'non-streaming' }} · {{ model.contextWindow ? `${model.contextWindow} context` : 'context unknown' }}<br /><span v-if="model.fallbackModelId">fallback: {{ models.find((candidate) => candidate.id === model.fallbackModelId)?.name || model.fallbackModelId }} · {{ model.failoverPolicy || 'any_failure' }}</span><span v-if="model.inputPricePerMillionTokens != null || model.outputPricePerMillionTokens != null">{{ model.fallbackModelId ? ' · ' : '' }}price ${{ model.inputPricePerMillionTokens ?? '?' }} / ${{ model.outputPricePerMillionTokens ?? '?' }} per 1M tokens</span><span v-if="model.usage && model.usage.requestCount"> · usage {{ model.usage.requestCount }} requests · {{ model.usage.totalTokens }} tokens · ${{ model.usage.estimatedCostUsd.toFixed(6) }}</span><span v-if="model.health"> · health {{ model.health.status.toLowerCase() }} · {{ model.health.successCount }}/{{ model.health.failureCount }} · {{ model.health.lastLatencyMs == null ? 'no latency' : `${model.health.lastLatencyMs}ms` }}</span></p>
+          <p>{{ model.model }} · {{ model.baseUrl }}<br />{{ model.apiKeyConfigured ? 'API key configured' : 'Uses request API key' }} · {{ model.supportsTools ? 'tools' : 'no tools' }} · {{ model.supportsStreaming ? 'streaming' : 'non-streaming' }} · {{ model.contextWindow ? `${model.contextWindow} context` : 'context unknown' }}<br /><span v-if="model.fallbackModelId">fallback: {{ models.find((candidate) => candidate.id === model.fallbackModelId)?.name || model.fallbackModelId }} · {{ model.failoverPolicy || 'any_failure' }}</span><span v-if="model.inputPricePerMillionTokens != null || model.outputPricePerMillionTokens != null">{{ model.fallbackModelId ? ' · ' : '' }}price ${{ model.inputPricePerMillionTokens ?? '?' }} / ${{ model.outputPricePerMillionTokens ?? '?' }} per 1M tokens</span><span v-if="model.usage && model.usage.requestCount"> · usage {{ model.usage.requestCount }} requests · {{ model.usage.totalTokens }} tokens · ${{ model.usage.estimatedCostUsd.toFixed(6) }}</span><span v-if="model.health"> · health {{ model.health.status.toLowerCase() }} · {{ model.health.successCount }}/{{ model.health.failureCount }} · {{ model.health.lastLatencyMs == null ? 'no latency' : `${model.health.lastLatencyMs}ms` }}</span></p>
           </div>
           <div class="managed-tool-actions model-actions">
             <button v-if="!model.active && model.enabled" class="secondary-button compact" type="button" @click="activateModel(model)">Default</button>
@@ -2196,6 +2203,7 @@ onUnmounted(() => {
           <label><span>Fallback model</span><select v-model="modelForm.fallbackModelId"><option value="">No fallback</option><option v-for="candidate in models.filter((candidate) => candidate.id !== modelForm.id)" :key="candidate.id" :value="candidate.id">{{ candidate.name }} · {{ candidate.model }}</option></select></label>
           <label><span>Failover policy</span><select v-model="modelForm.failoverPolicy"><option value="any_failure">Any failure</option><option value="transient_failure">Transient failures only</option><option value="disabled">Disabled</option></select></label>
           <label><span>API Key</span><input v-model="modelForm.apiKey" type="password" autocomplete="new-password" :placeholder="modelForm.id ? 'Leave blank to keep current key' : 'Optional; request key can override'" /></label>
+          <label v-if="modelForm.id" class="plan-approval-toggle"><input v-model="modelForm.clearApiKey" type="checkbox" /> Clear stored API key</label>
           <div class="tool-form-grid">
             <label><span>Proxy Host</span><input v-model="modelForm.proxyHost" placeholder="127.0.0.1" autocomplete="off" /></label>
             <label><span>Proxy Port</span><input v-model="modelForm.proxyPort" inputmode="numeric" placeholder="7897" autocomplete="off" /></label>
