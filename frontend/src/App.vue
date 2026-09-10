@@ -66,6 +66,7 @@ const planForm = ref({
 })
 const planFormError = ref('')
 const planSaving = ref(false)
+const adaptivePlanForm = ref({ prompt: '', maxSteps: 6, approvalRequired: true })
 let planPollTimer = null
 const modelForm = ref({
   id: null,
@@ -347,6 +348,39 @@ async function createPlan() {
     planDetail.value = payload
     await refreshPlans()
     resetPlanForm()
+  } catch (requestError) {
+    planFormError.value = requestError.message
+  } finally {
+    planSaving.value = false
+  }
+}
+
+async function createAdaptivePlan() {
+  planFormError.value = ''
+  if (!adaptivePlanForm.value.prompt.trim()) {
+    planFormError.value = 'Please describe the task for the planner'
+    return
+  }
+  planSaving.value = true
+  try {
+    const response = await fetch('/api/v1/plans/adaptive', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt: adaptivePlanForm.value.prompt.trim(),
+        apiKey: apiKey.value.trim() || null,
+        agentId: selectedAgentId.value,
+        modelId: selectedModelId.value,
+        approvalRequired: adaptivePlanForm.value.approvalRequired,
+        maxSteps: Number(adaptivePlanForm.value.maxSteps) || 6
+      })
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload.message || payload.error || 'Adaptive plan creation failed')
+    selectedPlanId.value = payload.id
+    planDetail.value = payload
+    await refreshPlans()
+    adaptivePlanForm.value.prompt = ''
   } catch (requestError) {
     planFormError.value = requestError.message
   } finally {
@@ -1395,6 +1429,13 @@ onUnmounted(() => clearTimeout(planPollTimer))
           <button class="secondary-button" type="button" @click="addPlanStep">+ Add step</button>
           <p v-if="planFormError" class="tool-form-error">{{ planFormError }}</p>
           <div class="tool-form-footer"><button class="secondary-button" type="button" @click="resetPlanForm">Reset</button><button class="send-button" type="submit" :disabled="planSaving"><span>{{ planSaving ? 'Creating' : 'Create plan' }}</span><span class="send-arrow">↗</span></button></div>
+        </form>
+
+        <form class="tool-create-form inline-form" @submit.prevent="createAdaptivePlan">
+          <div class="tool-form-heading"><div><div class="eyebrow">ADAPTIVE PLANNER</div><h3>Generate from task</h3></div><span class="tool-form-note">Planner + auto delegation</span></div>
+          <label><span>Task</span><textarea v-model="adaptivePlanForm.prompt" rows="3" placeholder="Describe a complex task and let the planner split it into executable steps"></textarea></label>
+          <div class="tool-form-grid"><label><span>Max steps</span><input v-model="adaptivePlanForm.maxSteps" type="number" min="1" max="16" inputmode="numeric" /></label><label class="plan-approval-toggle"><input v-model="adaptivePlanForm.approvalRequired" type="checkbox" /> Require approval</label></div>
+          <div class="tool-form-footer"><button class="send-button" type="submit" :disabled="planSaving"><span>{{ planSaving ? 'Planning' : 'Generate adaptive plan' }}</span><span class="send-arrow">↗</span></button></div>
         </form>
       </div>
     </section>

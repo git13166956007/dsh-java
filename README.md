@@ -92,6 +92,8 @@ Sub-agent Profile 管理接口为 `GET/POST/PATCH/DELETE /api/v1/sub-agents`。�
 
 计划接口为 `GET /api/v1/plans`、`GET /api/v1/plans/{id}`、`POST /api/v1/plans`、`POST /api/v1/plans/{id}/approve`、`POST /api/v1/plans/{id}/execute` 和 `POST /api/v1/plans/{id}/cancel`。Plan 创建时提交有序步骤；需要人工确认的计划先处于 `draft`，审批后进入 `approved`，执行过程中会持久化每个步骤的 `pending/running/completed/failed/cancelled` 状态，并支持单步骤重试。
 
+自适应计划接口为 `POST /api/v1/plans/adaptive`。它会调用 Planning Agent 生成严格 JSON 步骤，服务端限制最大步骤数、校验结构，并根据子智能体的名称、说明、工具和 Skill 能力做确定性匹配；匹配不到时回退到父 Agent。生成结果直接进入同一套审批和执行状态机。
+
 同一个 `conversationId` 会复用最近的历史消息；不传时服务会创建新的会话 ID。工具管理接口为 `GET /api/v1/tools` 和 `PATCH /api/v1/tools/{name}`，请求体示例为 `{"enabled":false}`。
 
 前端右上角的 `Tools` 可以添加调试工具。自定义工具当前是运行时内存工具：填写名称、描述、JSON Schema 和固定返回值后，模型即可调用；应用重启后需要重新添加，真正的业务执行工具通过插件或 MCP 接入。

@@ -22,6 +22,7 @@ import io.github.git13166956007.dsh.skill.SkillRegistry;
 import io.github.git13166956007.dsh.model.ModelProfile;
 import io.github.git13166956007.dsh.model.ModelRegistry;
 import io.github.git13166956007.dsh.plan.Plan;
+import io.github.git13166956007.dsh.plan.AdaptivePlanService;
 import io.github.git13166956007.dsh.plan.PlanExecutor;
 import io.github.git13166956007.dsh.plan.PlanRegistry;
 import io.github.git13166956007.dsh.tool.ToolInfo;
@@ -59,13 +60,14 @@ public final class DshController {
     private final PlanRegistry planRegistry;
     private final PlanExecutor planExecutor;
     private final SubAgentProfileRegistry subAgentProfileRegistry;
+    private final AdaptivePlanService adaptivePlanService;
 
     public DshController(DshRuntime runtime, AgentLoop agentLoop, ContextManager contextManager,
                          ToolRegistry toolRegistry, McpServerRegistry mcpServerRegistry,
                          McpClientManager mcpClientManager, SkillRegistry skillRegistry,
                          ModelRegistry modelRegistry, AgentProfileRegistry agentProfileRegistry,
                          PlanRegistry planRegistry, PlanExecutor planExecutor,
-                         SubAgentProfileRegistry subAgentProfileRegistry) {
+                         SubAgentProfileRegistry subAgentProfileRegistry, AdaptivePlanService adaptivePlanService) {
         this.runtime = runtime;
         this.agentLoop = agentLoop;
         this.contextManager = contextManager;
@@ -78,6 +80,7 @@ public final class DshController {
         this.planRegistry = planRegistry;
         this.planExecutor = planExecutor;
         this.subAgentProfileRegistry = subAgentProfileRegistry;
+        this.adaptivePlanService = adaptivePlanService;
     }
 
     @GetMapping("/health")
@@ -375,6 +378,19 @@ public final class DshController {
         }
     }
 
+    @PostMapping("/plans/adaptive")
+    public Plan createAdaptivePlan(@RequestBody AdaptivePlanRequest request) throws Exception {
+        if (request == null || request.prompt() == null || request.prompt().trim().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "prompt must not be blank");
+        }
+        try {
+            return adaptivePlanService.create(request.prompt(), request.apiKey(), request.agentId(), request.modelId(),
+                    request.approvalRequired() == null || request.approvalRequired(), request.maxSteps());
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
+        }
+    }
+
     @PostMapping("/plans/{id}/approve")
     public Plan approvePlan(@PathVariable String id) {
         try {
@@ -547,6 +563,10 @@ public final class DshController {
     }
 
     public record PlanExecuteRequest(String apiKey) {
+    }
+
+    public record AdaptivePlanRequest(String prompt, String apiKey, String agentId, String modelId,
+                                      Boolean approvalRequired, Integer maxSteps) {
     }
 
     public record ToolCreateRequest(String name, String description, tools.jackson.databind.JsonNode parameters,

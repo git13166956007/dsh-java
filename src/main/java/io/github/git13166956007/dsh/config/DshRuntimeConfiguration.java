@@ -29,6 +29,7 @@ import io.github.git13166956007.dsh.model.ModelRouter;
 import io.github.git13166956007.dsh.plan.InMemoryPlanStore;
 import io.github.git13166956007.dsh.plan.MariaDbPlanStore;
 import io.github.git13166956007.dsh.plan.PlanExecutor;
+import io.github.git13166956007.dsh.plan.AdaptivePlanService;
 import io.github.git13166956007.dsh.plan.PlanRegistry;
 import io.github.git13166956007.dsh.plan.PlanStore;
 import io.github.git13166956007.dsh.tool.ToolDefinition;
@@ -148,6 +149,13 @@ public class DshRuntimeConfiguration {
     @Bean
     public PlanRegistry planRegistry(PlanStore store) {
         return new PlanRegistry(store);
+    }
+
+    @Bean
+    public AdaptivePlanService adaptivePlanService(AgentLoop agentLoop, PlanRegistry planRegistry,
+                                                   SubAgentProfileRegistry subAgentProfileRegistry,
+                                                   ObjectMapper objectMapper) {
+        return new AdaptivePlanService(agentLoop, planRegistry, subAgentProfileRegistry, objectMapper);
     }
 
     @Bean(destroyMethod = "close")

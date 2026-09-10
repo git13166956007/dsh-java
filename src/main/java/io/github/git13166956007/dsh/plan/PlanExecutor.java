@@ -54,7 +54,7 @@ public final class PlanExecutor implements AutoCloseable {
                         String result = step.subAgentId() == null
                                 ? agentLoop.runDetailed(step.instruction(), apiKey, List.of(), current.modelId(),
                                 current.agentId(), AgentMode.EXECUTION).answer()
-                                : subAgents.run(step.instruction(), apiKey, step.subAgentId()).answer();
+                                : subAgents.runForExecution(step.instruction(), apiKey, step.subAgentId()).answer();
                         plans.completeStep(id, step.id(), result);
                         completed = true;
                     } catch (Exception exception) {

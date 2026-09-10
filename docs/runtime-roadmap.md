@@ -9,7 +9,7 @@
 | Skills | Filesystem `skills/<name>/SKILL.md`, front matter, enable/disable and system-prompt injection | Durable enablement state, package/version management and resource indexing |
 | Models | Model profiles, active model selection, OpenAI-compatible routing, MariaDB persistence and redacted API responses | Encrypted secret storage, provider-specific adapters, health checks, model capabilities and routing policies |
 | Agent modes | Persisted Agent Profiles with chat, planning and execution modes; profile-specific model, prompt and turn budget | Adaptive delegation |
-| Sub-agents | Persisted sub-agent profiles with independent model/mode/prompt, tool and Skill allowlists; plan steps can dispatch them | Parent-child run tree, parallel scheduling, budgets and adaptive creation |
+| Sub-agents | Persisted sub-agent profiles with independent model/mode/prompt, tool and Skill allowlists; plan steps can dispatch them; adaptive planner selects workers | Parent-child run tree, parallel scheduling, budgets and adaptive creation |
 | Plans | Persisted Plan/PlanStep state, approval, asynchronous sequential execution, retries and cancellation API | Dependency graph, streaming plan events, durable run IDs and sub-agent assignment |
 | Context | Per-request `List<ChatMessage>` | Conversation IDs, persisted messages, token budget, truncation, summarization, system/context providers |
 | Memory | JSONL session store exists but is not in the Agent Loop | Explicit memory extraction, durable storage, retrieval policy, user/workspace namespaces, forgetting/update rules |
