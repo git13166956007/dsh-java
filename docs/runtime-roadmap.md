@@ -8,8 +8,8 @@
 | MCP | Java SDK client with stdio/SSE/Streamable HTTP, durable profiles, encrypted credentials, startup reconnect, initialize/list-tools/call-tool, resource/prompt inspection, lifecycle API and ToolRegistry synchronization | Reconnect backoff, health history and approval policy |
 | Skills | Filesystem `skills/<name>/SKILL.md`, front matter, durable enable/disable state and system-prompt injection | Package/version management and resource indexing |
 | Models | Persisted profiles with active selection, OpenAI-compatible routing, encrypted API keys, proxy/request parameters, capability flags, context budgets, Provider extension JSON, connectivity tests and durable health counters | Provider-specific tokenizers and failover policies |
-| Agent modes | Persisted Agent Profiles with chat, planning and execution modes; profile-specific model, prompt and turn budget; active runs can delegate through a virtual tool | Streaming plan events and richer delegation policies |
-| Sub-agents | Persisted sub-agent profiles with independent model/mode/prompt, tool and Skill allowlists; plan steps and active Agents can dispatch enabled execution workers; adaptive planner selects or explicitly creates workers | Approval propagation and richer adaptive delegation policies |
+| Agent modes | Persisted Agent Profiles with chat, planning and execution modes; profile-specific model, prompt and turn budget; active runs can delegate through a virtual tool with approval propagation | Streaming plan events and richer delegation policies |
+| Sub-agents | Persisted sub-agent profiles with independent model/mode/prompt, tool and Skill allowlists; plan steps and active Agents can dispatch enabled execution workers; adaptive planner selects or explicitly creates workers | Richer adaptive delegation policies |
 | Plans | Persisted Plan/PlanStep state, approval, dependency-aware asynchronous execution, bounded parallelism, retries and cancellation API | Streaming plan events, durable run IDs and richer dependency policies |
 | Context | Conversation IDs, persisted messages, configurable message/token budgets, newest-first truncation and context inspection API | Summarization, system/context providers and provider-specific tokenizers |
 | Memory | MariaDB/in-memory explicit memories, namespace isolation, keyword retrieval and conversation-context injection | Automatic extraction, user/workspace namespaces, forgetting/update rules and semantic retrieval |
@@ -25,7 +25,7 @@
 5. **Memory service**: start with explicit durable memories and MariaDB full-text retrieval; add embeddings only when keyword retrieval is insufficient.
 6. **Agent orchestration**: persist Agent Profiles and run modes first, then add Plan/PlanStep state, approval and execution APIs.
 
-Active Agents can now call `delegate_to_subagent` when enabled execution profiles exist. The call is recorded as a normal tool event and creates a child Run when Run persistence is enabled; the parent and child depth budgets are enforced.
+Active Agents can now call `delegate_to_subagent` when enabled execution profiles exist. The call is recorded as a normal tool event and creates a child Run when Run persistence is enabled; the parent and child depth budgets are enforced. If a child tool requires approval, the parent delegation pauses and approval resumes the child before continuing the parent.
 
 ## Database Development
 

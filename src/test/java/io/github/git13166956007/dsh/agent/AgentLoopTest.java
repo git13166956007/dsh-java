@@ -93,6 +93,60 @@ class AgentLoopTest {
     }
 
     @Test
+    void propagatesSubAgentApprovalBackToTheParentRun() throws Exception {
+        ToolRegistry tools = new ToolRegistry();
+        AtomicInteger executions = new AtomicInteger();
+        tools.register(new ToolDefinition("child_approval_tool", "Approval tool.",
+                JsonNodeFactory.instance.objectNode().put("type", "object")), arguments -> {
+            executions.incrementAndGet();
+            return "child tool result";
+        });
+        tools.setApprovalRequired("child_approval_tool", true);
+        SubAgentProfileRegistry profiles = new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 8);
+        SubAgentProfile worker = profiles.create("Approval worker", AgentMode.EXECUTION, null, "", 3,
+                List.of("child_approval_tool"), List.of(), true);
+        RunManager runs = new RunManager(new InMemoryRunStore());
+        InMemoryAgentContinuationStore continuations = new InMemoryAgentContinuationStore();
+        ChatModel model = new ChatModel() {
+            private int calls;
+
+            @Override
+            public ModelResponse complete(List<ChatMessage> messages, List<ToolDefinition> definitions) {
+                switch (calls++) {
+                    case 0:
+                        return new ModelResponse(null, List.of(new ToolCall("delegate-approval", "delegate_to_subagent",
+                                new ObjectMapper().createObjectNode().put("profileId", worker.id())
+                                        .put("task", "run approval task"))), "tool_calls");
+                    case 1:
+                        return new ModelResponse(null, List.of(new ToolCall("child-approval", "child_approval_tool",
+                                JsonNodeFactory.instance.objectNode())), "tool_calls");
+                    case 2:
+                        return new ModelResponse("child completed", List.of(), "stop");
+                    default:
+                        return new ModelResponse("parent completed", List.of(), "stop");
+                }
+            }
+        };
+        AgentLoop loop = new AgentLoop(model, tools, null, null, null, runs, continuations,
+                new ObjectMapper(), 4);
+        loop.setSubAgentRunner(new SubAgentRunner(loop, profiles));
+
+        AgentRunResult pending = loop.runDetailed("parent task", null, List.of());
+
+        assertNotNull(pending.pendingApproval());
+        assertNotNull(pending.pendingApproval().delegatedRunId());
+        assertEquals(RunStatus.WAITING_APPROVAL, runs.find(pending.runId()).status());
+        assertEquals(RunStatus.WAITING_APPROVAL, runs.find(pending.pendingApproval().delegatedRunId()).status());
+
+        AgentRunResult result = loop.resumeApproval(pending.runId(), true);
+
+        assertEquals("parent completed", result.answer());
+        assertEquals(1, executions.get());
+        assertEquals(RunStatus.COMPLETED, runs.find(pending.runId()).status());
+        assertEquals(RunStatus.COMPLETED, runs.find(result.runId()).status());
+    }
+
+    @Test
     void streamsDelegationThroughTheNormalToolLifecycle() throws Exception {
         ToolRegistry tools = new ToolRegistry();
         SubAgentProfileRegistry profiles = new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 8);

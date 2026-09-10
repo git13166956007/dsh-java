@@ -170,6 +170,12 @@ public final class AgentLoop {
                     String result;
                     try {
                         result = executeTool(call, options, apiKey, runId, budget);
+                    } catch (SubAgentApprovalRequiredException exception) {
+                        PendingToolApproval approval = new PendingToolApproval(call.id(), call.name(), call.arguments(),
+                                exception.pendingResult().runId());
+                        String approvalRunId = pauseForApproval(runId, messages, trace, turn + 1, options, apiKey,
+                                definitions, budget, approval);
+                        return new AgentRunResult("", trace, turn + 1, approvalRunId, approval);
                     } catch (ToolApprovalRequiredException exception) {
                         PendingToolApproval approval = new PendingToolApproval(call.id(), call.name(), call.arguments());
                         String approvalRunId = pauseForApproval(runId, messages, trace, turn + 1, options, apiKey,
@@ -263,6 +269,12 @@ public final class AgentLoop {
                     String result;
                     try {
                         result = executeTool(call, options, apiKey, runId, budget);
+                    } catch (SubAgentApprovalRequiredException exception) {
+                        PendingToolApproval approval = new PendingToolApproval(call.id(), call.name(), call.arguments(),
+                                exception.pendingResult().runId());
+                        String approvalRunId = pauseForApproval(runId, messages, trace, turn + 1, options, apiKey,
+                                definitions, budget, approval);
+                        return new AgentRunResult("", trace, turn + 1, approvalRunId, approval);
                     } catch (ToolApprovalRequiredException exception) {
                         PendingToolApproval approval = new PendingToolApproval(call.id(), call.name(), call.arguments());
                         String approvalRunId = pauseForApproval(runId, messages, trace, turn + 1, options, apiKey,
@@ -300,7 +312,18 @@ public final class AgentLoop {
                         pending.approval.toolName());
             }
             String result;
-            if (!approved) {
+            if (pending.approval.delegatedRunId() != null) {
+                AgentRunResult child = resumeApproval(pending.approval.delegatedRunId(), approved);
+                if (child.pendingApproval() != null) {
+                    PendingToolApproval nextApproval = new PendingToolApproval(pending.approval.toolCallId(),
+                            pending.approval.toolName(), pending.approval.arguments(), child.runId());
+                    pauseForApproval(pending.runId, pending.messages, pending.trace, pending.nextTurn,
+                            pending.options, pending.apiKey, pending.definitions, pending.budget, nextApproval);
+                    return new AgentRunResult("", pending.trace, pending.nextTurn, pending.runId, nextApproval);
+                }
+                result = delegationResult(pending.approval.arguments(), child);
+                recordEvent(pending.runId, "sub_agent_completed", result);
+            } else if (!approved) {
                 result = "Tool execution denied by user: " + pending.approval.toolName();
             } else {
                 pending.budget.check();
@@ -353,6 +376,12 @@ public final class AgentLoop {
                 String result;
                 try {
                     result = executeTool(call, pending.options, pending.apiKey, pending.runId, pending.budget);
+                } catch (SubAgentApprovalRequiredException exception) {
+                    PendingToolApproval approval = new PendingToolApproval(call.id(), call.name(), call.arguments(),
+                            exception.pendingResult().runId());
+                    pauseForApproval(pending.runId, pending.messages, pending.trace, turn + 1, pending.options,
+                            pending.apiKey, pending.definitions, pending.budget, approval);
+                    return new AgentRunResult("", pending.trace, turn + 1, pending.runId, approval);
                 } catch (ToolApprovalRequiredException exception) {
                     PendingToolApproval approval = new PendingToolApproval(call.id(), call.name(), call.arguments());
                     pauseForApproval(pending.runId, pending.messages, pending.trace, turn + 1, pending.options,
@@ -449,17 +478,30 @@ public final class AgentLoop {
             AgentRunResult child = subAgents.runForExecution(normalizedTask, apiKey, normalizedProfileId,
                     runId, null, null);
             budget.check();
-            String answer = child.answer() == null ? "" : child.answer();
-            String runLabel = child.runId() == null ? "" : " (run " + child.runId() + ")";
-            String result = child.pendingApproval() == null
-                    ? "Sub-agent " + normalizedProfileId + " completed" + runLabel + ":\n" + answer
-                    : "Sub-agent " + normalizedProfileId + " is waiting for approval" + runLabel;
+            if (child.pendingApproval() != null) {
+                recordEvent(runId, "sub_agent_waiting_approval", normalizedProfileId + " " + child.runId());
+                throw new SubAgentApprovalRequiredException(child);
+            }
+            String result = delegationResult(normalizedProfileId, child);
             recordEvent(runId, "sub_agent_completed", normalizedProfileId + " " + result);
             return result;
+        } catch (SubAgentApprovalRequiredException exception) {
+            throw exception;
         } catch (Exception exception) {
             recordEvent(runId, "sub_agent_failed", normalizedProfileId + " " + exception.getMessage());
             throw exception;
         }
+    }
+
+    private String delegationResult(JsonNode arguments, AgentRunResult child) {
+        String profileId = arguments == null ? "unknown" : arguments.path("profileId").asString("unknown");
+        return delegationResult(profileId, child);
+    }
+
+    private String delegationResult(String profileId, AgentRunResult child) {
+        String answer = child.answer() == null ? "" : child.answer();
+        String runLabel = child.runId() == null ? "" : " (run " + child.runId() + ")";
+        return "Sub-agent " + profileId + " completed" + runLabel + ":\n" + answer;
     }
 
     private RunOptions options(String modelId, String agentId, AgentMode modeOverride) {
@@ -671,13 +713,14 @@ public final class AgentLoop {
         ObjectNode node = objectMapper.createObjectNode();
         putNullable(node, "toolCallId", approval.toolCallId());
         putNullable(node, "toolName", approval.toolName());
+        putNullable(node, "delegatedRunId", approval.delegatedRunId());
         node.set("arguments", approval.arguments() == null ? objectMapper.createObjectNode() : approval.arguments().deepCopy());
         return node;
     }
 
     private PendingToolApproval readApproval(JsonNode node) {
         return new PendingToolApproval(node.path("toolCallId").asString(null), node.path("toolName").asString(null),
-                node.path("arguments").deepCopy());
+                node.path("arguments").deepCopy(), node.path("delegatedRunId").asString(null));
     }
 
     private static void putNullable(ObjectNode node, String name, String value) {
