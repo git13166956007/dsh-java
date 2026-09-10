@@ -1,0 +1,26 @@
+README.md
+  h_eb697744b14c1b 7,18-19
+src/main/java/io/github/git13166956007/dsh/config/DshRuntimeConfiguration.java
+  h_eb697744b14c1b 60-61,70-74,76-89
+src/main/java/io/github/git13166956007/dsh/core/DshRuntime.java
+  h_eb697744b14c1b 10-14,26,35-41,46-70,84,88-91,98-104,115-121
+src/main/java/io/github/git13166956007/dsh/plugin/DshServices.java
+  h_eb697744b14c1b 1-27
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 113
+src/main/resources/application.yml
+  h_eb697744b14c1b 29-30
+src/test/java/io/github/git13166956007/dsh/core/DshRuntimePluginLoadingTest.java
+  h_eb697744b14c1b 1-43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c9cc5fefe2628d5b48b489a77e488cb17894faec",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
