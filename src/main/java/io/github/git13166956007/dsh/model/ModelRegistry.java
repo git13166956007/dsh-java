@@ -31,13 +31,14 @@ public final class ModelRegistry {
                 ModelProfileData fallback = new ModelProfileData("default", "Default model",
                         normalizeProvider(provider), normalizeUrl(baseUrl), required(model, "model"),
                         blankToNull(apiKey), blankToNull(proxyHost), validProxyPort(proxyPort), true, true,
-                        true, true, false, 0, null, null, null, null, null, 120, null);
+                        true, true, false, 0, null, null, null, null, null, 120, null, null);
                 profiles.put(fallback.id(), fallback);
                 store.save(fallback);
             } else if (profiles.values().stream().noneMatch(ModelProfileData::active)) {
                 ModelProfileData first = profiles.values().iterator().next();
                 activate(first.id());
             }
+            validateFallbackConfiguration();
         } catch (Exception exception) {
             throw new IllegalStateException("failed to load model profiles", exception);
         }
@@ -85,11 +86,22 @@ public final class ModelRegistry {
                                              Double temperature, Double topP, Integer maxTokens,
                                              Double frequencyPenalty, Double presencePenalty, Integer timeoutSeconds,
                                              String requestOptionsJson) {
+        return create(name, provider, baseUrl, model, apiKey, proxyHost, proxyPort, enabled, active,
+                supportsTools, supportsStreaming, supportsVision, contextWindow, temperature, topP, maxTokens,
+                frequencyPenalty, presencePenalty, timeoutSeconds, requestOptionsJson, null);
+    }
+
+    public synchronized ModelProfile create(String name, String provider, String baseUrl, String model,
+                                             String apiKey, String proxyHost, Integer proxyPort,
+                                             Boolean enabled, Boolean active, Boolean supportsTools,
+                                             Boolean supportsStreaming, Boolean supportsVision, Integer contextWindow,
+                                             Double temperature, Double topP, Integer maxTokens,
+                                             Double frequencyPenalty, Double presencePenalty, Integer timeoutSeconds,
+                                             String requestOptionsJson, String fallbackModelId) {
         String id = UUID.randomUUID().toString();
         boolean nextEnabled = enabled == null || enabled;
         boolean nextActive = nextEnabled && (Boolean.TRUE.equals(active)
                 || profiles.values().stream().noneMatch(ModelProfileData::active));
-        if (nextActive) deactivateAll();
         ModelProfileData profile = new ModelProfileData(id, required(name, "name"), normalizeProvider(provider),
                 normalizeUrl(baseUrl), required(model, "model"), blankToNull(apiKey), blankToNull(proxyHost),
                 validProxyPort(proxyPort == null ? 0 : proxyPort), nextEnabled, nextActive,
@@ -98,7 +110,9 @@ public final class ModelRegistry {
                 validTemperature(temperature), validTopP(topP), validMaxTokens(maxTokens),
                 validPenalty(frequencyPenalty, "frequencyPenalty"), validPenalty(presencePenalty, "presencePenalty"),
                 validTimeoutSeconds(timeoutSeconds == null ? 120 : timeoutSeconds),
-                normalizeRequestOptions(requestOptionsJson));
+                normalizeRequestOptions(requestOptionsJson), normalizeFallbackId(fallbackModelId));
+        validateFallback(profile.id(), profile.fallbackModelId());
+        if (nextActive) deactivateAll();
         save(profile);
         return ModelProfile.from(profile);
     }
@@ -140,7 +154,6 @@ public final class ModelRegistry {
         boolean nextActive = active == null ? current.active() : active;
         boolean nextEnabled = enabled == null ? current.enabled() : enabled;
         if (!nextEnabled) nextActive = false;
-        if (nextActive) deactivateAll();
         ModelProfileData updated = new ModelProfileData(id,
                 name == null ? current.name() : required(name, "name"),
                 provider == null ? current.provider() : normalizeProvider(provider),
@@ -159,7 +172,9 @@ public final class ModelRegistry {
                 frequencyPenalty == null ? current.frequencyPenalty() : validPenalty(frequencyPenalty, "frequencyPenalty"),
                 presencePenalty == null ? current.presencePenalty() : validPenalty(presencePenalty, "presencePenalty"),
                 timeoutSeconds == null ? current.timeoutSeconds() : validTimeoutSeconds(timeoutSeconds),
-                requestOptionsJson == null ? current.requestOptionsJson() : normalizeRequestOptions(requestOptionsJson));
+                requestOptionsJson == null ? current.requestOptionsJson() : normalizeRequestOptions(requestOptionsJson),
+                current.fallbackModelId());
+        if (nextActive) deactivateAll();
         save(updated);
         ensureActive();
         return ModelProfile.from(profiles.get(id));
@@ -173,7 +188,6 @@ public final class ModelRegistry {
         boolean nextEnabled = booleanValue(patch, "enabled", current.enabled());
         boolean nextActive = booleanValue(patch, "active", current.active());
         if (!nextEnabled) nextActive = false;
-        if (nextActive) deactivateAll();
 
         ModelProfileData updated = new ModelProfileData(id,
                 requiredText(patch, "name", current.name()),
@@ -196,7 +210,11 @@ public final class ModelRegistry {
                 intValue(patch, "timeoutSeconds", current.timeoutSeconds(), 1, 3600, "timeoutSeconds"),
                 patch.has("requestOptionsJson") && !patch.path("requestOptionsJson").isNull()
                         ? normalizeRequestOptions(patch.path("requestOptionsJson").asText())
-                        : patch.has("requestOptionsJson") ? null : current.requestOptionsJson());
+                        : patch.has("requestOptionsJson") ? null : current.requestOptionsJson(),
+                patch.has("fallbackModelId") ? nullableText(patch, "fallbackModelId", current.fallbackModelId())
+                        : current.fallbackModelId());
+        validateFallback(updated.id(), updated.fallbackModelId());
+        if (nextActive) deactivateAll();
         save(updated);
         ensureActive();
         return ModelProfile.from(profiles.get(id));
@@ -210,14 +228,17 @@ public final class ModelRegistry {
                 target.model(), target.apiKey(), target.proxyHost(), target.proxyPort(), true, true,
                 target.supportsTools(), target.supportsStreaming(), target.supportsVision(), target.contextWindow(),
                 target.temperature(), target.topP(), target.maxTokens(), target.frequencyPenalty(),
-                target.presencePenalty(), target.timeoutSeconds(), target.requestOptionsJson());
+                target.presencePenalty(), target.timeoutSeconds(), target.requestOptionsJson(), target.fallbackModelId());
         save(active);
         return ModelProfile.from(active);
     }
 
     public synchronized boolean delete(String id) {
+        if (!profiles.containsKey(id)) return false;
+        if (profiles.values().stream().anyMatch(profile -> id.equals(profile.fallbackModelId()))) {
+            throw new IllegalArgumentException("model is referenced as a fallback: " + id);
+        }
         ModelProfileData removed = profiles.remove(id);
-        if (removed == null) return false;
         try {
             store.delete(id);
             healthStore.delete(id);
@@ -237,6 +258,23 @@ public final class ModelRegistry {
         }
         return profiles.values().stream().filter(profile -> profile.active() && profile.enabled()).findFirst()
                 .orElseThrow(() -> new IllegalStateException("no enabled model profile is active"));
+    }
+
+    public synchronized List<ModelProfileData> resolveCandidates(String id) {
+        ModelProfileData primary = resolve(id);
+        List<ModelProfileData> candidates = new ArrayList<ModelProfileData>();
+        java.util.Set<String> visited = new java.util.HashSet<String>();
+        ModelProfileData current = primary;
+        while (current != null && visited.add(current.id())) {
+            if (current.enabled()) candidates.add(current);
+            String fallbackId = current.fallbackModelId();
+            current = fallbackId == null ? null : profiles.get(fallbackId);
+            if (fallbackId != null && current == null) {
+                throw new IllegalStateException("unknown fallback model: " + fallbackId);
+            }
+        }
+        if (current != null) throw new IllegalStateException("fallback model cycle detected");
+        return List.copyOf(candidates);
     }
 
     public synchronized ModelHealth health(String id) {
@@ -288,7 +326,7 @@ public final class ModelRegistry {
                         profile.model(), profile.apiKey(), profile.proxyHost(), profile.proxyPort(), profile.enabled(), false,
                         profile.supportsTools(), profile.supportsStreaming(), profile.supportsVision(), profile.contextWindow(),
                         profile.temperature(), profile.topP(), profile.maxTokens(), profile.frequencyPenalty(),
-                        profile.presencePenalty(), profile.timeoutSeconds(), profile.requestOptionsJson()));
+                        profile.presencePenalty(), profile.timeoutSeconds(), profile.requestOptionsJson(), profile.fallbackModelId()));
             }
         }
     }
@@ -306,6 +344,32 @@ public final class ModelRegistry {
         ModelProfileData profile = profiles.get(id);
         if (profile == null) throw new IllegalArgumentException("unknown model: " + id);
         return profile;
+    }
+
+    private void validateFallbackConfiguration() {
+        for (ModelProfileData profile : profiles.values()) {
+            validateFallback(profile.id(), profile.fallbackModelId());
+        }
+    }
+
+    private void validateFallback(String id, String fallbackId) {
+        String normalized = normalizeFallbackId(fallbackId);
+        if (normalized == null) return;
+        if (id.equals(normalized)) throw new IllegalArgumentException("model cannot fall back to itself");
+        require(normalized);
+        java.util.Set<String> visited = new java.util.HashSet<String>();
+        String current = id;
+        while (current != null && visited.add(current)) {
+            String next = current.equals(id) ? normalized : require(current).fallbackModelId();
+            if (next == null) return;
+            if (id.equals(next)) throw new IllegalArgumentException("fallback model cycle detected");
+            current = next;
+        }
+        throw new IllegalArgumentException("fallback model cycle detected");
+    }
+
+    private static String normalizeFallbackId(String value) {
+        return blankToNull(value);
     }
 
     private static Map<String, ModelProfileData> index(List<ModelProfileData> values) {

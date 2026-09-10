@@ -3,6 +3,7 @@ package io.github.git13166956007.dsh.model;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
@@ -83,5 +84,33 @@ class ModelRegistryTest {
         ModelProfile cleared = registry.find(created.id());
         assertEquals(null, cleared.temperature());
         assertEquals(null, cleared.requestOptionsJson());
+    }
+
+    @Test
+    void persistsFallbackModelAndRejectsCyclesAndReferencedDeletes() throws Exception {
+        InMemoryModelProfileStore store = new InMemoryModelProfileStore();
+        ModelRegistry registry = new ModelRegistry(store, "https://api.deepseek.com", "deepseek",
+                "deepseek-v4-flash", "", "", 0);
+        ModelProfile backup = registry.create("Backup", "deepseek", "https://api.deepseek.com",
+                "deepseek-v4-flash", "", "", 0, true, false);
+        ObjectMapper mapper = new ObjectMapper();
+        registry.update("default", mapper.readTree("{\"fallbackModelId\":\"" + backup.id() + "\"}"));
+
+        ModelRegistry restored = new ModelRegistry(store, "https://api.deepseek.com", "deepseek",
+                "deepseek-v4-flash", "", "", 0);
+        assertEquals(backup.id(), restored.find("default").fallbackModelId());
+        assertThrows(IllegalArgumentException.class,
+                () -> restored.update(backup.id(), mapper.readTree("{\"fallbackModelId\":\"default\"}")));
+        assertThrows(IllegalArgumentException.class, () -> restored.delete(backup.id()));
+    }
+
+    @Test
+    void rejectsSelfFallback() {
+        ModelRegistry registry = new ModelRegistry(new InMemoryModelProfileStore(),
+                "https://api.deepseek.com", "deepseek", "deepseek-v4-flash", "", "", 0);
+        ObjectMapper mapper = new ObjectMapper();
+
+        assertThrows(IllegalArgumentException.class,
+                () -> registry.update("default", mapper.readTree("{\"fallbackModelId\":\"default\"}")));
     }
 }

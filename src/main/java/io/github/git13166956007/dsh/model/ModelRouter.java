@@ -10,6 +10,7 @@ import io.github.git13166956007.dsh.tool.ToolDefinition;
 import tools.jackson.databind.ObjectMapper;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class ModelRouter implements ChatModel {
     private final ModelRegistry registry;
@@ -28,38 +29,52 @@ public final class ModelRouter implements ChatModel {
     @Override
     public ModelResponse complete(List<ChatMessage> messages, List<ToolDefinition> tools,
                                   String apiKey, String modelId) throws Exception {
-        ModelProfileData profile = registry.resolve(modelId);
-        long started = System.nanoTime();
-        try {
-            ModelResponse response = client(profile).complete(messages, effectiveTools(profile, tools), apiKey);
-            registry.recordSuccess(profile.id(), elapsedMs(started));
-            return response;
-        } catch (Exception exception) {
-            registry.recordFailure(profile.id(), elapsedMs(started), exception);
-            throw exception;
+        Exception lastFailure = null;
+        for (ModelProfileData profile : registry.resolveCandidates(modelId)) {
+            long started = System.nanoTime();
+            try {
+                ModelResponse response = client(profile).complete(messages, effectiveTools(profile, tools), apiKey);
+                registry.recordSuccess(profile.id(), elapsedMs(started));
+                return response;
+            } catch (Exception exception) {
+                registry.recordFailure(profile.id(), elapsedMs(started), exception);
+                if (lastFailure != null) exception.addSuppressed(lastFailure);
+                lastFailure = exception;
+            }
         }
+        throw lastFailure == null ? new IllegalStateException("no model candidates available") : lastFailure;
     }
 
     @Override
     public ModelResponse stream(List<ChatMessage> messages, List<ToolDefinition> tools,
                                 String apiKey, String modelId, ModelStreamListener listener) throws Exception {
-        ModelProfileData profile = registry.resolve(modelId);
-        List<ToolDefinition> effectiveTools = effectiveTools(profile, tools);
-        long started = System.nanoTime();
-        try {
-            if (!profile.supportsStreaming()) {
-                ModelResponse response = client(profile).complete(messages, effectiveTools, apiKey);
-                if (response.content() != null && !response.content().isEmpty()) listener.onText(response.content());
+        Exception lastFailure = null;
+        AtomicBoolean emitted = new AtomicBoolean(false);
+        for (ModelProfileData profile : registry.resolveCandidates(modelId)) {
+            List<ToolDefinition> effectiveTools = effectiveTools(profile, tools);
+            long started = System.nanoTime();
+            try {
+                ModelStreamListener guardedListener = delta -> {
+                    if (delta != null && !delta.isEmpty()) emitted.set(true);
+                    listener.onText(delta);
+                };
+                ModelResponse response;
+                if (!profile.supportsStreaming()) {
+                    response = client(profile).complete(messages, effectiveTools, apiKey);
+                    if (response.content() != null && !response.content().isEmpty()) guardedListener.onText(response.content());
+                } else {
+                    response = client(profile).stream(messages, effectiveTools, apiKey, guardedListener);
+                }
                 registry.recordSuccess(profile.id(), elapsedMs(started));
                 return response;
+            } catch (Exception exception) {
+                registry.recordFailure(profile.id(), elapsedMs(started), exception);
+                if (emitted.get()) throw exception;
+                if (lastFailure != null) exception.addSuppressed(lastFailure);
+                lastFailure = exception;
             }
-            ModelResponse response = client(profile).stream(messages, effectiveTools, apiKey, listener);
-            registry.recordSuccess(profile.id(), elapsedMs(started));
-            return response;
-        } catch (Exception exception) {
-            registry.recordFailure(profile.id(), elapsedMs(started), exception);
-            throw exception;
         }
+        throw lastFailure == null ? new IllegalStateException("no model candidates available") : lastFailure;
     }
 
     private static List<ToolDefinition> effectiveTools(ModelProfileData profile, List<ToolDefinition> tools) {

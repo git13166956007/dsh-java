@@ -118,6 +118,7 @@ CREATE TABLE IF NOT EXISTS dsh_model_profile (
     proxy_port INT NOT NULL DEFAULT 0,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
     active BOOLEAN NOT NULL DEFAULT FALSE,
+    fallback_model_id VARCHAR(64) NULL,
     supports_tools BOOLEAN NOT NULL DEFAULT TRUE,
     supports_streaming BOOLEAN NOT NULL DEFAULT TRUE,
     supports_vision BOOLEAN NOT NULL DEFAULT FALSE,

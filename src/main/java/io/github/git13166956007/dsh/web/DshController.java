@@ -289,7 +289,7 @@ public final class DshController {
                     request.apiKey(), request.proxyHost(), request.proxyPort(), request.enabled(), request.active(),
                     request.supportsTools(), request.supportsStreaming(), request.supportsVision(), request.contextWindow(),
                     request.temperature(), request.topP(), request.maxTokens(), request.frequencyPenalty(),
-                    request.presencePenalty(), request.timeoutSeconds(), request.requestOptionsJson());
+                    request.presencePenalty(), request.timeoutSeconds(), request.requestOptionsJson(), request.fallbackModelId());
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
         }
@@ -320,6 +320,8 @@ public final class DshController {
     public void deleteModel(@PathVariable String id) {
         try {
             if (!modelRegistry.delete(id)) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown model: " + id);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
         } catch (IllegalStateException exception) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, exception.getMessage(), exception);
         }
@@ -764,7 +766,7 @@ public final class DshController {
                                Boolean supportsTools, Boolean supportsStreaming, Boolean supportsVision,
                                Integer contextWindow, Double temperature, Double topP, Integer maxTokens,
                                Double frequencyPenalty, Double presencePenalty, Integer timeoutSeconds,
-                               String requestOptionsJson) {
+                               String requestOptionsJson, String fallbackModelId) {
     }
 
     public record ModelTestRequest(String apiKey, String prompt) {

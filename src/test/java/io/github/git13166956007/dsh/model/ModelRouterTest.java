@@ -96,4 +96,41 @@ class ModelRouterTest {
         assertEquals(1, registry.health(profile.id()).failureCount());
         org.junit.jupiter.api.Assertions.assertNotNull(registry.health(profile.id()).lastError());
     }
+
+    @Test
+    void fallsBackToTheNextEnabledModelAndTracksHealthSeparately() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            byte[] response = "{\"choices\":[{\"message\":{\"content\":\"backup pong\"},\"finish_reason\":\"stop\"}]}"
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+        try {
+            InMemoryModelProfileStore store = new InMemoryModelProfileStore();
+            ModelRegistry registry = new ModelRegistry(store, new InMemoryModelHealthStore(),
+                    "http://127.0.0.1:1/v1", "openai_compatible", "unavailable", "key", "", 0);
+            ModelProfile primary = registry.create("Primary", "openai_compatible", "http://127.0.0.1:1/v1",
+                    "primary", "key", "", 0, true, false);
+            ModelProfile backup = registry.create("Backup", "openai_compatible",
+                    "http://127.0.0.1:" + server.getAddress().getPort() + "/v1", "backup", "key", "", 0,
+                    true, false);
+            registry.update(primary.id(), new ObjectMapper().readTree(
+                    "{\"fallbackModelId\":\"" + backup.id() + "\"}"));
+
+            ModelResponse response = new ModelRouter(registry, new ObjectMapper()).complete(
+                    List.of(ChatMessage.user("ping")), List.of(), null, primary.id());
+
+            assertEquals("backup pong", response.content());
+            assertEquals("UNHEALTHY", registry.health(primary.id()).status());
+            assertEquals("HEALTHY", registry.health(backup.id()).status());
+            assertEquals(1, registry.health(primary.id()).failureCount());
+            assertEquals(1, registry.health(backup.id()).successCount());
+        } finally {
+            server.stop(0);
+        }
+    }
 }
