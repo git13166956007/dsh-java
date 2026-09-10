@@ -6,6 +6,9 @@ frontend/dist/
 output/playwright/
 .playwright/
 .playwright-cli/
+.env
+.env.*
+!.env.example
 *.class
 .idea/
 .vscode/

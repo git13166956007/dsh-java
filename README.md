@@ -43,6 +43,8 @@ export DEEPSEEK_PROXY_PORT=7897
 ./gradlew bootRun
 ```
 
+项目不会把 API Key 写入配置文件。提交前的 secret scan 已启用，`.env` 文件默认被 Git 忽略。
+
 调用：
 
 ```bash
