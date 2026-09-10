@@ -96,4 +96,28 @@ class AgentLoopTest {
         assertEquals(Collections.singletonList("done"), text);
         assertEquals(List.of("call:demo_echo", "result:tool-result"), events);
     }
+
+    @Test
+    void planningModeDoesNotExposeToolsToTheModel() throws Exception {
+        ToolRegistry tools = new ToolRegistry();
+        tools.register(new ToolDefinition("demo_echo", "Echo a value.",
+                JsonNodeFactory.instance.objectNode().put("type", "object")), arguments -> "tool-result");
+        List<Integer> definitionCounts = new ArrayList<>();
+        ChatModel model = new ChatModel() {
+            @Override
+            public ModelResponse complete(List<ChatMessage> messages, List<ToolDefinition> definitions) {
+                definitionCounts.add(definitions.size());
+                return new ModelResponse("1. Plan\n2. Verify", List.of(), "stop");
+            }
+        };
+
+        AgentProfileRegistry profiles = new AgentProfileRegistry(new InMemoryAgentProfileStore(), 8);
+        profiles.update("default", null, AgentMode.PLANNING, null, null, null, null, null);
+
+        AgentRunResult result = new AgentLoop(model, tools, null, profiles, 8)
+                .runDetailed("plan this", null, List.of(), null, null, null);
+
+        assertEquals("1. Plan\n2. Verify", result.answer());
+        assertEquals(List.of(0), definitionCounts);
+    }
 }

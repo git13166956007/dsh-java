@@ -24,6 +24,21 @@ const mcpServers = ref([])
 const skills = ref([])
 const models = ref([])
 const selectedModelId = ref(null)
+const agents = ref([])
+const selectedAgentId = ref(null)
+const selectedMode = ref('chat')
+const agentForm = ref({
+  id: null,
+  name: '',
+  mode: 'chat',
+  modelId: '',
+  systemPrompt: '',
+  maxTurns: 8,
+  enabled: true,
+  active: false
+})
+const agentFormError = ref('')
+const agentSaving = ref(false)
 const modelForm = ref({
   id: null,
   name: '',
@@ -119,6 +134,27 @@ async function refreshModels() {
   }
 }
 
+async function refreshAgents() {
+  try {
+    const response = await fetch('/api/v1/agents')
+    if (!response.ok) throw new Error('Agent profiles unavailable')
+    agents.value = await response.json()
+    if (!selectedAgentId.value || !agents.value.some((agent) => agent.id === selectedAgentId.value)) {
+      selectedAgentId.value = agents.value.find((agent) => agent.active && agent.enabled)?.id || agents.value.find((agent) => agent.enabled)?.id || null
+    }
+    const selected = agents.value.find((agent) => agent.id === selectedAgentId.value)
+    if (selected) selectedMode.value = String(selected.mode || 'CHAT').toLowerCase()
+  } catch {
+    agents.value = []
+    selectedAgentId.value = null
+  }
+}
+
+function applyAgentSelection() {
+  const selected = agents.value.find((agent) => agent.id === selectedAgentId.value)
+  if (selected) selectedMode.value = String(selected.mode || 'CHAT').toLowerCase()
+}
+
 function openToolManager() {
   openCapabilities('tools')
 }
@@ -127,12 +163,102 @@ function openCapabilities(tab) {
   toolFormError.value = ''
   mcpFormError.value = ''
   modelFormError.value = ''
+  agentFormError.value = ''
   capabilityTab.value = tab
   toolManagerOpen.value = true
   refreshTools()
   refreshMcpServers()
   refreshSkills()
   refreshModels()
+  refreshAgents()
+}
+
+function resetAgentForm() {
+  agentForm.value = {
+    id: null,
+    name: '',
+    mode: 'chat',
+    modelId: '',
+    systemPrompt: '',
+    maxTurns: 8,
+    enabled: true,
+    active: false
+  }
+  agentFormError.value = ''
+}
+
+function editAgent(agent) {
+  agentForm.value = {
+    id: agent.id,
+    name: agent.name,
+    mode: String(agent.mode || 'CHAT').toLowerCase(),
+    modelId: agent.modelId || '',
+    systemPrompt: agent.systemPrompt || '',
+    maxTurns: agent.maxTurns || 8,
+    enabled: agent.enabled,
+    active: agent.active
+  }
+  agentFormError.value = ''
+}
+
+async function saveAgent() {
+  agentFormError.value = ''
+  if (!agentForm.value.name.trim()) {
+    agentFormError.value = 'Please provide a profile name'
+    return
+  }
+  agentSaving.value = true
+  try {
+    const editing = Boolean(agentForm.value.id)
+    const response = await fetch(editing ? `/api/v1/agents/${encodeURIComponent(agentForm.value.id)}` : '/api/v1/agents', {
+      method: editing ? 'PATCH' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: agentForm.value.name.trim(),
+        mode: agentForm.value.mode,
+        modelId: agentForm.value.modelId.trim() || null,
+        systemPrompt: agentForm.value.systemPrompt,
+        maxTurns: Number(agentForm.value.maxTurns) || 8,
+        enabled: agentForm.value.enabled,
+        active: agentForm.value.active
+      })
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload.message || payload.error || 'Agent profile save failed')
+    await refreshAgents()
+    selectedAgentId.value = payload.id
+    applyAgentSelection()
+    resetAgentForm()
+  } catch (requestError) {
+    agentFormError.value = requestError.message
+  } finally {
+    agentSaving.value = false
+  }
+}
+
+async function activateAgent(agent) {
+  const response = await fetch(`/api/v1/agents/${encodeURIComponent(agent.id)}/activate`, { method: 'POST' })
+  if (!response.ok) return
+  selectedAgentId.value = agent.id
+  await refreshAgents()
+}
+
+async function toggleAgent(agent) {
+  const response = await fetch(`/api/v1/agents/${encodeURIComponent(agent.id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled: !agent.enabled })
+  })
+  if (!response.ok) return
+  await refreshAgents()
+}
+
+async function deleteAgent(agent) {
+  const response = await fetch(`/api/v1/agents/${encodeURIComponent(agent.id)}`, { method: 'DELETE' })
+  if (!response.ok) return
+  if (selectedAgentId.value === agent.id) selectedAgentId.value = null
+  await refreshAgents()
+  resetAgentForm()
 }
 
 function resetToolForm() {
@@ -389,7 +515,9 @@ async function sendMessage() {
         message: prompt,
         apiKey: apiKey.value.trim() || null,
         conversationId: conversationId.value,
-        modelId: selectedModelId.value
+        modelId: selectedModelId.value,
+        agentId: selectedAgentId.value,
+        mode: selectedMode.value
       })
     })
     if (!response.ok) {
@@ -553,6 +681,7 @@ onMounted(() => {
   refreshMcpServers()
   refreshSkills()
   refreshModels()
+  refreshAgents()
 })
 </script>
 
@@ -621,6 +750,15 @@ onMounted(() => {
           <select v-model="selectedModelId" class="model-picker" title="Select model" :disabled="sending">
             <option v-for="model in models.filter((item) => item.enabled)" :key="model.id" :value="model.id">{{ model.name }} · {{ model.model }}</option>
             <option v-if="models.filter((item) => item.enabled).length === 0" :value="null">No model</option>
+          </select>
+          <select v-model="selectedAgentId" class="model-picker" title="Select agent profile" :disabled="sending" @change="applyAgentSelection">
+            <option v-for="agent in agents.filter((item) => item.enabled)" :key="agent.id" :value="agent.id">{{ agent.name }}</option>
+            <option v-if="agents.filter((item) => item.enabled).length === 0" :value="null">No agent</option>
+          </select>
+          <select v-model="selectedMode" class="mode-picker" title="Select run mode" :disabled="sending">
+            <option value="chat">Chat</option>
+            <option value="planning">Planning</option>
+            <option value="execution">Execution</option>
           </select>
           <button class="tools-button" type="button" title="Manage models" @click="openCapabilities('models')">
             <span>Models</span>
@@ -743,6 +881,7 @@ onMounted(() => {
         <button :class="{ active: capabilityTab === 'mcp' }" type="button" @click="capabilityTab = 'mcp'">MCP Servers</button>
         <button :class="{ active: capabilityTab === 'skills' }" type="button" @click="capabilityTab = 'skills'">Skills</button>
         <button :class="{ active: capabilityTab === 'models' }" type="button" @click="capabilityTab = 'models'">Models</button>
+        <button :class="{ active: capabilityTab === 'agents' }" type="button" @click="capabilityTab = 'agents'">Agents</button>
       </nav>
 
       <div v-if="capabilityTab === 'tools'" class="tool-manager-list">
@@ -896,6 +1035,50 @@ onMounted(() => {
           <div class="tool-form-footer">
             <button class="secondary-button" type="button" @click="resetModelForm">Reset</button>
             <button class="send-button" type="submit" :disabled="modelSaving"><span>{{ modelSaving ? 'Saving' : 'Save model' }}</span><span class="send-arrow">↗</span></button>
+          </div>
+        </form>
+      </div>
+
+      <div v-if="capabilityTab === 'agents'" class="tool-manager-list">
+        <div v-for="agent in agents" :key="agent.id" class="managed-tool model-item">
+          <div class="managed-tool-copy">
+            <div class="managed-tool-title">
+              <strong>{{ agent.name }}</strong>
+              <span :class="['tool-source', agent.active ? 'connected' : '']">{{ agent.active ? 'DEFAULT' : String(agent.mode).toLowerCase() }}</span>
+            </div>
+            <p>{{ String(agent.mode).toLowerCase() }} · {{ agent.maxTurns }} turns{{ agent.modelId ? ` · ${agent.modelId}` : ' · active model' }}</p>
+          </div>
+          <div class="managed-tool-actions model-actions">
+            <button v-if="!agent.active && agent.enabled" class="secondary-button compact" type="button" @click="activateAgent(agent)">Default</button>
+            <button class="secondary-button compact" type="button" @click="editAgent(agent)">Edit</button>
+            <label class="tool-toggle" :title="agent.enabled ? 'Disable agent profile' : 'Enable agent profile'">
+              <input type="checkbox" :checked="agent.enabled" @change="toggleAgent(agent)" />
+              <span></span>
+            </label>
+            <button v-if="agents.length > 1" class="delete-tool-button" type="button" title="Delete agent profile" aria-label="Delete agent profile" @click="deleteAgent(agent)">×</button>
+          </div>
+        </div>
+        <p v-if="agents.length === 0" class="tool-manager-empty">No agent profiles configured.</p>
+
+        <form class="tool-create-form inline-form" @submit.prevent="saveAgent">
+          <div class="tool-form-heading">
+            <div>
+              <div class="eyebrow">AGENT PROFILE</div>
+              <h3>{{ agentForm.id ? 'Edit agent' : 'Add agent' }}</h3>
+            </div>
+            <span class="tool-form-note">Mode-aware</span>
+          </div>
+          <div class="tool-form-grid">
+            <label><span>Name</span><input v-model="agentForm.name" placeholder="Planning agent" autocomplete="off" /></label>
+            <label><span>Mode</span><select v-model="agentForm.mode"><option value="chat">Chat</option><option value="planning">Planning</option><option value="execution">Execution</option></select></label>
+          </div>
+          <label><span>Model profile ID</span><input v-model="agentForm.modelId" placeholder="Leave blank to use selected model" autocomplete="off" /></label>
+          <label><span>Profile instructions</span><textarea v-model="agentForm.systemPrompt" rows="3" placeholder="Optional instructions for this agent profile"></textarea></label>
+          <label><span>Max turns</span><input v-model="agentForm.maxTurns" type="number" min="1" max="64" inputmode="numeric" /></label>
+          <p v-if="agentFormError" class="tool-form-error">{{ agentFormError }}</p>
+          <div class="tool-form-footer">
+            <button class="secondary-button" type="button" @click="resetAgentForm">Reset</button>
+            <button class="send-button" type="submit" :disabled="agentSaving"><span>{{ agentSaving ? 'Saving' : 'Save agent' }}</span><span class="send-arrow">↗</span></button>
           </div>
         </form>
       </div>

@@ -3,11 +3,15 @@ package io.github.git13166956007.dsh.config;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 import io.github.git13166956007.dsh.agent.AgentLoop;
+import io.github.git13166956007.dsh.agent.AgentProfileRegistry;
+import io.github.git13166956007.dsh.agent.AgentProfileStore;
 import io.github.git13166956007.dsh.agent.ChatModel;
 import io.github.git13166956007.dsh.context.ContextManager;
 import io.github.git13166956007.dsh.context.ConversationStore;
 import io.github.git13166956007.dsh.context.InMemoryConversationStore;
 import io.github.git13166956007.dsh.context.MariaDbConversationStore;
+import io.github.git13166956007.dsh.agent.InMemoryAgentProfileStore;
+import io.github.git13166956007.dsh.agent.MariaDbAgentProfileStore;
 import io.github.git13166956007.dsh.core.DshRuntime;
 import io.github.git13166956007.dsh.mcp.McpServerRegistry;
 import io.github.git13166956007.dsh.mcp.McpClientManager;
@@ -67,6 +71,22 @@ public class DshRuntimeConfiguration {
     }
 
     @Bean
+    public AgentProfileStore agentProfileStore(Environment environment) {
+        boolean enabled = Boolean.parseBoolean(environment.getProperty("dsh.persistence.enabled", "false"));
+        if (!enabled) return new InMemoryAgentProfileStore();
+        return new MariaDbAgentProfileStore(
+                environment.getProperty("dsh.persistence.jdbc-url"),
+                environment.getProperty("dsh.persistence.username"),
+                environment.getProperty("dsh.persistence.password"));
+    }
+
+    @Bean
+    public AgentProfileRegistry agentProfileRegistry(AgentProfileStore store, Environment environment) {
+        return new AgentProfileRegistry(store, Integer.parseInt(
+                environment.getProperty("dsh.agent.max-turns", "8")));
+    }
+
+    @Bean
     public ChatModel chatModel(ObjectMapper objectMapper, ModelRegistry modelRegistry) {
         return new ModelRouter(modelRegistry, objectMapper);
     }
@@ -78,8 +98,10 @@ public class DshRuntimeConfiguration {
     }
 
     @Bean
-    public AgentLoop agentLoop(ChatModel chatModel, ToolRegistry toolRegistry, SkillRegistry skillRegistry) {
-        return new AgentLoop(chatModel, toolRegistry, skillRegistry, 8);
+    public AgentLoop agentLoop(ChatModel chatModel, ToolRegistry toolRegistry, SkillRegistry skillRegistry,
+                               AgentProfileRegistry agentProfileRegistry, Environment environment) {
+        return new AgentLoop(chatModel, toolRegistry, skillRegistry, agentProfileRegistry,
+                Integer.parseInt(environment.getProperty("dsh.agent.max-turns", "8")));
     }
 
     @Bean

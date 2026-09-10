@@ -8,6 +8,7 @@
 | MCP | Java SDK client with stdio/SSE/Streamable HTTP, initialize/list-tools/call-tool, lifecycle API and ToolRegistry synchronization | Durable profiles, credentials, approval policy, reconnect backoff and resource/prompt management |
 | Skills | Filesystem `skills/<name>/SKILL.md`, front matter, enable/disable and system-prompt injection | Durable enablement state, package/version management and resource indexing |
 | Models | Model profiles, active model selection, OpenAI-compatible routing, MariaDB persistence and redacted API responses | Encrypted secret storage, provider-specific adapters, health checks, model capabilities and routing policies |
+| Agent modes | Persisted Agent Profiles with chat, planning and execution modes; profile-specific model, prompt and turn budget | Structured plans, approvals, cancellation, sub-agents and adaptive delegation |
 | Context | Per-request `List<ChatMessage>` | Conversation IDs, persisted messages, token budget, truncation, summarization, system/context providers |
 | Memory | JSONL session store exists but is not in the Agent Loop | Explicit memory extraction, durable storage, retrieval policy, user/workspace namespaces, forgetting/update rules |
 | Security | API key can be supplied for debugging | Authentication, tool approval, secret references, execution sandbox and audit trail |
@@ -20,6 +21,7 @@
 3. **MCP manager**: synchronize remote tools into the same `ToolRegistry` boundary and expose connect/refresh/disconnect lifecycle controls.
 4. **Tool management**: expose registry metadata and enable/disable state; add approval policies before destructive tools.
 5. **Memory service**: start with explicit durable memories and MariaDB full-text retrieval; add embeddings only when keyword retrieval is insufficient.
+6. **Agent orchestration**: persist Agent Profiles and run modes first, then add Plan/PlanStep state, approval and execution APIs.
 
 ## Database Development
 

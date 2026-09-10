@@ -45,11 +45,13 @@ public final class ModelRegistry {
                                              String apiKey, String proxyHost, Integer proxyPort,
                                              Boolean enabled, Boolean active) {
         String id = UUID.randomUUID().toString();
-        boolean nextActive = Boolean.TRUE.equals(active) || profiles.values().stream().noneMatch(ModelProfileData::active);
+        boolean nextEnabled = enabled == null || enabled;
+        boolean nextActive = nextEnabled && (Boolean.TRUE.equals(active)
+                || profiles.values().stream().noneMatch(ModelProfileData::active));
         if (nextActive) deactivateAll();
         ModelProfileData profile = new ModelProfileData(id, required(name, "name"), normalizeProvider(provider),
                 normalizeUrl(baseUrl), required(model, "model"), blankToNull(apiKey), blankToNull(proxyHost),
-                validProxyPort(proxyPort == null ? 0 : proxyPort), enabled == null || enabled, nextActive);
+                validProxyPort(proxyPort == null ? 0 : proxyPort), nextEnabled, nextActive);
         save(profile);
         return ModelProfile.from(profile);
     }

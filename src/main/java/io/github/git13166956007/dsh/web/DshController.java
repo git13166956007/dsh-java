@@ -4,6 +4,9 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import tools.jackson.databind.node.ObjectNode;
 import io.github.git13166956007.dsh.agent.AgentLoop;
+import io.github.git13166956007.dsh.agent.AgentMode;
+import io.github.git13166956007.dsh.agent.AgentProfile;
+import io.github.git13166956007.dsh.agent.AgentProfileRegistry;
 import io.github.git13166956007.dsh.agent.AgentStreamListener;
 import io.github.git13166956007.dsh.agent.AgentRunResult;
 import io.github.git13166956007.dsh.agent.ChatMessage;
@@ -47,11 +50,12 @@ public final class DshController {
     private final McpClientManager mcpClientManager;
     private final SkillRegistry skillRegistry;
     private final ModelRegistry modelRegistry;
+    private final AgentProfileRegistry agentProfileRegistry;
 
     public DshController(DshRuntime runtime, AgentLoop agentLoop, ContextManager contextManager,
                          ToolRegistry toolRegistry, McpServerRegistry mcpServerRegistry,
                          McpClientManager mcpClientManager, SkillRegistry skillRegistry,
-                         ModelRegistry modelRegistry) {
+                         ModelRegistry modelRegistry, AgentProfileRegistry agentProfileRegistry) {
         this.runtime = runtime;
         this.agentLoop = agentLoop;
         this.contextManager = contextManager;
@@ -60,6 +64,7 @@ public final class DshController {
         this.mcpClientManager = mcpClientManager;
         this.skillRegistry = skillRegistry;
         this.modelRegistry = modelRegistry;
+        this.agentProfileRegistry = agentProfileRegistry;
     }
 
     @GetMapping("/health")
@@ -254,16 +259,59 @@ public final class DshController {
         }
     }
 
+    @GetMapping("/agents")
+    public java.util.List<AgentProfile> agents() {
+        return agentProfileRegistry.list();
+    }
+
+    @PostMapping("/agents")
+    public AgentProfile createAgent(@RequestBody AgentProfileRequest request) {
+        try {
+            return agentProfileRegistry.create(request.name(), AgentMode.parse(request.mode()), request.modelId(),
+                    request.systemPrompt(), request.maxTurns(), request.enabled(), request.active());
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
+        }
+    }
+
+    @PatchMapping("/agents/{id}")
+    public AgentProfile updateAgent(@PathVariable String id, @RequestBody AgentProfileRequest request) {
+        try {
+            return agentProfileRegistry.update(id, request.name(), request.mode() == null ? null : AgentMode.parse(request.mode()),
+                    request.modelId(), request.systemPrompt(), request.maxTurns(), request.enabled(), request.active());
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
+        }
+    }
+
+    @PostMapping("/agents/{id}/activate")
+    public AgentProfile activateAgent(@PathVariable String id) {
+        try {
+            return agentProfileRegistry.activate(id);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
+        }
+    }
+
+    @DeleteMapping("/agents/{id}")
+    public void deleteAgent(@PathVariable String id) {
+        if (!agentProfileRegistry.delete(id)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown agent profile: " + id);
+        }
+    }
+
     @PostMapping("/chat")
     public ChatResponse chat(@RequestBody ChatRequest request) throws Exception {
         if (request == null || request.message() == null || request.message().trim().isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "message must not be blank");
         }
+        AgentMode mode = requestedMode(request.mode());
         try {
             String conversationId = contextManager.open(request.conversationId(), request.message());
             java.util.List<ChatMessage> history = contextManager.history(conversationId);
             contextManager.append(conversationId, ChatMessage.user(request.message()));
-            AgentRunResult result = agentLoop.runDetailed(request.message(), request.apiKey(), history, request.modelId());
+            AgentRunResult result = agentLoop.runDetailed(request.message(), request.apiKey(), history, request.modelId(),
+                    request.agentId(), mode);
             contextManager.append(conversationId, ChatMessage.assistant(result.answer(), java.util.List.of()));
             return new ChatResponse(conversationId, result.answer(), result.trace(), result.turns());
         } catch (Exception exception) {
@@ -283,6 +331,7 @@ public final class DshController {
 
         String conversationId;
         java.util.List<ChatMessage> history;
+        AgentMode mode = requestedMode(request.mode());
         try {
             conversationId = contextManager.open(request.conversationId(), request.message());
             history = contextManager.history(conversationId);
@@ -297,7 +346,7 @@ public final class DshController {
         java.util.concurrent.CompletableFuture.runAsync(() -> {
             try {
                 AgentRunResult result = agentLoop.runStreaming(request.message(), request.apiKey(), finalHistory,
-                        request.modelId(), new AgentStreamListener() {
+                        request.modelId(), request.agentId(), mode, new AgentStreamListener() {
                     @Override
                     public void onText(String delta) {
                         send(emitter, "delta", delta);
@@ -336,6 +385,14 @@ public final class DshController {
         }
     }
 
+    private static AgentMode requestedMode(String value) {
+        try {
+            return value == null || value.trim().isEmpty() ? null : AgentMode.parse(value);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
+        }
+    }
+
     @ExceptionHandler(ModelConfigurationException.class)
     public ResponseEntity<ErrorResponse> modelConfigurationError(ModelConfigurationException exception) {
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
@@ -348,7 +405,8 @@ public final class DshController {
                 .body(new ErrorResponse(exception.getMessage()));
     }
 
-    public record ChatRequest(String message, String apiKey, String conversationId, String modelId) {
+    public record ChatRequest(String message, String apiKey, String conversationId, String modelId,
+                              String agentId, String mode) {
     }
 
     public record ToolUpdateRequest(Boolean enabled) {
@@ -359,6 +417,10 @@ public final class DshController {
 
     public record ModelRequest(String name, String provider, String baseUrl, String model, String apiKey,
                                String proxyHost, Integer proxyPort, Boolean enabled, Boolean active) {
+    }
+
+    public record AgentProfileRequest(String name, String mode, String modelId, String systemPrompt,
+                                      Integer maxTurns, Boolean enabled, Boolean active) {
     }
 
     public record ToolCreateRequest(String name, String description, tools.jackson.databind.JsonNode parameters,

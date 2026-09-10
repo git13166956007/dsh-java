@@ -75,3 +75,17 @@ CREATE TABLE IF NOT EXISTS dsh_model_profile (
     updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     INDEX idx_dsh_model_active (active, enabled)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS dsh_agent_profile (
+    id VARCHAR(64) NOT NULL PRIMARY KEY,
+    name VARCHAR(128) NOT NULL,
+    mode VARCHAR(32) NOT NULL,
+    model_id VARCHAR(64) NULL,
+    system_prompt TEXT NULL,
+    max_turns INT NOT NULL DEFAULT 8,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    active BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    INDEX idx_dsh_agent_active (active, enabled)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
