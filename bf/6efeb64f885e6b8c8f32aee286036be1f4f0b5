@@ -1,0 +1,20 @@
+frontend/src/App.vue
+  h_eb697744b14c1b 1961
+frontend/src/style.css
+  h_eb697744b14c1b 243
+src/main/java/io/github/git13166956007/dsh/agent/AgentLoop.java
+  h_eb697744b14c1b 213,334,477,838-840,851-853,858-861,881-885
+src/main/java/io/github/git13166956007/dsh/agent/AgentTraceEvent.java
+  h_eb697744b14c1b 10-17,19-26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "bf6efeb64f885e6b8c8f32aee286036be1f4f0b5",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
