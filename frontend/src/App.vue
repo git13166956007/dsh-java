@@ -170,6 +170,21 @@ async function loadPlugins() {
   }
 }
 
+async function unloadPlugins() {
+  if (pluginLoading.value) return
+  pluginLoading.value = true
+  try {
+    const response = await fetch('/api/v1/plugins/unload', { method: 'POST' })
+    if (!response.ok) throw new Error('Unable to unload plugins')
+    await refreshRuntime()
+    await refreshTools()
+  } catch (requestError) {
+    error.value = requestError.message
+  } finally {
+    pluginLoading.value = false
+  }
+}
+
 async function refreshTools() {
   try {
     const response = await fetch('/api/v1/tools')
@@ -1474,7 +1489,10 @@ onUnmounted(() => {
           <span class="runtime-port">:{{ apiPort }}</span>
         </div>
         <div class="runtime-meta">{{ runtime.pluginCount }} plugins registered</div>
-        <button class="secondary-button compact runtime-plugin-button" type="button" :disabled="pluginLoading" @click="loadPlugins">{{ pluginLoading ? 'Loading' : 'Load plugins' }}</button>
+        <div class="runtime-plugin-actions">
+          <button class="secondary-button compact runtime-plugin-button" type="button" :disabled="pluginLoading" @click="loadPlugins">{{ pluginLoading ? 'Loading' : 'Load plugins' }}</button>
+          <button v-if="runtime.pluginCount" class="secondary-button compact runtime-plugin-button" type="button" :disabled="pluginLoading" title="Unload dynamic plugins" @click="unloadPlugins">Unload</button>
+        </div>
       </div>
 
       <button class="new-run-button" type="button" @click="clearConversation">

@@ -130,6 +130,11 @@ public final class DshController {
         return runtime.pluginIds();
     }
 
+    @GetMapping("/plugins/details")
+    public java.util.List<DshRuntime.PluginInfo> pluginDetails() {
+        return runtime.pluginInfo();
+    }
+
     @PostMapping("/plugins/load")
     public java.util.List<String> loadPlugins() {
         try {
@@ -148,6 +153,11 @@ public final class DshController {
         } catch (Exception exception) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, exception.getMessage(), exception);
         }
+    }
+
+    @PostMapping("/plugins/unload")
+    public java.util.List<String> unloadPlugins() {
+        return runtime.unloadPlugins();
     }
 
     @GetMapping("/tools")

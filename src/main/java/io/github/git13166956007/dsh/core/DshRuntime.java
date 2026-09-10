@@ -131,6 +131,11 @@ public final class DshRuntime implements AutoCloseable {
         return Map.copyOf(result);
     }
 
+    public synchronized List<PluginInfo> pluginInfo() {
+        return plugins.stream().map(handle -> new PluginInfo(handle.plugin().id(), handle.plugin().version(),
+                handle.jar() == null ? null : handle.jar().toString(), handle.jar() != null)).toList();
+    }
+
     public <T> T service(ServiceKey<T> key) {
         Object value = services.get(key);
         if (value == null) throw new IllegalStateException("missing service: " + key);
@@ -279,6 +284,8 @@ public final class DshRuntime implements AutoCloseable {
     private record PluginCandidate(DshPlugin plugin, URLClassLoader loader, Path jar) { }
 
     private record PluginHandle(DshPlugin plugin, URLClassLoader loader, Path jar) { }
+
+    public record PluginInfo(String id, String version, String jar, boolean dynamic) { }
 
     private final class Context implements PluginContext {
         private final String pluginId;

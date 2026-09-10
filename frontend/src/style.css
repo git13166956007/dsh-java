@@ -25,6 +25,7 @@ button { cursor: pointer; }
 .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #d07b6f; box-shadow: 0 0 0 3px rgba(208, 123, 111, .12); }
 .status-dot.online { background: #8fd7bf; box-shadow: 0 0 0 3px rgba(143, 215, 191, .12); }
 .runtime-meta { margin-top: 8px; color: #7d898b; font-size: 11px; }
+.runtime-plugin-actions { display: flex; gap: 7px; margin-top: 9px; }
 .new-run-button { display: flex; align-items: center; gap: 9px; width: 100%; margin: 20px 0 28px; padding: 11px 12px; border: 1px solid #3d4b4f; background: #1c2528; color: #e7eceb; text-align: left; font-size: 12px; font-weight: 700; }
 .new-run-button:hover { background: #263235; border-color: #6b8984; }
 .button-icon { color: #9ce3ca; font-size: 17px; line-height: 10px; }
