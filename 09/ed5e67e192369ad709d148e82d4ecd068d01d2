@@ -1,0 +1,24 @@
+README.md
+  h_eb697744b14c1b 99,105,182
+docs/runtime-roadmap.md
+  h_eb697744b14c1b 12-13,28
+src/main/java/io/github/git13166956007/dsh/config/DshRuntimeConfiguration.java
+  h_eb697744b14c1b 341
+src/main/java/io/github/git13166956007/dsh/plan/PlanExecutor.java
+  h_eb697744b14c1b 8,50-91
+src/main/java/io/github/git13166956007/dsh/plan/PlanRegistry.java
+  h_eb697744b14c1b 120-136,160-174
+src/test/java/io/github/git13166956007/dsh/plan/PlanExecutorTest.java
+  h_eb697744b14c1b 19,182-222
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "09ed5e67e192369ad709d148e82d4ecd068d01d2",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
