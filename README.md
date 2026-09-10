@@ -34,6 +34,15 @@ VITE_API_TARGET=http://localhost:8080 npm run dev
 
 打开 `http://localhost:5173`。前端开发服务器会把 `/api` 请求代理到 Spring Boot。
 
+启动本地 MariaDB：
+
+```bash
+docker compose up -d mariadb
+docker compose ps
+```
+
+数据库数据挂载到项目旁的 `../venus/mariadb/dsh-java/data`，不会进入 Git。当前数据库初始化表结构用于后续会话、上下文、工具、MCP 和记忆能力接入；应用默认不强制依赖数据库启动。
+
 配置 DeepSeek API Key 后运行智能体：
 
 ```bash
@@ -65,6 +74,8 @@ curl -N -X POST http://localhost:8080/api/v1/chat/stream \
 调试前端可以在页面输入框临时填写 API Key。它只随当前请求提交，不保存到浏览器、本地配置或 Git；未填写时使用 `DEEPSEEK_API_KEY` 环境变量。
 
 当前默认使用 `deepseek-v4-flash`，内置了 `time_now` 工具。模型客户端是 OpenAI-compatible 的 DeepSeek Chat Completions 适配器，MCP 工具适配将在 `ToolRegistry` 边界上接入。
+
+详细能力缺口和实施顺序见 [`docs/runtime-roadmap.md`](docs/runtime-roadmap.md)。
 
 如果 IDEA 没有自动识别 JDK，项目 SDK 和 Gradle JVM 选择 Java 17 或更高版本。
 

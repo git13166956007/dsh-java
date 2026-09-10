@@ -1,0 +1,61 @@
+CREATE DATABASE IF NOT EXISTS dsh CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE dsh;
+
+CREATE TABLE IF NOT EXISTS dsh_conversation (
+    id CHAR(36) NOT NULL PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS dsh_message (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    conversation_id CHAR(36) NOT NULL,
+    turn_no INT NOT NULL,
+    role VARCHAR(16) NOT NULL,
+    content LONGTEXT NULL,
+    tool_calls_json LONGTEXT NULL,
+    tool_call_id VARCHAR(128) NULL,
+    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    CONSTRAINT fk_dsh_message_conversation
+        FOREIGN KEY (conversation_id) REFERENCES dsh_conversation (id),
+    INDEX idx_dsh_message_conversation (conversation_id, turn_no, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS dsh_tool_definition (
+    name VARCHAR(128) NOT NULL PRIMARY KEY,
+    source_type VARCHAR(32) NOT NULL,
+    source_id VARCHAR(255) NULL,
+    description TEXT NOT NULL,
+    input_schema_json LONGTEXT NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    version BIGINT NOT NULL DEFAULT 1,
+    updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    INDEX idx_dsh_tool_source (source_type, source_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS dsh_mcp_server (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(128) NOT NULL UNIQUE,
+    transport VARCHAR(16) NOT NULL,
+    endpoint VARCHAR(1000) NULL,
+    command VARCHAR(1000) NULL,
+    arguments_json TEXT NULL,
+    environment_json TEXT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS dsh_memory (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    namespace VARCHAR(128) NOT NULL,
+    subject_key VARCHAR(255) NOT NULL,
+    memory_type VARCHAR(32) NOT NULL,
+    content LONGTEXT NOT NULL,
+    metadata_json TEXT NULL,
+    importance DECIMAL(5, 4) NOT NULL DEFAULT 0.5000,
+    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    INDEX idx_dsh_memory_subject (namespace, subject_key, updated_at),
+    FULLTEXT INDEX ft_dsh_memory_content (content)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
