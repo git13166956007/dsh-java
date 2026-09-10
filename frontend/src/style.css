@@ -62,6 +62,19 @@ h2 { font-size: 17px; }
 .mode-picker:disabled { opacity: .55; }
 .icon-button { width: 29px; height: 29px; border: 1px solid #354246; background: transparent; color: #9ba8a7; font-size: 16px; }
 .icon-button:hover { border-color: #87cbb7; color: #b3edda; }
+.icon-button:disabled, .secondary-button:disabled { cursor: not-allowed; opacity: .45; }
+.conversation-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 43px; padding: 8px 34px; border-bottom: 1px solid #293236; background: #12191b; }
+.conversation-id { max-width: 240px; overflow: hidden; color: #718083; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow: ellipsis; white-space: nowrap; }
+.conversation-search { display: flex; align-items: center; gap: 5px; min-width: 190px; margin-left: auto; }
+.conversation-search input { width: 100%; min-width: 0; padding: 6px 8px; border: 1px solid #354246; outline: 0; background: #101618; color: #dce6e3; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.conversation-search input:focus { border-color: #6a9f92; box-shadow: 0 0 0 3px rgba(106, 159, 146, .09); }
+.compact-icon { width: 27px; height: 27px; flex: 0 0 27px; }
+.conversation-action-error { min-width: 0; color: #e79487; font-size: 11px; overflow-wrap: anywhere; }
+.conversation-search-results { display: grid; gap: 5px; padding: 8px 34px; border-bottom: 1px solid #293236; background: #101719; }
+.conversation-search-result { display: grid; gap: 4px; width: 100%; padding: 8px; border: 1px solid #29383a; background: transparent; color: #b9c7c3; text-align: left; }
+.conversation-search-result:hover { border-color: #6a9f92; background: #172221; }
+.conversation-search-result span { color: #718083; font: 9px ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase; }
+.conversation-search-result strong { color: #cdd9d5; font-size: 11px; font-weight: 500; overflow-wrap: anywhere; }
 .transcript { flex: 1; overflow: auto; padding: 28px max(24px, 7vw) 18px; }
 .empty-state { max-width: 370px; margin: 16vh auto 0; text-align: center; }
 .empty-glyph { display: grid; place-items: center; width: 43px; height: 43px; margin: 0 auto 17px; border: 1px solid #38554f; color: #9ce3ca; font-size: 20px; }
@@ -284,6 +297,9 @@ pre.result { color: #d6b98e; }
   .workspace { min-height: 640px; }
   .workspace-header { padding: 22px 18px 17px; }
   .workspace-header h1 { font-size: 19px; }
+  .conversation-toolbar { padding: 8px 18px; }
+  .conversation-search { order: 3; width: 100%; margin-left: 0; }
+  .conversation-search-results { padding: 8px 18px; }
   .trace-summary { display: none; }
   .tools-button { padding: 7px; }
   .tools-button span:first-child { display: none; }

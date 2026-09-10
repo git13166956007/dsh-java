@@ -168,6 +168,10 @@ const toolSaving = ref(false)
 const sending = ref(false)
 const error = ref('')
 const transcript = ref(null)
+const conversationSearchQuery = ref('')
+const conversationSearchResults = ref([])
+const conversationActionError = ref('')
+const conversationActionLoading = ref(false)
 const apiPort = (() => {
   const target = import.meta.env.VITE_API_TARGET || 'http://localhost:8080'
   try {
@@ -1835,6 +1839,79 @@ function clearConversation() {
   conversationId.value = null
   contextInfo.value = null
   contextError.value = ''
+  conversationSearchQuery.value = ''
+  conversationSearchResults.value = []
+  conversationActionError.value = ''
+}
+
+function replayMessageList(items) {
+  return (items || []).map((item) => {
+    const role = String(item.role || '').toLowerCase()
+    if (role === 'tool') {
+      return { role: 'tool', id: item.toolCallId || null, name: 'tool', arguments: null, result: item.content || '', state: 'complete', runId: null }
+    }
+    if (role === 'user') return { role: 'user', content: item.content || '' }
+    return { role: 'assistant', content: item.content || '', reasoningContent: item.reasoningContent || '' }
+  })
+}
+
+async function replayConversation() {
+  if (!conversationId.value || conversationActionLoading.value) return
+  conversationActionLoading.value = true
+  conversationActionError.value = ''
+  try {
+    const response = await fetch(`/api/v1/conversations/${encodeURIComponent(conversationId.value)}/messages`)
+    const payload = await response.json().catch(() => [])
+    if (!response.ok) throw new Error(payload.message || payload.error || 'Conversation replay failed')
+    messages.value = replayMessageList(payload)
+    trace.value = []
+    conversationSearchResults.value = []
+    await Promise.all([refreshContext(), refreshMemories()])
+    await scrollTranscript()
+  } catch (requestError) {
+    conversationActionError.value = requestError.message
+  } finally {
+    conversationActionLoading.value = false
+  }
+}
+
+async function forkConversation() {
+  if (!conversationId.value || conversationActionLoading.value) return
+  conversationActionLoading.value = true
+  conversationActionError.value = ''
+  try {
+    const response = await fetch(`/api/v1/conversations/${encodeURIComponent(conversationId.value)}/fork`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: `Fork ${new Date().toLocaleString('zh-CN')}` })
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload.message || payload.error || 'Conversation fork failed')
+    conversationId.value = payload.conversationId
+    conversationActionLoading.value = false
+    await replayConversation()
+  } catch (requestError) {
+    conversationActionError.value = requestError.message
+  } finally {
+    conversationActionLoading.value = false
+  }
+}
+
+async function searchConversation() {
+  if (!conversationId.value || !conversationSearchQuery.value.trim() || conversationActionLoading.value) return
+  conversationActionLoading.value = true
+  conversationActionError.value = ''
+  try {
+    const params = new URLSearchParams({ query: conversationSearchQuery.value.trim(), limit: '20' })
+    const response = await fetch(`/api/v1/conversations/${encodeURIComponent(conversationId.value)}/search?${params}`)
+    const payload = await response.json().catch(() => [])
+    if (!response.ok) throw new Error(payload.message || payload.error || 'Conversation search failed')
+    conversationSearchResults.value = payload
+  } catch (requestError) {
+    conversationActionError.value = requestError.message
+  } finally {
+    conversationActionLoading.value = false
+  }
 }
 
 function formatArguments(argumentsNode) {
@@ -2038,6 +2115,25 @@ onUnmounted(() => {
           <button class="icon-button" type="button" title="Clear current run" aria-label="Clear current run" @click="clearConversation">⌫</button>
         </div>
       </header>
+
+      <div class="conversation-toolbar">
+        <span class="conversation-id" :title="conversationId || 'A new conversation will be created on the next run'">
+          {{ conversationId ? `conversation ${conversationId}` : 'new conversation' }}
+        </span>
+        <button class="secondary-button compact" type="button" title="Replay current conversation" :disabled="!conversationId || conversationActionLoading" @click="replayConversation">Replay</button>
+        <button class="secondary-button compact" type="button" title="Fork current conversation" :disabled="!conversationId || conversationActionLoading" @click="forkConversation">Fork</button>
+        <form class="conversation-search" @submit.prevent="searchConversation">
+          <input v-model="conversationSearchQuery" type="search" placeholder="Search current conversation" :disabled="!conversationId || conversationActionLoading" />
+          <button class="icon-button compact-icon" type="submit" title="Search current conversation" aria-label="Search current conversation" :disabled="!conversationId || conversationActionLoading || !conversationSearchQuery.trim()">⌕</button>
+        </form>
+        <span v-if="conversationActionError" class="conversation-action-error">{{ conversationActionError }}</span>
+      </div>
+      <div v-if="conversationSearchResults.length" class="conversation-search-results">
+        <button v-for="result in conversationSearchResults" :key="`${result.messageIndex}-${result.content}`" type="button" class="conversation-search-result" @click="conversationSearchResults = []">
+          <span>{{ result.messageIndex + 1 }} · {{ result.role }}</span>
+          <strong>{{ result.content }}</strong>
+        </button>
+      </div>
 
       <div ref="transcript" class="transcript">
         <div v-if="messages.length === 0" class="empty-state">
