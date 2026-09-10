@@ -1,0 +1,45 @@
+src/test/java/io/github/git13166956007/dsh/DshSelfTest.java
+  s_9a21b9236715d7::t_67c33b5e2d4ae0 30
+  s_9a21b9236715d7::t_c4ae3551d2a4b7 1-29,31-42,45
+  s_9a21b9236715d7::t_f23ca074d86431 43-44
+README.md
+  s_9a21b9236715d7::t_c4ae3551d2a4b7 2-16,18-35
+  s_9a21b9236715d7::t_c6b4cce6afedb0 17
+.gitignore
+  s_9a21b9236715d7::t_c4ae3551d2a4b7 1-7
+src/main/java/io/github/git13166956007/dsh/EventBus.java
+  s_9a21b9236715d7::t_c4ae3551d2a4b7 1-28
+src/main/java/io/github/git13166956007/dsh/DshRuntime.java
+  s_9a21b9236715d7::t_67c33b5e2d4ae0 39-44
+  s_9a21b9236715d7::t_c4ae3551d2a4b7 1-38,45-94
+src/main/java/io/github/git13166956007/dsh/DshPlugin.java
+  s_9a21b9236715d7::t_c4ae3551d2a4b7 1-7
+src/main/java/io/github/git13166956007/dsh/ServiceKey.java
+  s_9a21b9236715d7::t_c4ae3551d2a4b7 1-38
+src/main/java/io/github/git13166956007/dsh/Registration.java
+  s_9a21b9236715d7::t_c4ae3551d2a4b7 1-7
+src/main/java/io/github/git13166956007/dsh/PluginContext.java
+  s_9a21b9236715d7::t_c4ae3551d2a4b7 1-13
+src/main/java/io/github/git13166956007/dsh/JsonlSessionStore.java
+  s_9a21b9236715d7::t_c4ae3551d2a4b7 1-39
+src/main/java/io/github/git13166956007/dsh/ToolProvider.java
+  s_9a21b9236715d7::t_c4ae3551d2a4b7 1-10
+src/main/java/io/github/git13166956007/dsh/ChatModel.java
+  s_9a21b9236715d7::t_c4ae3551d2a4b7 1-5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9f0a349a766601703f4e23d3b3863f3106e81e21",
+  "prompts": {},
+  "sessions": {
+    "s_9a21b9236715d7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08a23-db0c-7942-ba5f-9437fa4c366f",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "Sherlock <zhang_xudong@venusgroup.com.cn>"
+    }
+  }
+}
