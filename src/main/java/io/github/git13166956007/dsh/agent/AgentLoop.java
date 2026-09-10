@@ -29,6 +29,10 @@ public final class AgentLoop {
     }
 
     public AgentRunResult runDetailed(String prompt, String apiKey) throws Exception {
+        return runDetailed(prompt, apiKey, List.of());
+    }
+
+    public AgentRunResult runDetailed(String prompt, String apiKey, List<ChatMessage> history) throws Exception {
         if (prompt == null || prompt.trim().isEmpty()) {
             throw new IllegalArgumentException("prompt must not be blank");
         }
@@ -36,6 +40,7 @@ public final class AgentLoop {
         List<ChatMessage> messages = new ArrayList<ChatMessage>();
         List<AgentTraceEvent> trace = new ArrayList<AgentTraceEvent>();
         messages.add(ChatMessage.system(SYSTEM_PROMPT));
+        messages.addAll(history);
         messages.add(ChatMessage.user(prompt));
 
         for (int turn = 0; turn < maxTurns; turn++) {
@@ -64,6 +69,11 @@ public final class AgentLoop {
     }
 
     public AgentRunResult runStreaming(String prompt, String apiKey, AgentStreamListener listener) throws Exception {
+        return runStreaming(prompt, apiKey, List.of(), listener);
+    }
+
+    public AgentRunResult runStreaming(String prompt, String apiKey, List<ChatMessage> history,
+                                       AgentStreamListener listener) throws Exception {
         if (prompt == null || prompt.trim().isEmpty()) {
             throw new IllegalArgumentException("prompt must not be blank");
         }
@@ -71,6 +81,7 @@ public final class AgentLoop {
         List<ChatMessage> messages = new ArrayList<ChatMessage>();
         List<AgentTraceEvent> trace = new ArrayList<AgentTraceEvent>();
         messages.add(ChatMessage.system(SYSTEM_PROMPT));
+        messages.addAll(history);
         messages.add(ChatMessage.user(prompt));
 
         for (int turn = 0; turn < maxTurns; turn++) {

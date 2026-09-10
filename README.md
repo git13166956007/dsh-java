@@ -71,6 +71,17 @@ curl -N -X POST http://localhost:8080/api/v1/chat/stream \
   -d '{"message":"请调用 time_now 工具，然后用 Markdown 告诉我当前时间。"}'
 ```
 
+启用 MariaDB 会话上下文：
+
+```bash
+export DSH_PERSISTENCE_ENABLED=true
+./gradlew bootRun
+```
+
+同一个 `conversationId` 会复用最近的历史消息；不传时服务会创建新的会话 ID。工具管理接口为 `GET /api/v1/tools` 和 `PATCH /api/v1/tools/{name}`，请求体示例为 `{"enabled":false}`。
+
+MCP Server 配置管理接口为 `GET/POST/PATCH/DELETE /api/v1/mcp/servers`。当前只保存和校验连接配置，状态会显示为 `DISCONNECTED`；真正的 MCP 连接、工具同步和重连策略随后接入。
+
 调试前端可以在页面输入框临时填写 API Key。它只随当前请求提交，不保存到浏览器、本地配置或 Git；未填写时使用 `DEEPSEEK_API_KEY` 环境变量。
 
 当前默认使用 `deepseek-v4-flash`，内置了 `time_now` 工具。模型客户端是 OpenAI-compatible 的 DeepSeek Chat Completions 适配器，MCP 工具适配将在 `ToolRegistry` 边界上接入。

@@ -7,6 +7,7 @@ import 'katex/dist/katex.min.css'
 
 const draft = ref('')
 const apiKey = ref('')
+const conversationId = ref(null)
 const messages = ref([
   {
     role: 'assistant',
@@ -58,7 +59,11 @@ async function sendMessage() {
     const response = await fetch('/api/v1/chat/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: prompt, apiKey: apiKey.value.trim() || null })
+      body: JSON.stringify({
+        message: prompt,
+        apiKey: apiKey.value.trim() || null,
+        conversationId: conversationId.value
+      })
     })
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}))
@@ -75,6 +80,7 @@ async function sendMessage() {
         if (pending) pending.result = data.result
         else trace.value.push(data)
       } else if (event === 'done') {
+        conversationId.value = data.conversationId || conversationId.value
         messages.value[assistantIndex].content = data.answer || messages.value[assistantIndex].content
         trace.value = data.trace || trace.value
         history.value.unshift({
@@ -146,6 +152,7 @@ function clearConversation() {
   messages.value = []
   trace.value = []
   error.value = ''
+  conversationId.value = null
 }
 
 function formatArguments(argumentsNode) {

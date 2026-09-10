@@ -18,19 +18,39 @@ public final class ToolRegistry {
 
     public synchronized List<ToolDefinition> definitions() {
         List<ToolDefinition> definitions = new ArrayList<ToolDefinition>();
-        for (RegisteredTool tool : tools.values()) definitions.add(tool.definition);
+        for (RegisteredTool tool : tools.values()) {
+            if (tool.enabled) definitions.add(tool.definition);
+        }
         return definitions;
+    }
+
+    public synchronized List<ToolInfo> list() {
+        List<ToolInfo> result = new ArrayList<ToolInfo>();
+        for (RegisteredTool tool : tools.values()) {
+            result.add(new ToolInfo(tool.definition.name(), tool.definition.description(),
+                    tool.definition.parameters(), tool.enabled));
+        }
+        return result;
+    }
+
+    public synchronized boolean setEnabled(String name, boolean enabled) {
+        RegisteredTool tool = tools.get(name);
+        if (tool == null) return false;
+        tool.enabled = enabled;
+        return true;
     }
 
     public synchronized String execute(String name, JsonNode arguments) throws Exception {
         RegisteredTool tool = tools.get(name);
         if (tool == null) throw new IllegalArgumentException("unknown tool: " + name);
+        if (!tool.enabled) throw new IllegalStateException("tool is disabled: " + name);
         return tool.handler.execute(arguments);
     }
 
     private static final class RegisteredTool {
         private final ToolDefinition definition;
         private final ToolHandler handler;
+        private boolean enabled = true;
 
         private RegisteredTool(ToolDefinition definition, ToolHandler handler) {
             this.definition = definition;

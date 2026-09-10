@@ -4,7 +4,12 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 import io.github.git13166956007.dsh.agent.AgentLoop;
 import io.github.git13166956007.dsh.agent.ChatModel;
+import io.github.git13166956007.dsh.context.ContextManager;
+import io.github.git13166956007.dsh.context.ConversationStore;
+import io.github.git13166956007.dsh.context.InMemoryConversationStore;
+import io.github.git13166956007.dsh.context.MariaDbConversationStore;
 import io.github.git13166956007.dsh.core.DshRuntime;
+import io.github.git13166956007.dsh.mcp.McpServerRegistry;
 import io.github.git13166956007.dsh.provider.deepseek.DeepSeekChatModel;
 import io.github.git13166956007.dsh.tool.ToolDefinition;
 import io.github.git13166956007.dsh.tool.ToolRegistry;
@@ -52,5 +57,26 @@ public class DshRuntimeConfiguration {
     @Bean
     public AgentLoop agentLoop(ChatModel chatModel, ToolRegistry toolRegistry) {
         return new AgentLoop(chatModel, toolRegistry, 8);
+    }
+
+    @Bean
+    public ConversationStore conversationStore(Environment environment) {
+        boolean enabled = Boolean.parseBoolean(environment.getProperty("dsh.persistence.enabled", "false"));
+        if (!enabled) return new InMemoryConversationStore();
+        return new MariaDbConversationStore(
+                environment.getProperty("dsh.persistence.jdbc-url"),
+                environment.getProperty("dsh.persistence.username"),
+                environment.getProperty("dsh.persistence.password"));
+    }
+
+    @Bean
+    public ContextManager contextManager(ConversationStore conversationStore, Environment environment) {
+        return new ContextManager(conversationStore, Integer.parseInt(
+                environment.getProperty("dsh.persistence.max-history-messages", "24")));
+    }
+
+    @Bean
+    public McpServerRegistry mcpServerRegistry() {
+        return new McpServerRegistry();
     }
 }
