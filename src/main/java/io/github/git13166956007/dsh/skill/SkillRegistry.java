@@ -58,7 +58,7 @@ public final class SkillRegistry {
 
     public synchronized SkillInfo setEnabled(String id, boolean enabled) {
         SkillInfo current = require(id);
-        SkillInfo updated = new SkillInfo(current.id(), current.name(), current.description(), enabled, current.content());
+        SkillInfo updated = withEnabled(current, enabled);
         if (stateStore != null) {
             try {
                 stateStore.save(id, enabled);
@@ -103,6 +103,7 @@ public final class SkillRegistry {
     }
 
     private static SkillInfo withEnabled(SkillInfo skill, boolean enabled) {
-        return new SkillInfo(skill.id(), skill.name(), skill.description(), enabled, skill.content());
+        return new SkillInfo(skill.id(), skill.name(), skill.version(), skill.description(), enabled,
+                skill.content(), skill.resources());
     }
 }

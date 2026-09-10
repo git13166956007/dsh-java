@@ -24,6 +24,10 @@ dsh:
     secret-key: ${DSH_SECRET_KEY:}
   agent:
     max-turns: ${DSH_AGENT_MAX_TURNS:8}
+  memory:
+    auto-extract:
+      enabled: ${DSH_MEMORY_AUTO_EXTRACT_ENABLED:false}
+      max-records: ${DSH_MEMORY_AUTO_EXTRACT_MAX_RECORDS:3}
   tools:
     workspace:
       enabled: ${DSH_WORKSPACE_TOOLS_ENABLED:false}

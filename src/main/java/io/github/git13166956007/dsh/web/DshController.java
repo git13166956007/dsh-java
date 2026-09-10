@@ -83,6 +83,8 @@ public final class DshController {
     private final RunManager runManager;
     private final ChatModel chatModel;
     private final Path pluginDirectory;
+    private final boolean memoryAutoExtractEnabled;
+    private final int memoryAutoExtractMaxRecords;
 
     public DshController(DshRuntime runtime, AgentLoop agentLoop, ContextManager contextManager,
                          ToolRegistry toolRegistry, McpServerRegistry mcpServerRegistry,
@@ -109,6 +111,8 @@ public final class DshController {
         this.runManager = runManager;
         this.chatModel = chatModel;
         this.pluginDirectory = Path.of(environment.getProperty("dsh.plugins.directory", "plugins"));
+        this.memoryAutoExtractEnabled = Boolean.parseBoolean(environment.getProperty("dsh.memory.auto-extract.enabled", "false"));
+        this.memoryAutoExtractMaxRecords = Integer.parseInt(environment.getProperty("dsh.memory.auto-extract.max-records", "3"));
     }
 
     @GetMapping("/health")
@@ -746,6 +750,7 @@ public final class DshController {
                     io.github.git13166956007.dsh.agent.AgentRunContext.chat(conversationId, request.agentId()));
             if (result.pendingApproval() == null) {
                 contextManager.append(conversationId, ChatMessage.assistant(result.answer(), java.util.List.of()));
+                extractMemories(conversationId, request, result.answer());
             }
             return new ChatResponse(conversationId, result.answer(), result.trace(), result.turns(), result.runId(),
                     result.pendingApproval());
@@ -810,6 +815,7 @@ public final class DshController {
                     send(emitter, "approval_required", result.pendingApproval());
                 } else {
                     contextManager.append(finalConversationId, ChatMessage.assistant(result.answer(), java.util.List.of()));
+                    extractMemories(finalConversationId, request, result.answer());
                 }
                 send(emitter, "done", new StreamResponse(finalConversationId, result.answer(), result.trace(), result.turns(),
                         result.runId(), result.pendingApproval()));
@@ -863,6 +869,16 @@ public final class DshController {
                     modelTokenizer(request.modelId(), request.agentId()));
         } catch (Exception ignored) {
             // Context compaction is best effort; truncation remains the fallback when the model is unavailable.
+        }
+    }
+
+    private void extractMemories(String conversationId, ChatRequest request, String answer) {
+        if (!memoryAutoExtractEnabled) return;
+        try {
+            memoryManager.extractAndSave(chatModel, request.apiKey(), request.modelId(),
+                    "conversation", conversationId, request.message(), answer, memoryAutoExtractMaxRecords);
+        } catch (Exception ignored) {
+            // Memory extraction is best effort and must not change the chat result.
         }
     }
 

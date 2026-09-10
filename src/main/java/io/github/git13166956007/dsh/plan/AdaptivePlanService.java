@@ -59,6 +59,7 @@ public final class AdaptivePlanService {
         String planningPrompt = "Create an execution plan for the user's task. Return JSON only, with this exact shape: "
                 + "{\"title\":\"short title\",\"goal\":\"goal\",\"steps\":["
                 + "{\"title\":\"step title\",\"instruction\":\"complete instruction\","
+                + "\"dependsOn\":[],"
                 + "\"worker\":{\"name\":\"optional worker name\",\"systemPrompt\":\"optional worker instructions\","
                 + "\"allowedToolNames\":[],\"skillIds\":[]}}]}"
                 + " No Markdown, no code fence, no commentary. Use at most " + stepLimit + " ordered steps.\n\nTask:\n" + prompt.trim();
@@ -72,6 +73,7 @@ public final class AdaptivePlanService {
         }
 
         List<PlanRegistry.PlanStepInput> steps = new ArrayList<PlanRegistry.PlanStepInput>();
+        int stepNo = 1;
         for (JsonNode step : stepNodes) {
             String stepTitle = required(step.path("title").asText(null), "generated step title");
             String instruction = required(step.path("instruction").asText(null), "generated step instruction");
@@ -79,7 +81,9 @@ public final class AdaptivePlanService {
             if (subAgentId == null && allowDynamicSubAgents) {
                 subAgentId = createDynamicSubAgent(step, stepTitle, instruction, modelId);
             }
-            steps.add(new PlanRegistry.PlanStepInput(stepTitle, instruction, 1, subAgentId));
+            steps.add(new PlanRegistry.PlanStepInput(stepTitle, instruction, 1, subAgentId,
+                    readIntegers(step.path("dependsOn"), stepNo)));
+            stepNo++;
         }
         return plans.create(title, goal, agentId, modelId, approvalRequired,
                 maxConcurrency == null ? 1 : maxConcurrency, steps);
@@ -115,6 +119,21 @@ public final class AdaptivePlanService {
             if (text != null && !text.isBlank() && !result.contains(text.trim())) result.add(text.trim());
         }
         return result;
+    }
+
+    private static List<Integer> readIntegers(JsonNode node, int stepNo) {
+        if (node == null || node.isMissingNode() || node.isNull()) return List.of();
+        if (!node.isArray()) throw new IllegalArgumentException("generated step dependsOn must be an array");
+        List<Integer> result = new ArrayList<Integer>();
+        for (JsonNode value : node) {
+            if (!value.isIntegralNumber()) throw new IllegalArgumentException("generated step dependencies must be integers");
+            int dependency = value.asInt();
+            if (dependency < 1 || dependency >= stepNo || result.contains(dependency)) {
+                throw new IllegalArgumentException("generated step dependencies must reference earlier unique steps");
+            }
+            result.add(dependency);
+        }
+        return List.copyOf(result);
     }
 
     private String chooseSubAgent(String text) {

@@ -100,11 +100,11 @@ Sub-agent Profile 管理接口为 `GET/POST/PATCH/DELETE /api/v1/sub-agents`。�
 
 计划接口为 `GET /api/v1/plans`、`GET /api/v1/plans/{id}`、`POST /api/v1/plans`、`POST /api/v1/plans/{id}/approve`、`POST /api/v1/plans/{id}/execute` 和 `POST /api/v1/plans/{id}/cancel`。Plan 创建时提交有序步骤、`dependsOn` 步骤编号和 `maxConcurrency`；需要人工确认的计划先处于 `draft`，审批后进入 `approved`，执行过程中会持久化每个步骤的 `pending/running/completed/failed/cancelled` 状态，并支持单步骤重试和满足依赖后的并行执行。
 
-自适应计划接口为 `POST /api/v1/plans/adaptive`。它会调用 Planning Agent 生成严格 JSON 步骤，服务端限制最大步骤数、校验结构，并根据子智能体的名称、说明、工具和 Skill 能力做确定性匹配；匹配不到时回退到父 Agent。生成结果直接进入同一套审批和执行状态机。
+自适应计划接口为 `POST /api/v1/plans/adaptive`。它会调用 Planning Agent 生成严格 JSON 步骤，服务端限制最大步骤数、校验结构和步骤依赖，并根据子智能体的名称、说明、工具和 Skill 能力做确定性匹配；匹配不到时回退到父 Agent。生成结果直接进入同一套审批和执行状态机。
 
 自适应计划可以传 `allowDynamicSubAgents: true`。当已有 Worker 都无法匹配时，Planning Agent 可为步骤返回 Worker 描述，服务端会过滤不存在的工具/Skill，创建并持久化一个 `execution` Sub-agent Profile，再将步骤绑定到它。默认关闭，前端 Adaptive Planner 中可显式开启。
 
-记忆接口为 `GET /api/v1/memories`、`GET /api/v1/memories/search`、`POST /api/v1/memories` 和 `DELETE /api/v1/memories/{id}`。记忆按 `namespace + subjectKey` 隔离，当前聊天会以 `conversation + conversationId` 自动检索相关记忆并注入系统上下文；前端 Memory Tab 可以显式添加和删除记忆。
+记忆接口为 `GET /api/v1/memories`、`GET /api/v1/memories/search`、`POST /api/v1/memories` 和 `DELETE /api/v1/memories/{id}`。记忆按 `namespace + subjectKey` 隔离，当前聊天会以 `conversation + conversationId` 自动检索相关记忆并注入系统上下文；前端 Memory Tab 可以显式添加和删除记忆。设置 `DSH_MEMORY_AUTO_EXTRACT_ENABLED=true` 后，每次完成聊天会用模型提取少量持久化事实/偏好，自动过滤疑似密钥、密码和短期任务信息并去重；提取失败不会影响聊天结果。
 
 运行追踪接口为 `GET /api/v1/runs`、`GET /api/v1/runs/{id}`、`GET /api/v1/runs/{id}/events`、`GET /api/v1/runs/{id}/events/stream` 和 `GET /api/v1/runs/{id}/tree`。聊天响应和流式 `done` 事件会返回 `runId`；计划执行会创建 `plan -> plan_step -> agent/sub_agent` 的父子运行树，可按 `planId` 查询。每个运行会记录模型响应、工具调用、工具结果、重试和终态，启用 MariaDB 时会持久化到 `dsh_run` 与 `dsh_run_event`。事件流会先回放历史事件，再推送实时事件，前端 Plan Inspector 用它显示步骤进度。
 
@@ -139,12 +139,13 @@ export DSH_WORKSPACE_PROCESS_MAX_OUTPUT_BYTES=1000000
 
 MCP Server 管理已经接入官方 Java SDK `0.17.0`，支持 `stdio`、`sse` 和 `streamable_http`。HTTP endpoint 填写服务地址，敏感参数使用 Credential Reference 或加密 Header/Environment 保存，不要把 Key 放进 URL。配置后通过 `POST /api/v1/mcp/servers/{id}/connect` 建立会话，工具会自动同步进统一的 ToolRegistry；`refresh`、`disconnect` 分别用于刷新工具和释放连接。MCP 还提供资源列表/读取、Prompt 列表/加载和 `GET /api/v1/mcp/servers/{id}/health` 健康接口，前端 MCP 面板可直接调试。MCP 工具会以 `mcp_<server-id>_<tool-name>` 暴露，名称只使用模型兼容的字母、数字、下划线和连字符，避免不同 Server 同名冲突；Server 级审批策略会持久化并应用到同步工具。
 
-Skills 使用文件系统目录，默认扫描项目根目录 `skills/`，也可以通过 `DSH_SKILLS_DIR` 指定目录。每个 Skill 的入口文件是 `skills/<name>/SKILL.md`，支持简单 front matter：
+Skills 使用文件系统目录，默认扫描项目根目录 `skills/`，也可以通过 `DSH_SKILLS_DIR` 指定目录。每个 Skill 的入口文件是 `skills/<name>/SKILL.md`，支持简单 front matter；`version` 默认是 `0.1.0`，入口文件旁的普通文件会作为相对资源索引返回：
 
 ```markdown
 ---
 name: Writing Style
 description: Keep answers concise and structured.
+version: 1.0.0
 enabled: true
 ---
 

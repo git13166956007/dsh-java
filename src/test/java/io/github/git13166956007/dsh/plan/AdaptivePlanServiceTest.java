@@ -61,4 +61,19 @@ class AdaptivePlanServiceTest {
         assertEquals("Deployment worker", subAgents.find(plan.steps().get(0).subAgentId()).name());
         assertEquals(List.of(), subAgents.find(plan.steps().get(0).subAgentId()).allowedToolNames());
     }
+
+    @Test
+    void preservesDependenciesGeneratedByThePlanningAgent() throws Exception {
+        ChatModel model = (messages, definitions) -> new ModelResponse(
+                "{\"title\":\"Build task\",\"goal\":\"Build and verify\",\"steps\":["
+                        + "{\"title\":\"Build\",\"instruction\":\"Build the project\",\"dependsOn\":[]},"
+                        + "{\"title\":\"Verify\",\"instruction\":\"Verify the build\",\"dependsOn\":[1]}]}",
+                List.of(), "stop");
+        Plan plan = new AdaptivePlanService(new AgentLoop(model, new ToolRegistry(), 2),
+                new PlanRegistry(new InMemoryPlanStore()),
+                new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 8), new ObjectMapper())
+                .create("Build and verify", null, null, null, false, 4, 2);
+
+        assertEquals(List.of(1), plan.steps().get(1).dependsOn());
+    }
 }

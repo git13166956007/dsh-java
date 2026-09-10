@@ -4,7 +4,9 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 public final class SkillLoader {
@@ -25,10 +27,20 @@ public final class SkillLoader {
         }
         String id = file.getParent().getFileName().toString();
         String name = frontMatter.getOrDefault("name", id);
+        String version = frontMatter.getOrDefault("version", "0.1.0");
         String description = frontMatter.getOrDefault("description", "");
         if (description.isBlank()) description = firstParagraph(body);
         boolean enabled = !"false".equalsIgnoreCase(frontMatter.getOrDefault("enabled", "true"));
-        return new SkillInfo(id, name, description, enabled, body);
+        List<String> resources = new ArrayList<String>();
+        try (var paths = Files.walk(file.getParent())) {
+            paths.filter(path -> Files.isRegularFile(path, java.nio.file.LinkOption.NOFOLLOW_LINKS))
+                    .filter(path -> !Files.isSymbolicLink(path))
+                    .filter(path -> !path.equals(file))
+                    .map(path -> file.getParent().relativize(path).toString().replace('\\', '/'))
+                    .sorted()
+                    .forEach(resources::add);
+        }
+        return new SkillInfo(id, name, version, description, enabled, body, resources);
     }
 
     private static String firstParagraph(String body) {

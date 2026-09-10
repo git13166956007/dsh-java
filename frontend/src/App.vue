@@ -1731,8 +1731,8 @@ onUnmounted(() => {
       <div v-if="capabilityTab === 'skills'" class="tool-manager-list">
         <div v-for="skill in skills" :key="skill.id" class="managed-tool skill-item">
           <div class="managed-tool-copy">
-            <div class="managed-tool-title"><strong>{{ skill.name }}</strong><span class="tool-source">{{ skill.id }}</span></div>
-            <p>{{ skill.description }}</p>
+            <div class="managed-tool-title"><strong>{{ skill.name }}</strong><span class="tool-source">{{ skill.id }} · v{{ skill.version || '0.1.0' }}</span></div>
+            <p>{{ skill.description }}<span v-if="skill.resources?.length"> · {{ skill.resources.length }} resource{{ skill.resources.length === 1 ? '' : 's' }}</span></p>
             <details><summary>查看 SKILL.md</summary><pre class="skill-content">{{ skill.content }}</pre></details>
           </div>
           <label class="tool-toggle" :title="skill.enabled ? 'Disable skill' : 'Enable skill'"><input type="checkbox" :checked="skill.enabled" @change="toggleSkill(skill)" /><span></span></label>

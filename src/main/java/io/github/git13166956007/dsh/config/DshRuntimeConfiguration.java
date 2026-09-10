@@ -232,8 +232,8 @@ public class DshRuntimeConfiguration {
     }
 
     @Bean
-    public MemoryManager memoryManager(MemoryStore store) {
-        return new MemoryManager(store);
+    public MemoryManager memoryManager(MemoryStore store, ObjectMapper objectMapper) {
+        return new MemoryManager(store, objectMapper);
     }
 
     @Bean
