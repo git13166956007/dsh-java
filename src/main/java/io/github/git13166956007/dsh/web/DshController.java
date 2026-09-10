@@ -13,6 +13,8 @@ import io.github.git13166956007.dsh.agent.AgentProfileRegistry;
 import io.github.git13166956007.dsh.agent.SubAgentProfile;
 import io.github.git13166956007.dsh.agent.SubAgentProfileRegistry;
 import io.github.git13166956007.dsh.agent.SubAgentRunner;
+import io.github.git13166956007.dsh.agent.SubAgentSession;
+import io.github.git13166956007.dsh.agent.SubAgentSessionManager;
 import io.github.git13166956007.dsh.agent.AgentStreamListener;
 import io.github.git13166956007.dsh.agent.AgentRunResult;
 import io.github.git13166956007.dsh.agent.ChatMessage;
@@ -81,6 +83,7 @@ public final class DshController {
     private final PlanExecutor planExecutor;
     private final SubAgentProfileRegistry subAgentProfileRegistry;
     private final SubAgentRunner subAgentRunner;
+    private final SubAgentSessionManager subAgentSessionManager;
     private final AdaptivePlanService adaptivePlanService;
     private final MemoryManager memoryManager;
     private final RunManager runManager;
@@ -95,7 +98,7 @@ public final class DshController {
                          ModelRegistry modelRegistry, AgentProfileRegistry agentProfileRegistry,
                          PlanRegistry planRegistry, PlanExecutor planExecutor,
                          SubAgentProfileRegistry subAgentProfileRegistry, SubAgentRunner subAgentRunner,
-                         AdaptivePlanService adaptivePlanService,
+                         SubAgentSessionManager subAgentSessionManager, AdaptivePlanService adaptivePlanService,
                          MemoryManager memoryManager, RunManager runManager, ChatModel chatModel,
                          org.springframework.core.env.Environment environment) {
         this.runtime = runtime;
@@ -111,6 +114,7 @@ public final class DshController {
         this.planExecutor = planExecutor;
         this.subAgentProfileRegistry = subAgentProfileRegistry;
         this.subAgentRunner = subAgentRunner;
+        this.subAgentSessionManager = subAgentSessionManager;
         this.adaptivePlanService = adaptivePlanService;
         this.memoryManager = memoryManager;
         this.runManager = runManager;
@@ -586,6 +590,66 @@ public final class DshController {
         }
     }
 
+    @GetMapping("/sub-agents/sessions")
+    public java.util.List<SubAgentSession> subAgentSessions() throws Exception {
+        return subAgentSessionManager.list();
+    }
+
+    @GetMapping("/sub-agents/sessions/{id}")
+    public SubAgentSession subAgentSession(@PathVariable String id) throws Exception {
+        SubAgentSession session = subAgentSessionManager.find(id);
+        if (session == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown sub-agent session: " + id);
+        return session;
+    }
+
+    @PostMapping("/sub-agents/{id}/sessions")
+    public SubAgentSession createSubAgentSession(@PathVariable String id) {
+        try {
+            return subAgentSessionManager.create(id);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
+        } catch (Exception exception) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, exception.getMessage(), exception);
+        }
+    }
+
+    @PostMapping("/sub-agents/sessions/{id}/messages")
+    public Run sendSubAgentSessionMessage(@PathVariable String id, @RequestBody SubAgentRunRequest request) {
+        if (request == null || request.prompt() == null || request.prompt().trim().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "prompt must not be blank");
+        }
+        try {
+            AgentRunHandle handle = subAgentSessionManager.send(id, request.prompt(), request.apiKey());
+            Run run = runManager.find(handle.runId());
+            if (run == null) throw new IllegalStateException("sub-agent session run was not persisted");
+            return run;
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
+        } catch (IllegalStateException exception) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, exception.getMessage(), exception);
+        } catch (Exception exception) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, exception.getMessage(), exception);
+        }
+    }
+
+    @PostMapping("/sub-agents/sessions/{id}/close")
+    public SubAgentSession closeSubAgentSession(@PathVariable String id) {
+        try {
+            return subAgentSessionManager.close(id);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
+        } catch (Exception exception) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, exception.getMessage(), exception);
+        }
+    }
+
+    @DeleteMapping("/sub-agents/sessions/{id}")
+    public void deleteSubAgentSession(@PathVariable String id) throws Exception {
+        if (!subAgentSessionManager.delete(id)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown sub-agent session: " + id);
+        }
+    }
+
     @GetMapping("/memories")
     public java.util.List<MemoryRecord> memories(@RequestParam String namespace,
                                                  @RequestParam String subjectKey,
@@ -737,12 +801,18 @@ public final class DshController {
             if (result.pendingApproval() == null && run.conversationId() != null) {
                 contextManager.append(run.conversationId(), ChatMessage.assistant(result.answer(), java.util.List.of()));
             }
+            subAgentSessionManager.onApprovalResult(result);
             return new ChatResponse(run.conversationId(), result.answer(), result.trace(), result.turns(),
                     result.runId(), result.pendingApproval());
         } catch (IllegalArgumentException exception) {
+            subAgentSessionManager.onApprovalFailure(id);
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
         } catch (IllegalStateException exception) {
+            subAgentSessionManager.onApprovalFailure(id);
             throw new ResponseStatusException(HttpStatus.CONFLICT, exception.getMessage(), exception);
+        } catch (Exception exception) {
+            subAgentSessionManager.onApprovalFailure(id);
+            throw exception;
         }
     }
 

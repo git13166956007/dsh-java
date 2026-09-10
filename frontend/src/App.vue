@@ -59,6 +59,11 @@ const subAgentRunError = ref('')
 const subAgentRunStarting = ref(false)
 const subAgentRun = ref(null)
 const subAgentRunEvents = ref([])
+const subAgentSessions = ref([])
+const subAgentSessionId = ref('')
+const subAgentSessionPrompt = ref('')
+const subAgentSessionError = ref('')
+const subAgentSessionSaving = ref(false)
 let subAgentRunPollTimer = null
 let subAgentEventSource = null
 let subAgentEventRunId = null
@@ -288,6 +293,73 @@ async function refreshSubAgents() {
   } catch {
     subAgents.value = []
   }
+}
+
+async function refreshSubAgentSessions() {
+  try {
+    const response = await fetch('/api/v1/sub-agents/sessions')
+    if (!response.ok) throw new Error('Sub-agent sessions unavailable')
+    subAgentSessions.value = await response.json()
+    if (!subAgentSessionId.value || !subAgentSessions.value.some((session) => session.id === subAgentSessionId.value)) {
+      subAgentSessionId.value = subAgentSessions.value.find((session) => session.status === 'OPEN')?.id || ''
+    }
+  } catch {
+    subAgentSessions.value = []
+    subAgentSessionId.value = ''
+  }
+}
+
+async function createSubAgentSession() {
+  subAgentSessionError.value = ''
+  if (!subAgentRunProfileId.value) {
+    subAgentSessionError.value = '请选择一个启用的子智能体 Profile'
+    return
+  }
+  subAgentSessionSaving.value = true
+  try {
+    const response = await fetch(`/api/v1/sub-agents/${encodeURIComponent(subAgentRunProfileId.value)}/sessions`, { method: 'POST' })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload.message || payload.error || 'Session 创建失败')
+    subAgentSessionId.value = payload.id
+    await refreshSubAgentSessions()
+  } catch (requestError) {
+    subAgentSessionError.value = requestError.message
+  } finally {
+    subAgentSessionSaving.value = false
+  }
+}
+
+async function sendSubAgentSessionMessage() {
+  subAgentSessionError.value = ''
+  if (!subAgentSessionId.value || !subAgentSessionPrompt.value.trim()) {
+    subAgentSessionError.value = '请选择 Session 并填写消息'
+    return
+  }
+  subAgentSessionSaving.value = true
+  try {
+    const response = await fetch(`/api/v1/sub-agents/sessions/${encodeURIComponent(subAgentSessionId.value)}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: subAgentSessionPrompt.value.trim(), apiKey: apiKey.value.trim() || null })
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload.message || payload.error || '消息发送失败')
+    subAgentRun.value = payload
+    subAgentSessionPrompt.value = ''
+    subAgentRunEvents.value = []
+    openSubAgentEventStream(payload.id)
+    await refreshSubAgentRun()
+  } catch (requestError) {
+    subAgentSessionError.value = requestError.message
+  } finally {
+    subAgentSessionSaving.value = false
+  }
+}
+
+async function closeSubAgentSession() {
+  if (!subAgentSessionId.value) return
+  const response = await fetch(`/api/v1/sub-agents/sessions/${encodeURIComponent(subAgentSessionId.value)}/close`, { method: 'POST' })
+  if (response.ok) await refreshSubAgentSessions()
 }
 
 function memorySubjectKey() {
@@ -799,6 +871,7 @@ function openCapabilities(tab) {
   refreshModels()
   refreshAgents()
   refreshSubAgents()
+  refreshSubAgentSessions()
   refreshMemories()
   refreshPlans()
 }
@@ -2122,6 +2195,18 @@ onUnmounted(() => {
           </div>
         </div>
         <p v-if="subAgents.length === 0" class="tool-manager-empty">No sub-agent profiles configured.</p>
+
+        <div class="tool-create-form inline-form sub-agent-session-panel">
+          <div class="tool-form-heading"><div><div class="eyebrow">CONTINUABLE SESSION</div><h3>Keep a sub-agent conversation alive</h3></div><span class="tool-form-note">Persistent context</span></div>
+          <div class="tool-form-grid">
+            <label><span>Profile</span><select v-model="subAgentRunProfileId"><option value="">Select profile</option><option v-for="profile in subAgents.filter((item) => item.enabled)" :key="profile.id" :value="profile.id">{{ profile.name }}</option></select></label>
+            <label><span>Session</span><select v-model="subAgentSessionId"><option value="">Create a new session</option><option v-for="session in subAgentSessions" :key="session.id" :value="session.id">{{ session.id.slice(0, 8) }} · {{ String(session.status).toLowerCase() }}</option></select></label>
+          </div>
+          <div class="tool-form-footer sub-agent-session-actions"><button class="secondary-button compact" type="button" :disabled="subAgentSessionSaving" @click="createSubAgentSession">New session</button><button class="secondary-button compact" type="button" :disabled="!subAgentSessionId || subAgentSessionSaving" @click="closeSubAgentSession">Close session</button></div>
+          <label><span>Message</span><textarea v-model="subAgentSessionPrompt" rows="2" placeholder="Continue the same worker conversation"></textarea></label>
+          <p v-if="subAgentSessionError" class="tool-form-error">{{ subAgentSessionError }}</p>
+          <div class="tool-form-footer"><button class="send-button" type="button" :disabled="subAgentSessionSaving" @click="sendSubAgentSessionMessage"><span>{{ subAgentSessionSaving ? 'Sending' : 'Send to session' }}</span><span class="send-arrow">↗</span></button></div>
+        </div>
 
         <form class="tool-create-form inline-form" @submit.prevent="startSubAgentRun">
           <div class="tool-form-heading"><div><div class="eyebrow">BACKGROUND RUN</div><h3>Run sub-agent</h3></div><span class="tool-form-note">Live lifecycle</span></div>

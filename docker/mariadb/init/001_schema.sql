@@ -197,6 +197,17 @@ CREATE TABLE IF NOT EXISTS dsh_sub_agent_profile (
     INDEX idx_dsh_sub_agent_enabled (enabled)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS dsh_sub_agent_session (
+    id CHAR(36) NOT NULL PRIMARY KEY,
+    profile_id VARCHAR(64) NOT NULL,
+    conversation_id CHAR(36) NOT NULL UNIQUE,
+    status VARCHAR(16) NOT NULL,
+    created_at TIMESTAMP(3) NOT NULL,
+    updated_at TIMESTAMP(3) NOT NULL,
+    INDEX idx_dsh_sub_agent_session_profile (profile_id),
+    INDEX idx_dsh_sub_agent_session_status (status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS dsh_plan (
     id VARCHAR(64) NOT NULL PRIMARY KEY,
     title VARCHAR(255) NOT NULL,

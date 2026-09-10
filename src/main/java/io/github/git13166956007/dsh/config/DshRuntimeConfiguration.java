@@ -20,6 +20,10 @@ import io.github.git13166956007.dsh.agent.MariaDbSubAgentProfileStore;
 import io.github.git13166956007.dsh.agent.SubAgentProfileRegistry;
 import io.github.git13166956007.dsh.agent.SubAgentProfileStore;
 import io.github.git13166956007.dsh.agent.SubAgentRunner;
+import io.github.git13166956007.dsh.agent.SubAgentSessionStore;
+import io.github.git13166956007.dsh.agent.InMemorySubAgentSessionStore;
+import io.github.git13166956007.dsh.agent.MariaDbSubAgentSessionStore;
+import io.github.git13166956007.dsh.agent.SubAgentSessionManager;
 import io.github.git13166956007.dsh.core.DshRuntime;
 import io.github.git13166956007.dsh.mcp.McpServerRegistry;
 import io.github.git13166956007.dsh.mcp.McpClientManager;
@@ -219,6 +223,22 @@ public class DshRuntimeConfiguration {
     public SubAgentProfileRegistry subAgentProfileRegistry(SubAgentProfileStore store, Environment environment) {
         return new SubAgentProfileRegistry(store, Integer.parseInt(
                 environment.getProperty("dsh.agent.max-turns", "8")));
+    }
+
+    @Bean
+    public SubAgentSessionStore subAgentSessionStore(Environment environment) {
+        boolean enabled = Boolean.parseBoolean(environment.getProperty("dsh.persistence.enabled", "false"));
+        if (!enabled) return new InMemorySubAgentSessionStore();
+        return new MariaDbSubAgentSessionStore(environment.getProperty("dsh.persistence.jdbc-url"),
+                environment.getProperty("dsh.persistence.username"), environment.getProperty("dsh.persistence.password"));
+    }
+
+    @Bean
+    public SubAgentSessionManager subAgentSessionManager(SubAgentSessionStore store, ContextManager contextManager,
+                                                         SubAgentRunner subAgentRunner,
+                                                         SubAgentProfileRegistry profiles, ModelRegistry models,
+                                                         RunManager runs) {
+        return new SubAgentSessionManager(store, contextManager, subAgentRunner, profiles, models, runs);
     }
 
     @Bean

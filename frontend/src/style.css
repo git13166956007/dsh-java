@@ -159,6 +159,8 @@ h2 { font-size: 17px; }
 .sub-agent-run-meta { color: #667477; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
 .sub-agent-run-actions { margin-top: 8px; }
 .sub-agent-run-output { max-height: 220px; margin-top: 12px; }
+.sub-agent-session-panel { border-color: #36504b; }
+.sub-agent-session-actions { justify-content: flex-start; margin: 8px 0 12px; }
 .tool-source.running { border-color: #6ca695; color: #9ce3ca; }
 .tool-source.completed { border-color: #6ca695; color: #9ce3ca; }
 .tool-source.failed, .tool-source.cancelled { border-color: #a15f56; color: #e79487; }

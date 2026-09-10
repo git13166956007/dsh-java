@@ -98,6 +98,8 @@ Sub-agent Profile 管理接口为 `GET/POST/PATCH/DELETE /api/v1/sub-agents`。�
 
 可以通过 `POST /api/v1/sub-agents/{id}/runs` 启动后台执行，接口立即返回 `runId`；随后使用 `GET /api/v1/runs/{id}` 查询状态，或订阅 `GET /api/v1/runs/{id}/events/stream` 获取历史回放和实时事件。后台运行支持 `POST /api/v1/runs/{id}/cancel` 真实中断当前模型线程，也支持对 `WAITING_APPROVAL` 的运行调用现有审批接口。当前执行线程驻留在应用进程内，MariaDB 会持久化运行状态和事件，但应用重启后的运行恢复仍属于后续工作。
 
+持续子智能体会话使用 `POST /api/v1/sub-agents/{id}/sessions` 创建，之后向 `POST /api/v1/sub-agents/sessions/{sessionId}/messages` 发送消息；会话消息复用同一个持久化 Conversation，每条消息仍然返回独立 `runId`，因此可以使用相同的 Run 查询、SSE、审批和取消接口。`GET /api/v1/sub-agents/sessions` 可列出会话，`POST /api/v1/sub-agents/sessions/{sessionId}/close` 关闭会话，关闭后的会话不能继续接收消息。
+
 当存在启用的 `execution` 子智能体时，主 Agent 会自动获得 `delegate_to_subagent` 虚拟工具。模型可以提交 `profileId` 和独立 `task`，子任务会复用当前 API Key 和模型路由，结果作为工具消息回传；启用 Run 持久化时会记录父子运行树，并同时校验父、子智能体的最大深度。子智能体内部触发工具审批时，审批会代理回父委派运行，批准父运行即可继续子任务并回到主 Agent。
 
 计划接口为 `GET /api/v1/plans`、`GET /api/v1/plans/{id}`、`POST /api/v1/plans`、`POST /api/v1/plans/{id}/approve`、`POST /api/v1/plans/{id}/execute` 和 `POST /api/v1/plans/{id}/cancel`。Plan 创建时提交有序步骤、`dependsOn` 步骤编号和 `maxConcurrency`；需要人工确认的计划先处于 `draft`，审批后进入 `approved`，执行过程中会持久化每个步骤的 `pending/running/completed/failed/cancelled` 状态，并支持单步骤重试和满足依赖后的并行执行。依赖步骤完成结果会作为后续步骤的证据上下文传入。

@@ -40,6 +40,16 @@ public final class SubAgentRunner {
         return agentLoop.runAsync(prompt, apiKey, List.of(), options, context);
     }
 
+    AgentRunHandle startForExecution(String prompt, String apiKey, String profileId,
+                                     List<ChatMessage> history, AgentRunContext context) throws Exception {
+        SubAgentProfileData profile = profiles.resolve(profileId);
+        return agentLoop.runAsync(prompt, apiKey, history, executionOptions(profile, AgentMode.EXECUTION), context);
+    }
+
+    boolean cancel(String runId) {
+        return agentLoop.cancel(runId);
+    }
+
     public List<SubAgentProfile> delegableProfiles() {
         return profiles.delegableProfiles();
     }
