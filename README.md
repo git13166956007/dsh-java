@@ -106,7 +106,7 @@ Sub-agent Profile 管理接口为 `GET/POST/PATCH/DELETE /api/v1/sub-agents`。�
 
 自适应计划接口为 `POST /api/v1/plans/adaptive`。它会调用 Planning Agent 生成严格 JSON 步骤，服务端限制最大步骤数、校验结构和步骤依赖，并根据子智能体的名称、说明、工具和 Skill 能力做确定性匹配；匹配不到时回退到父 Agent。生成结果直接进入同一套审批和执行状态机。
 
-自适应计划可以传 `allowDynamicSubAgents: true`。当已有 Worker 都无法匹配时，Planning Agent 可为步骤返回 Worker 描述，服务端会过滤不存在的工具/Skill，校验模型是否启用且支持工具调用，创建并持久化一个带优先级、成本权重、并发上限和能力标签的 `execution` Sub-agent Profile，再将步骤绑定到它。默认关闭，前端 Adaptive Planner 中可显式开启。已有 Worker 会按任务 Token、工具/Skill/能力命中、模型匹配、优先级、成本和当前负载进行确定性评分。
+自适应计划可以传 `allowDynamicSubAgents: true`。当已有 Worker 都无法匹配时，Planning Agent 可为步骤返回 Worker 描述，服务端会过滤不存在的工具/Skill，校验模型是否启用且支持工具调用，创建并持久化一个带优先级、成本权重、并发上限和能力标签的 `execution` Sub-agent Profile，再将步骤绑定到它。默认关闭，前端 Adaptive Planner 中可显式开启。已有 Worker 会按任务 Token、工具/Skill/能力命中、模型匹配、优先级、模型输入/输出价格、模型健康/成功率/延迟、Worker 成本和当前负载进行可解释评分；引用不存在或已禁用模型的 Worker 会被标记为不可用并保留诊断原因。
 
 记忆接口为 `GET /api/v1/memories`、`GET /api/v1/memories/search`、`POST /api/v1/memories` 和 `DELETE /api/v1/memories/{id}`。记忆按 `namespace + subjectKey` 隔离，当前聊天会以 `conversation + conversationId` 自动检索相关记忆并注入系统上下文；前端 Memory Tab 可以显式添加和删除记忆。设置 `DSH_MEMORY_AUTO_EXTRACT_ENABLED=true` 后，每次完成聊天会用模型提取少量持久化事实/偏好，自动过滤疑似密钥、密码和短期任务信息并去重；提取失败不会影响聊天结果。
 

@@ -6,6 +6,7 @@ import io.github.git13166956007.dsh.agent.AgentRunResult;
 import io.github.git13166956007.dsh.agent.SubAgentProfile;
 import io.github.git13166956007.dsh.agent.SubAgentProfileRegistry;
 import io.github.git13166956007.dsh.model.ModelProfileData;
+import io.github.git13166956007.dsh.model.ModelHealth;
 import io.github.git13166956007.dsh.model.ModelRegistry;
 import io.github.git13166956007.dsh.run.RunManager;
 import io.github.git13166956007.dsh.skill.SkillRegistry;
@@ -211,17 +212,27 @@ public final class AdaptivePlanService {
         int missingTools = Math.max(0, requestedTools.size() - toolMatches);
         int missingSkills = Math.max(0, requestedSkills.size() - skillMatches);
         int activeRuns = activeLoad(profile.id());
-        boolean available = activeRuns < profile.maxConcurrentRuns();
         ModelProfileData model = modelFor(profile);
+        boolean modelAvailable = models == null || model != null;
+        boolean available = modelAvailable && activeRuns < profile.maxConcurrentRuns();
         Double inputPrice = model == null ? null : model.inputPricePerMillionTokens();
         Double outputPrice = model == null ? null : model.outputPricePerMillionTokens();
         boolean hasModelPrice = inputPrice != null || outputPrice != null;
         double modelPrice = (inputPrice == null ? 0 : inputPrice) + (outputPrice == null ? 0 : outputPrice);
         int modelCostPenalty = (int) Math.round(modelPrice * 5.0);
+        ModelHealth health = model == null ? null : models.health(model.id());
+        long attempts = health == null ? 0 : health.successCount() + health.failureCount();
+        double successRate = attempts == 0 ? 0 : (double) health.successCount() / attempts;
+        int healthBonus = attempts == 0 ? 0 : (int) Math.round(successRate * 20);
+        int failurePenalty = attempts == 0 ? 0 : (int) Math.round((1 - successRate) * 40);
+        int latencyPenalty = health == null || health.lastLatencyMs() == null
+                ? 0 : (int) Math.min(25, health.lastLatencyMs() / 200);
+        int unhealthyPenalty = health != null && "UNHEALTHY".equals(health.status()) ? 50 : 0;
         int semanticMatches = matchedTokens.size() + toolMatches + skillMatches + capabilityMatches;
         int score = matchedTokens.size() * 10 + toolMatches * 20 + skillMatches * 20 + capabilityMatches * 25
                 + (requestedModel != null && requestedModel.equals(profile.modelId()) ? 25 : 0)
-                + profile.priority() - (int) Math.round(profile.costWeight() * 5.0) - modelCostPenalty - activeRuns * 15
+                + profile.priority() - (int) Math.round(profile.costWeight() * 5.0) - modelCostPenalty
+                + healthBonus - failurePenalty - latencyPenalty - unhealthyPenalty - activeRuns * 15
                 - missingTools * 100 - missingSkills * 100;
         List<String> reasons = new ArrayList<String>();
         if (!matchedTokens.isEmpty()) reasons.add("tokens=" + String.join(",", matchedTokens));
@@ -234,21 +245,40 @@ public final class AdaptivePlanService {
             reasons.add("modelPrice=$" + formatPrice(inputPrice) + "/$" + formatPrice(outputPrice) + " per 1M");
             reasons.add("modelCostPenalty=" + modelCostPenalty);
         }
+        if (health != null) {
+            reasons.add("modelHealth=" + health.status());
+            if (attempts > 0) reasons.add("successRate=" + formatRate(successRate));
+            if (health.lastLatencyMs() != null) reasons.add("latency=" + health.lastLatencyMs() + "ms");
+            if (healthBonus > 0) reasons.add("healthBonus=" + healthBonus);
+            if (failurePenalty > 0) reasons.add("failurePenalty=" + failurePenalty);
+            if (latencyPenalty > 0) reasons.add("latencyPenalty=" + latencyPenalty);
+            if (unhealthyPenalty > 0) reasons.add("unhealthyPenalty=" + unhealthyPenalty);
+        }
+        if (!modelAvailable) reasons.add("model unavailable");
         reasons.add("load=" + activeRuns + "/" + profile.maxConcurrentRuns());
         if (missingTools > 0 || missingSkills > 0) reasons.add("missing requested capabilities");
         if (!available) reasons.add("concurrency limit reached");
         return new ScoredCandidate(profile.id(), profile.name(), score, semanticMatches, available,
                 profile.priority(), profile.costWeight(), activeRuns, profile.maxConcurrentRuns(), inputPrice,
-                outputPrice, matchedTokens, reasons);
+                outputPrice, health == null ? null : health.status(), successRate,
+                health == null ? null : health.lastLatencyMs(), matchedTokens, reasons);
     }
 
     private ModelProfileData modelFor(SubAgentProfile profile) {
         if (models == null) return null;
-        return models.resolve(profile.modelId());
+        try {
+            return models.resolve(profile.modelId());
+        } catch (IllegalArgumentException | IllegalStateException exception) {
+            return null;
+        }
     }
 
     private static String formatPrice(Double value) {
         return value == null ? "?" : String.format(Locale.ROOT, "%.6f", value);
+    }
+
+    private static String formatRate(double value) {
+        return String.format(Locale.ROOT, "%.1f%%", value * 100);
     }
 
     private int activeLoad(String profileId) {
@@ -342,16 +372,19 @@ public final class AdaptivePlanService {
     public record SubAgentCandidate(String id, String name, int score, int priority, double costWeight,
                                     int activeRuns, int maxConcurrentRuns, boolean available,
                                     Double inputPricePerMillionTokens, Double outputPricePerMillionTokens,
+                                    String modelHealthStatus, double modelSuccessRate, Long modelLastLatencyMs,
                                     List<String> matchedTokens, List<String> reasons) {
     }
 
     private record ScoredCandidate(String id, String name, int score, int semanticMatches, boolean available,
                                    int priority, double costWeight, int activeRuns, int maxConcurrentRuns,
                                    Double inputPricePerMillionTokens, Double outputPricePerMillionTokens,
+                                   String modelHealthStatus, double modelSuccessRate, Long modelLastLatencyMs,
                                    List<String> matchedTokens, List<String> reasons) {
         private SubAgentCandidate view() {
             return new SubAgentCandidate(id, name, score, priority, costWeight, activeRuns, maxConcurrentRuns,
-                    available, inputPricePerMillionTokens, outputPricePerMillionTokens, matchedTokens, reasons);
+                    available, inputPricePerMillionTokens, outputPricePerMillionTokens, modelHealthStatus,
+                    modelSuccessRate, modelLastLatencyMs, matchedTokens, reasons);
         }
     }
 }

@@ -172,4 +172,51 @@ class AdaptivePlanServiceTest {
         assertEquals(0.01, candidates.stream().filter(candidate -> candidate.id().equals(cheap.id()))
                 .findFirst().orElseThrow().outputPricePerMillionTokens());
     }
+
+    @Test
+    void demotesWorkersUsingAnUnhealthyModel() throws Exception {
+        ModelRegistry models = new ModelRegistry(new InMemoryModelProfileStore(),
+                "https://api.deepseek.com", "deepseek", "deepseek-v4-flash", "", "", 0);
+        var unhealthyModel = models.create("Unhealthy model", "deepseek", "https://api.deepseek.com",
+                "deepseek-v4-flash", "", "", 0, true, false);
+        var healthyModel = models.create("Healthy model", "deepseek", "https://api.deepseek.com",
+                "deepseek-v4-flash", "", "", 0, true, false);
+        models.recordFailure(unhealthyModel.id(), 200, new IllegalStateException("temporary failure"));
+
+        SubAgentProfileRegistry subAgents = new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 8);
+        var unhealthy = subAgents.create("Database worker", AgentMode.EXECUTION, unhealthyModel.id(),
+                "database migration", 4, List.of(), List.of(), true, 64, 300, 4, 50, 1.0, 1,
+                List.of("database"));
+        var healthy = subAgents.create("Database worker", AgentMode.EXECUTION, healthyModel.id(),
+                "database migration", 4, List.of(), List.of(), true, 64, 300, 4, 50, 1.0, 1,
+                List.of("database"));
+        AdaptivePlanService service = new AdaptivePlanService(new AgentLoop((messages, definitions) ->
+                new ModelResponse("ok", List.of(), "stop"), new ToolRegistry(), 2),
+                new PlanRegistry(new InMemoryPlanStore()), subAgents, new ObjectMapper(), null, null, null, models);
+
+        var candidates = service.rankSubAgents("database migration");
+
+        assertEquals(healthy.id(), candidates.get(0).id());
+        var unhealthyCandidate = candidates.stream().filter(candidate -> candidate.id().equals(unhealthy.id()))
+                .findFirst().orElseThrow();
+        assertEquals("UNHEALTHY", unhealthyCandidate.modelHealthStatus());
+        assertEquals(0.0, unhealthyCandidate.modelSuccessRate());
+    }
+
+    @Test
+    void reportsWorkersWithMissingModelsAsUnavailable() throws Exception {
+        ModelRegistry models = new ModelRegistry(new InMemoryModelProfileStore(),
+                "https://api.deepseek.com", "deepseek", "deepseek-v4-flash", "", "", 0);
+        SubAgentProfileRegistry subAgents = new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 8);
+        subAgents.create("Broken worker", AgentMode.EXECUTION, "missing-model", "database migration", 4,
+                List.of(), List.of(), true, 64, 300, 4, 50, 1.0, 1, List.of("database"));
+        AdaptivePlanService service = new AdaptivePlanService(new AgentLoop((messages, definitions) ->
+                new ModelResponse("ok", List.of(), "stop"), new ToolRegistry(), 2),
+                new PlanRegistry(new InMemoryPlanStore()), subAgents, new ObjectMapper(), null, null, null, models);
+
+        var candidate = service.rankSubAgents("database migration").get(0);
+
+        assertEquals(false, candidate.available());
+        org.junit.jupiter.api.Assertions.assertTrue(candidate.reasons().contains("model unavailable"));
+    }
 }
