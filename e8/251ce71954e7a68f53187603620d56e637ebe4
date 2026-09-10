@@ -1,0 +1,30 @@
+README.md
+  h_eb697744b14c1b 145
+docker/mariadb/init/001_schema.sql
+  h_eb697744b14c1b 178-187
+docs/runtime-roadmap.md
+  h_eb697744b14c1b 8
+src/main/java/io/github/git13166956007/dsh/config/DshRuntimeConfiguration.java
+  h_eb697744b14c1b 37-39,408-415,419,422
+src/main/java/io/github/git13166956007/dsh/mcp/InMemoryMcpResourceSubscriptionStore.java
+  h_eb697744b14c1b 1-38
+src/main/java/io/github/git13166956007/dsh/mcp/MariaDbMcpResourceSubscriptionStore.java
+  h_eb697744b14c1b 1-109
+src/main/java/io/github/git13166956007/dsh/mcp/McpClientManager.java
+  h_eb697744b14c1b 35,49-50,62-68,77,81,219-223,239-244,246,253-257,325-342
+src/main/java/io/github/git13166956007/dsh/mcp/McpResourceSubscriptionStore.java
+  h_eb697744b14c1b 1-13
+src/test/java/io/github/git13166956007/dsh/mcp/McpClientManagerTest.java
+  h_eb697744b14c1b 4,6-7,50-78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e8251ce71954e7a68f53187603620d56e637ebe4",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
