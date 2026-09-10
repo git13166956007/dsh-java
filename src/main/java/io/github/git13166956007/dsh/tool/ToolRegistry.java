@@ -142,13 +142,21 @@ public final class ToolRegistry {
     }
 
     public synchronized String execute(String name, JsonNode arguments, Set<String> allowedNames) throws Exception {
+        return execute(name, arguments, allowedNames, false);
+    }
+
+    public synchronized String executeApproved(String name, JsonNode arguments, Set<String> allowedNames) throws Exception {
+        return execute(name, arguments, allowedNames, true);
+    }
+
+    private String execute(String name, JsonNode arguments, Set<String> allowedNames, boolean approvalGranted) throws Exception {
         if (allowedNames != null && !allowedNames.contains(name)) {
             throw new IllegalStateException("tool is not allowed for this agent: " + name);
         }
         RegisteredTool tool = tools.get(name);
         if (tool == null) throw new IllegalArgumentException("unknown tool: " + name);
         if (!tool.enabled) throw new IllegalStateException("tool is disabled: " + name);
-        if (tool.approvalRequired) throw new ToolApprovalRequiredException(name);
+        if (tool.approvalRequired && !approvalGranted) throw new ToolApprovalRequiredException(name);
         return tool.handler.execute(arguments);
     }
 

@@ -35,6 +35,16 @@ public final class RunManager {
         event(id, "run_cancelled", null);
     }
 
+    public void waitForApproval(String id, String payload) throws Exception {
+        update(id, RunStatus.WAITING_APPROVAL, null, null, null);
+        event(id, "tool_approval_required", payload);
+    }
+
+    public void resume(String id) throws Exception {
+        update(id, RunStatus.RUNNING, null, null, null);
+        event(id, "run_resumed", null);
+    }
+
     public void event(String runId, String type, String payload) throws Exception {
         long id = store instanceof InMemoryRunStore memory ? memory.nextEventId() : 0;
         store.saveEvent(new RunEventData(id, runId, type, payload, Instant.now()));
@@ -53,10 +63,14 @@ public final class RunManager {
     }
 
     private void update(String id, RunStatus status, String error, String output) throws Exception {
+        update(id, status, error, output, Instant.now());
+    }
+
+    private void update(String id, RunStatus status, String error, String output, Instant completedAt) throws Exception {
         RunData current = store.listRuns().stream().filter(run -> run.id().equals(id)).findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("unknown run: " + id));
         store.saveRun(new RunData(current.id(), current.parentRunId(), current.kind(), status, current.conversationId(),
-                current.planId(), current.stepId(), current.agentId(), current.modelId(), current.startedAt(), Instant.now(),
+                current.planId(), current.stepId(), current.agentId(), current.modelId(), current.startedAt(), completedAt,
                 error, output));
     }
 }

@@ -432,6 +432,30 @@ public final class DshController {
         return all.stream().filter(run -> isDescendant(run, id, byId)).toList();
     }
 
+    @PostMapping("/runs/{id}/approval")
+    public ChatResponse approveRun(@PathVariable String id, @RequestBody ApprovalRequest request) throws Exception {
+        if (request == null || request.approved() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "approved must be provided");
+        }
+        Run run = runManager.find(id);
+        if (run == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown run: " + id);
+        if (run.status() != io.github.git13166956007.dsh.run.RunStatus.WAITING_APPROVAL) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "run is not awaiting approval: " + id);
+        }
+        try {
+            AgentRunResult result = agentLoop.resumeApproval(id, request.approved());
+            if (result.pendingApproval() == null && run.conversationId() != null) {
+                contextManager.append(run.conversationId(), ChatMessage.assistant(result.answer(), java.util.List.of()));
+            }
+            return new ChatResponse(run.conversationId(), result.answer(), result.trace(), result.turns(),
+                    result.runId(), result.pendingApproval());
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
+        } catch (IllegalStateException exception) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, exception.getMessage(), exception);
+        }
+    }
+
     @GetMapping("/plans")
     public java.util.List<Plan> plans() {
         return planRegistry.list();
@@ -525,8 +549,11 @@ public final class DshController {
             AgentRunResult result = agentLoop.runDetailed(request.message(), request.apiKey(), history, request.modelId(),
                     request.agentId(), mode, "conversation", conversationId,
                     io.github.git13166956007.dsh.agent.AgentRunContext.chat(conversationId, request.agentId()));
-            contextManager.append(conversationId, ChatMessage.assistant(result.answer(), java.util.List.of()));
-            return new ChatResponse(conversationId, result.answer(), result.trace(), result.turns(), result.runId());
+            if (result.pendingApproval() == null) {
+                contextManager.append(conversationId, ChatMessage.assistant(result.answer(), java.util.List.of()));
+            }
+            return new ChatResponse(conversationId, result.answer(), result.trace(), result.turns(), result.runId(),
+                    result.pendingApproval());
         } catch (Exception exception) {
             if (exception instanceof ModelQuotaException quotaException) {
                 throw new ResponseStatusException(HttpStatus.PAYMENT_REQUIRED,
@@ -581,8 +608,13 @@ public final class DshController {
                         send(emitter, "tool_result", result);
                     }
                 });
-                contextManager.append(finalConversationId, ChatMessage.assistant(result.answer(), java.util.List.of()));
-                send(emitter, "done", new StreamResponse(finalConversationId, result.answer(), result.trace(), result.turns(), result.runId()));
+                if (result.pendingApproval() != null) {
+                    send(emitter, "approval_required", result.pendingApproval());
+                } else {
+                    contextManager.append(finalConversationId, ChatMessage.assistant(result.answer(), java.util.List.of()));
+                }
+                send(emitter, "done", new StreamResponse(finalConversationId, result.answer(), result.trace(), result.turns(),
+                        result.runId(), result.pendingApproval()));
                 emitter.complete();
             } catch (Exception exception) {
                 send(emitter, "error", new ErrorResponse(exception.getMessage()));
@@ -684,12 +716,17 @@ public final class DshController {
 
     public record ChatResponse(String conversationId, String message,
                                java.util.List<io.github.git13166956007.dsh.agent.AgentTraceEvent> trace,
-                               int turns, String runId) {
+                               int turns, String runId,
+                               io.github.git13166956007.dsh.agent.PendingToolApproval pendingApproval) {
     }
 
     public record StreamResponse(String conversationId, String answer,
                                  java.util.List<io.github.git13166956007.dsh.agent.AgentTraceEvent> trace,
-                                 int turns, String runId) {
+                                 int turns, String runId,
+                                 io.github.git13166956007.dsh.agent.PendingToolApproval pendingApproval) {
+    }
+
+    public record ApprovalRequest(Boolean approved) {
     }
 
     public record ErrorResponse(String error) {

@@ -8,6 +8,9 @@ import io.github.git13166956007.dsh.run.RunManager;
 import io.github.git13166956007.dsh.run.RunSpec;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class AgentLoop {
     private final ChatModel model;
@@ -17,6 +20,7 @@ public final class AgentLoop {
     private final MemoryManager memories;
     private final RunManager runs;
     private final int maxTurns;
+    private final Map<String, PendingExecution> pendingApprovals = new ConcurrentHashMap<String, PendingExecution>();
 
     public AgentLoop(ChatModel model, ToolRegistry tools, int maxTurns) {
         this(model, tools, null, null, null, maxTurns);
@@ -142,8 +146,10 @@ public final class AgentLoop {
                     try {
                         result = tools.execute(call.name(), call.arguments(), options.allowedToolNames());
                     } catch (ToolApprovalRequiredException exception) {
-                        result = "Tool approval required: " + call.name();
-                        recordEvent(runId, "tool_approval_required", call.name());
+                        PendingToolApproval approval = new PendingToolApproval(call.id(), call.name(), call.arguments());
+                        String approvalRunId = pauseForApproval(runId, messages, trace, turn + 1, options, apiKey,
+                                definitions, approval);
+                        return new AgentRunResult("", trace, turn + 1, approvalRunId, approval);
                     } catch (Exception exception) {
                         result = "Tool execution failed: " + exception.getMessage();
                     }
@@ -231,8 +237,10 @@ public final class AgentLoop {
                     try {
                         result = tools.execute(call.name(), call.arguments(), options.allowedToolNames());
                     } catch (ToolApprovalRequiredException exception) {
-                        result = "Tool approval required: " + call.name();
-                        recordEvent(runId, "tool_approval_required", call.name());
+                        PendingToolApproval approval = new PendingToolApproval(call.id(), call.name(), call.arguments());
+                        String approvalRunId = pauseForApproval(runId, messages, trace, turn + 1, options, apiKey,
+                                definitions, approval);
+                        return new AgentRunResult("", trace, turn + 1, approvalRunId, approval);
                     } catch (Exception exception) {
                         result = "Tool execution failed: " + exception.getMessage();
                     }
@@ -249,6 +257,86 @@ public final class AgentLoop {
             failRun(runId, exception);
             throw exception;
         }
+    }
+
+    public AgentRunResult resumeApproval(String runId, boolean approved) throws Exception {
+        if (runId == null || runId.isBlank()) throw new IllegalArgumentException("runId must not be blank");
+        PendingExecution pending = pendingApprovals.remove(runId);
+        if (pending == null) throw new IllegalArgumentException("run is not awaiting tool approval: " + runId);
+        try {
+            if (runs != null) {
+                if (runs.find(runId) == null) throw new IllegalArgumentException("unknown run: " + runId);
+                runs.resume(runId);
+                recordEvent(runId, approved ? "tool_approval_granted" : "tool_approval_denied",
+                        pending.approval.toolName());
+            }
+            String result;
+            if (!approved) {
+                result = "Tool execution denied by user: " + pending.approval.toolName();
+            } else {
+                try {
+                    result = tools.executeApproved(pending.approval.toolName(), pending.approval.arguments(),
+                            pending.options.allowedToolNames());
+                } catch (Exception exception) {
+                    result = "Tool execution failed: " + exception.getMessage();
+                }
+            }
+            recordEvent(runId, "tool_result", pending.approval.toolName() + " " + result);
+            pending.trace.add(AgentTraceEvent.tool(pending.approval.toolName(), pending.approval.arguments(), result));
+            pending.messages.add(ChatMessage.tool(pending.approval.toolCallId(), result));
+            return continueDetailed(pending);
+        } catch (Exception exception) {
+            failRun(runId, exception);
+            throw exception;
+        }
+    }
+
+    private AgentRunResult continueDetailed(PendingExecution pending) throws Exception {
+        for (int turn = pending.nextTurn; turn < pending.options.maxTurns(); turn++) {
+            ModelResponse response = model.complete(pending.messages, pending.definitions, pending.apiKey,
+                    pending.options.modelId());
+            recordEvent(pending.runId, "model_response", response.content());
+            pending.messages.add(ChatMessage.assistant(response.content(), response.toolCalls()));
+            if (response.content() != null && !response.content().isEmpty()) {
+                pending.trace.add(AgentTraceEvent.model(response.content()));
+            }
+            if (response.toolCalls().isEmpty()) {
+                String answer = response.content() == null ? "" : response.content();
+                finishRun(pending.runId, answer);
+                return new AgentRunResult(answer, pending.trace, turn + 1, pending.runId);
+            }
+            for (ToolCall call : response.toolCalls()) {
+                recordEvent(pending.runId, "tool_call", call.name() + " " + call.arguments());
+                String result;
+                try {
+                    result = tools.execute(call.name(), call.arguments(), pending.options.allowedToolNames());
+                } catch (ToolApprovalRequiredException exception) {
+                    PendingToolApproval approval = new PendingToolApproval(call.id(), call.name(), call.arguments());
+                    pauseForApproval(pending.runId, pending.messages, pending.trace, turn + 1, pending.options,
+                            pending.apiKey, pending.definitions, approval);
+                    return new AgentRunResult("", pending.trace, turn + 1, pending.runId, approval);
+                } catch (Exception exception) {
+                    result = "Tool execution failed: " + exception.getMessage();
+                }
+                recordEvent(pending.runId, "tool_result", call.name() + " " + result);
+                pending.trace.add(AgentTraceEvent.tool(call.name(), call.arguments(), result));
+                pending.messages.add(ChatMessage.tool(call.id(), result));
+            }
+        }
+        throw new IllegalStateException("agent exceeded max turns: " + pending.options.maxTurns());
+    }
+
+    private String pauseForApproval(String runId, List<ChatMessage> messages, List<AgentTraceEvent> trace,
+                                    int nextTurn, RunOptions options, String apiKey,
+                                    List<io.github.git13166956007.dsh.tool.ToolDefinition> definitions,
+                                    PendingToolApproval approval) throws Exception {
+        String actualRunId = runId == null ? UUID.randomUUID().toString() : runId;
+        pendingApprovals.put(actualRunId, new PendingExecution(actualRunId, messages, trace, nextTurn, options, apiKey,
+                definitions, approval));
+        if (runs != null) {
+            runs.waitForApproval(actualRunId, approval.toolName() + " " + approval.arguments());
+        }
+        return actualRunId;
     }
 
     private RunOptions options(String modelId, String agentId, AgentMode modeOverride) {
@@ -324,5 +412,30 @@ public final class AgentLoop {
         private record RunOptions(String modelId, AgentMode mode, int maxTurns, String systemPrompt,
                               java.util.Set<String> allowedToolNames, java.util.Set<String> skillIds,
                               String memoryNamespace, String memorySubjectKey, String agentId) {
+    }
+
+    private static final class PendingExecution {
+        private final String runId;
+        private final List<ChatMessage> messages;
+        private final List<AgentTraceEvent> trace;
+        private final int nextTurn;
+        private final RunOptions options;
+        private final String apiKey;
+        private final List<io.github.git13166956007.dsh.tool.ToolDefinition> definitions;
+        private final PendingToolApproval approval;
+
+        private PendingExecution(String runId, List<ChatMessage> messages, List<AgentTraceEvent> trace, int nextTurn,
+                                 RunOptions options, String apiKey,
+                                 List<io.github.git13166956007.dsh.tool.ToolDefinition> definitions,
+                                 PendingToolApproval approval) {
+            this.runId = runId;
+            this.messages = messages;
+            this.trace = trace;
+            this.nextTurn = nextTurn;
+            this.options = options;
+            this.apiKey = apiKey;
+            this.definitions = definitions;
+            this.approval = approval;
+        }
     }
 }

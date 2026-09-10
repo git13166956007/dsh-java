@@ -165,6 +165,44 @@ class AgentLoopTest {
     }
 
     @Test
+    void approvalPausesRunAndResumeContinuesModel() throws Exception {
+        ToolRegistry tools = new ToolRegistry();
+        AtomicInteger executions = new AtomicInteger();
+        tools.register(new ToolDefinition("approval_echo", "Approval tool.",
+                JsonNodeFactory.instance.objectNode().put("type", "object")), arguments -> {
+            executions.incrementAndGet();
+            return "approved-result";
+        });
+        tools.setApprovalRequired("approval_echo", true);
+
+        ChatModel model = new ChatModel() {
+            private int calls;
+
+            @Override
+            public ModelResponse complete(List<ChatMessage> messages, List<ToolDefinition> definitions) {
+                calls++;
+                if (calls == 1) {
+                    return new ModelResponse(null, List.of(new ToolCall("approval-1", "approval_echo",
+                            JsonNodeFactory.instance.objectNode())), "tool_calls");
+                }
+                return new ModelResponse("finished after approval", List.of(), "stop");
+            }
+        };
+        RunManager runs = new RunManager(new InMemoryRunStore());
+        AgentLoop loop = new AgentLoop(model, tools, null, null, null, runs, 2);
+
+        AgentRunResult pending = loop.runDetailed("approve this", null, List.of());
+        assertNotNull(pending.pendingApproval());
+        assertEquals(RunStatus.WAITING_APPROVAL, runs.find(pending.runId()).status());
+        assertEquals(0, executions.get());
+
+        AgentRunResult result = loop.resumeApproval(pending.runId(), true);
+        assertEquals("finished after approval", result.answer());
+        assertEquals(1, executions.get());
+        assertEquals(RunStatus.COMPLETED, runs.find(pending.runId()).status());
+    }
+
+    @Test
     void persistsRunAndToolEvents() throws Exception {
         ToolRegistry tools = new ToolRegistry();
         tools.register(new ToolDefinition("demo_echo", "Echo a value.",

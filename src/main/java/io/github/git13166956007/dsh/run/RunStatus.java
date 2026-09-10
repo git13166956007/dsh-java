@@ -2,6 +2,7 @@ package io.github.git13166956007.dsh.run;
 
 public enum RunStatus {
     RUNNING("running"),
+    WAITING_APPROVAL("waiting_approval"),
     COMPLETED("completed"),
     FAILED("failed"),
     CANCELLED("cancelled");
@@ -25,6 +26,6 @@ public enum RunStatus {
     }
 
     public boolean terminal() {
-        return this != RUNNING;
+        return this != RUNNING && this != WAITING_APPROVAL;
     }
 }

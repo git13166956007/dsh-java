@@ -860,7 +860,8 @@ async function sendMessage() {
           name: data.name,
           arguments: data.arguments,
           result: null,
-          state: 'running'
+          state: 'running',
+          runId: null
         }
         const assistantPosition = messages.value.indexOf(assistantMessage)
         messages.value.splice(assistantPosition, 0, toolMessage)
@@ -879,7 +880,14 @@ async function sendMessage() {
       } else if (event === 'done') {
         conversationId.value = data.conversationId || conversationId.value
         assistantMessage.content = data.answer || assistantMessage.content
+        assistantMessage.runId = data.runId
         trace.value = data.trace || trace.value
+        const pendingTool = [...messages.value].reverse().find((item) => item.role === 'tool' && item.state === 'running')
+        if (data.pendingApproval && pendingTool) {
+          pendingTool.runId = data.runId
+          pendingTool.state = 'awaiting_approval'
+          pendingTool.approval = data.pendingApproval
+        }
         history.value.unshift({
           prompt,
           answer: data.answer,
@@ -898,6 +906,54 @@ async function sendMessage() {
     messages.value.push({ role: 'error', content: requestError.message })
   } finally {
     sending.value = false
+    await scrollTranscript()
+  }
+}
+
+async function approveTool(toolMessage, approved) {
+  if (!toolMessage.runId || toolMessage.state === 'approving') return
+  toolMessage.state = 'approving'
+  error.value = ''
+  try {
+    const response = await fetch(`/api/v1/runs/${encodeURIComponent(toolMessage.runId)}/approval`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ approved })
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload.error || '审批操作失败')
+    const completedTool = [...(payload.trace || [])].reverse().find((item) => item.type === 'tool' && item.name === toolMessage.name)
+    toolMessage.result = completedTool?.result || (approved ? 'Tool approved' : 'Tool execution denied by user')
+    toolMessage.state = 'complete'
+    trace.value = payload.trace || trace.value
+    const assistantMessage = [...messages.value].reverse().find((item) => item.role === 'assistant' && item.runId === payload.runId)
+    if (assistantMessage) assistantMessage.content = payload.message || assistantMessage.content
+    if (payload.pendingApproval) {
+      const nextTool = {
+        role: 'tool',
+        id: payload.pendingApproval.toolCallId,
+        name: payload.pendingApproval.toolName,
+        arguments: payload.pendingApproval.arguments,
+        result: null,
+        state: 'awaiting_approval',
+        runId: payload.runId,
+        approval: payload.pendingApproval
+      }
+      const position = assistantMessage ? messages.value.indexOf(assistantMessage) : messages.value.length
+      messages.value.splice(position, 0, nextTool)
+    } else if (assistantMessage) {
+      history.value.unshift({
+        prompt: 'Approved tool continuation',
+        answer: payload.message,
+        turns: payload.turns || 0,
+        tools: (payload.trace || []).filter((item) => item.type === 'tool').length,
+        time: new Date()
+      })
+    }
+  } catch (requestError) {
+    toolMessage.state = 'awaiting_approval'
+    error.value = requestError.message
+  } finally {
     await scrollTranscript()
   }
 }
@@ -1129,13 +1185,17 @@ onUnmounted(() => clearTimeout(planPollTimer))
             </div>
             <div v-if="item.role === 'assistant'" class="message-content markdown-content" v-html="renderMarkdown(item.content)"></div>
             <div v-else-if="item.role === 'tool'" class="tool-message-content">
-              <div class="tool-message-title"><strong>{{ item.name }}</strong><span>{{ item.state === 'running' ? 'Running' : 'Completed' }}</span></div>
+              <div class="tool-message-title"><strong>{{ item.name }}</strong><span>{{ item.state === 'running' ? 'Running' : item.state === 'awaiting_approval' || item.state === 'approving' ? 'Approval required' : 'Completed' }}</span></div>
               <div class="tool-message-label">INPUT</div>
               <pre>{{ formatArguments(item.arguments) }}</pre>
               <template v-if="item.result !== null">
                 <div class="tool-message-label">OUTPUT</div>
                 <pre class="result">{{ item.result }}</pre>
               </template>
+              <div v-if="item.state === 'awaiting_approval'" class="tool-approval-actions">
+                <button class="secondary-button compact" type="button" @click="approveTool(item, true)">Approve</button>
+                <button class="secondary-button compact" type="button" @click="approveTool(item, false)">Deny</button>
+              </div>
             </div>
             <div v-else class="message-content">{{ item.content }}</div>
           </div>
