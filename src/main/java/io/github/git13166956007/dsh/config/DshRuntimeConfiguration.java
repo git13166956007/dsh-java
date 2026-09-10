@@ -28,7 +28,7 @@ public class DshRuntimeConfiguration {
         ObjectNode noArguments = objectMapper.createObjectNode();
         noArguments.put("type", "object");
         registry.register(new ToolDefinition(
-                "time.now",
+                "time_now",
                 "Get the current server time in ISO-8601 format.",
                 noArguments), arguments -> OffsetDateTime.now().toString());
         return registry;
@@ -42,7 +42,7 @@ public class DshRuntimeConfiguration {
                 environment.getProperty("dsh.model.api-key",
                         environment.getProperty("DEEPSEEK_API_KEY", "")),
                 environment.getProperty("dsh.model.name",
-                        environment.getProperty("DEEPSEEK_MODEL", "deepseek-flash")),
+                        environment.getProperty("DEEPSEEK_MODEL", "deepseek-v4-flash")),
                 environment.getProperty("dsh.model.proxy-host",
                         environment.getProperty("DEEPSEEK_PROXY_HOST", "")),
                 Integer.parseInt(environment.getProperty("dsh.model.proxy-port",

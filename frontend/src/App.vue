@@ -142,7 +142,7 @@ onMounted(refreshHealth)
 
       <div class="sidebar-footer">
         <span class="footer-label">MODEL</span>
-        <span class="model-name">deepseek-flash</span>
+        <span class="model-name">deepseek-v4-flash</span>
         <span class="version">v0.1.0</span>
       </div>
     </aside>
