@@ -124,6 +124,11 @@ h2 { font-size: 17px; }
 .plan-item { align-items: center; }
 .memory-item { align-items: flex-start; }
 .memory-item .managed-tool-copy p { color: #aebbb7; line-height: 1.6; }
+.context-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.context-summary-grid div { padding: 12px; border: 1px solid #29383a; background: #12191b; }
+.context-summary-grid span, .context-summary-grid strong { display: block; }
+.context-summary-grid span { color: #718083; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase; }
+.context-summary-grid strong { margin-top: 7px; color: #d9e5e0; font-size: 12px; overflow-wrap: anywhere; }
 .plan-item.selected { border-left: 2px solid #8fd7bf; padding-left: 11px; }
 .plan-select { min-width: 0; flex: 1; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; }
 .plan-select .managed-tool-title, .plan-select .managed-tool-copy { display: block; }

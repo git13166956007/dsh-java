@@ -24,6 +24,9 @@ const capabilityTab = ref('tools')
 const mcpServers = ref([])
 const skills = ref([])
 const models = ref([])
+const contextInfo = ref(null)
+const contextLoading = ref(false)
+const contextError = ref('')
 const selectedModelId = ref(null)
 const agents = ref([])
 const selectedAgentId = ref(null)
@@ -249,6 +252,41 @@ async function refreshMemories() {
     memories.value = await response.json()
   } catch {
     memories.value = []
+  }
+}
+
+async function refreshContext() {
+  if (!conversationId.value) {
+    contextInfo.value = null
+    return
+  }
+  try {
+    const response = await fetch(`/api/v1/conversations/${encodeURIComponent(conversationId.value)}/context`)
+    if (!response.ok) throw new Error('Context unavailable')
+    contextInfo.value = await response.json()
+    contextError.value = ''
+  } catch {
+    contextInfo.value = null
+  }
+}
+
+async function compactContext() {
+  if (!conversationId.value || contextLoading.value) return
+  contextLoading.value = true
+  contextError.value = ''
+  try {
+    const response = await fetch(`/api/v1/conversations/${encodeURIComponent(conversationId.value)}/compact`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiKey: apiKey.value.trim() || null, modelId: selectedModelId.value })
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload.message || payload.error || 'Context compaction failed')
+    contextInfo.value = payload
+  } catch (requestError) {
+    contextError.value = requestError.message
+  } finally {
+    contextLoading.value = false
   }
 }
 
@@ -1070,6 +1108,7 @@ async function sendMessage() {
         void scrollTranscript()
       } else if (event === 'done') {
         conversationId.value = data.conversationId || conversationId.value
+        void refreshContext()
         assistantMessage.content = data.answer || assistantMessage.content
         assistantMessage.runId = data.runId
         trace.value = data.trace || trace.value
@@ -1140,6 +1179,7 @@ async function approveTool(toolMessage, approved) {
         tools: (payload.trace || []).filter((item) => item.type === 'tool').length,
         time: new Date()
       })
+      await refreshContext()
     }
   } catch (requestError) {
     toolMessage.state = 'awaiting_approval'
@@ -1198,6 +1238,8 @@ function clearConversation() {
   trace.value = []
   error.value = ''
   conversationId.value = null
+  contextInfo.value = null
+  contextError.value = ''
 }
 
 function formatArguments(argumentsNode) {
@@ -1256,6 +1298,7 @@ onMounted(() => {
   refreshAgents()
   refreshSubAgents()
   refreshMemories()
+  refreshContext()
   refreshPlans()
 })
 
@@ -1470,6 +1513,7 @@ onUnmounted(() => clearTimeout(planPollTimer))
         <button :class="{ active: capabilityTab === 'agents' }" type="button" @click="capabilityTab = 'agents'">Agents</button>
         <button :class="{ active: capabilityTab === 'sub-agents' }" type="button" @click="capabilityTab = 'sub-agents'">Sub-agents</button>
         <button :class="{ active: capabilityTab === 'memory' }" type="button" @click="capabilityTab = 'memory'">Memory</button>
+        <button :class="{ active: capabilityTab === 'context' }" type="button" @click="capabilityTab = 'context'; refreshContext()">Context</button>
         <button :class="{ active: capabilityTab === 'plans' }" type="button" @click="capabilityTab = 'plans'">Plans</button>
       </nav>
 
@@ -1762,6 +1806,18 @@ onUnmounted(() => clearTimeout(planPollTimer))
           <p v-if="memoryFormError" class="tool-form-error">{{ memoryFormError }}</p>
           <div class="tool-form-footer"><button class="send-button" type="submit" :disabled="memorySaving"><span>{{ memorySaving ? 'Saving' : 'Save memory' }}</span><span class="send-arrow">↗</span></button></div>
         </form>
+      </div>
+
+      <div v-if="capabilityTab === 'context'" class="tool-manager-list">
+        <div class="tool-form-heading"><div><div class="eyebrow">CONTEXT WINDOW</div><h3>Conversation context</h3></div><span class="tool-form-note">{{ conversationId || 'No conversation' }}</span></div>
+        <div v-if="contextInfo" class="context-summary-grid">
+          <div><span>Messages</span><strong>{{ contextInfo.messageCount }}</strong></div>
+          <div><span>Estimated tokens</span><strong>{{ contextInfo.estimatedTokens }} / {{ contextInfo.maxTokens }}</strong></div>
+          <div><span>State</span><strong>{{ contextInfo.truncated ? 'Compacted / truncated' : 'Within budget' }}</strong></div>
+        </div>
+        <p v-else class="tool-manager-empty">Send a message to create a conversation context.</p>
+        <p v-if="contextError" class="tool-form-error">{{ contextError }}</p>
+        <div class="tool-form-footer skill-footer"><button class="secondary-button" type="button" @click="refreshContext">Refresh</button><button class="send-button" type="button" :disabled="!conversationId || contextLoading" @click="compactContext"><span>{{ contextLoading ? 'Compacting' : 'Compact context' }}</span><span class="send-arrow">↗</span></button></div>
       </div>
 
       <div v-if="capabilityTab === 'plans'" class="tool-manager-list">
