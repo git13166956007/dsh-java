@@ -1,0 +1,40 @@
+docker/mariadb/init/001_schema.sql
+  h_eb697744b14c1b 145-147
+frontend/src/App.vue
+  h_eb697744b14c1b 38-40,258-260,276-278,304-306,1546,1565-1566
+src/main/java/io/github/git13166956007/dsh/agent/AgentBudgetExceededException.java
+  h_eb697744b14c1b 1-7
+src/main/java/io/github/git13166956007/dsh/agent/AgentExecutionOptions.java
+  h_eb697744b14c1b 13-21,25-27
+src/main/java/io/github/git13166956007/dsh/agent/AgentLoop.java
+  h_eb697744b14c1b 103-104,112-113,126,134,148,156,216,224,241,250,285,305,319,327,343,346,361,366,394-399,431,443,449,457,461-486
+src/main/java/io/github/git13166956007/dsh/agent/MariaDbSubAgentProfileStore.java
+  h_eb697744b14c1b 29-30,36-37,47-49,52-53,63-65,86-87,92-103
+src/main/java/io/github/git13166956007/dsh/agent/SubAgentProfile.java
+  h_eb697744b14c1b 14-22,25-26
+src/main/java/io/github/git13166956007/dsh/agent/SubAgentProfileData.java
+  h_eb697744b14c1b 14-21
+src/main/java/io/github/git13166956007/dsh/agent/SubAgentProfileRegistry.java
+  h_eb697744b14c1b 41-47,51-54,62-69,77-80,126-140
+src/main/java/io/github/git13166956007/dsh/agent/SubAgentRunner.java
+  h_eb697744b14c1b 38
+src/main/java/io/github/git13166956007/dsh/run/RunManager.java
+  h_eb697744b14c1b 6-7,67-86
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 365-366,377,718-719
+src/test/java/io/github/git13166956007/dsh/agent/AgentLoopTest.java
+  h_eb697744b14c1b 232-269
+src/test/java/io/github/git13166956007/dsh/agent/SubAgentProfileRegistryTest.java
+  h_eb697744b14c1b 23-36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c71102ba9c75885bbd8c358ce967ddb978222b8e",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
