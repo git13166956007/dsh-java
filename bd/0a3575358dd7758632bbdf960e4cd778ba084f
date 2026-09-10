@@ -1,0 +1,60 @@
+README.md
+  h_eb697744b14c1b 99-100
+docker/mariadb/init/001_schema.sql
+  h_eb697744b14c1b 63-92
+docs/runtime-roadmap.md
+  h_eb697744b14c1b 17
+src/main/java/io/github/git13166956007/dsh/agent/AgentLoop.java
+  h_eb697744b14c1b 6-7,17,35-39,46,73-74,81-90,98-106,110,115-136,138-148,152-156,184-191,197-221,223-236,240-244,255,260,285-317,319
+src/main/java/io/github/git13166956007/dsh/agent/AgentRunContext.java
+  h_eb697744b14c1b 1-28
+src/main/java/io/github/git13166956007/dsh/agent/AgentRunResult.java
+  h_eb697744b14c1b 7-11
+src/main/java/io/github/git13166956007/dsh/agent/SubAgentRunner.java
+  h_eb697744b14c1b 5,24-28,30-34,39-41
+src/main/java/io/github/git13166956007/dsh/config/DshRuntimeConfiguration.java
+  h_eb697744b14c1b 27-30,139-153,168,170,202-204
+src/main/java/io/github/git13166956007/dsh/plan/PlanExecutor.java
+  h_eb697744b14c1b 6-9,26,31-34,38,43-44,53,66,75,80,89,92,95-98,102,106,112-113,119-123,129,132,138-189
+src/main/java/io/github/git13166956007/dsh/run/InMemoryRunStore.java
+  h_eb697744b14c1b 1-38
+src/main/java/io/github/git13166956007/dsh/run/MariaDbRunStore.java
+  h_eb697744b14c1b 1-146
+src/main/java/io/github/git13166956007/dsh/run/Run.java
+  h_eb697744b14c1b 1-23
+src/main/java/io/github/git13166956007/dsh/run/RunData.java
+  h_eb697744b14c1b 1-19
+src/main/java/io/github/git13166956007/dsh/run/RunEvent.java
+  h_eb697744b14c1b 1-9
+src/main/java/io/github/git13166956007/dsh/run/RunEventData.java
+  h_eb697744b14c1b 1-6
+src/main/java/io/github/git13166956007/dsh/run/RunKind.java
+  h_eb697744b14c1b 1-30
+src/main/java/io/github/git13166956007/dsh/run/RunManager.java
+  h_eb697744b14c1b 1-62
+src/main/java/io/github/git13166956007/dsh/run/RunSpec.java
+  h_eb697744b14c1b 1-18
+src/main/java/io/github/git13166956007/dsh/run/RunStatus.java
+  h_eb697744b14c1b 1-30
+src/main/java/io/github/git13166956007/dsh/run/RunStore.java
+  h_eb697744b14c1b 1-13
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 22-24,71,79,94,393-424,515-516,518,552,574,600-610,675,680
+src/test/java/io/github/git13166956007/dsh/agent/AgentLoopTest.java
+  h_eb697744b14c1b 6-8,16,166-193
+src/test/java/io/github/git13166956007/dsh/plan/PlanExecutorTest.java
+  h_eb697744b14c1b 14-17,57-89
+src/test/java/io/github/git13166956007/dsh/run/RunManagerTest.java
+  h_eb697744b14c1b 1-26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "bd0a3575358dd7758632bbdf960e4cd778ba084f",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
