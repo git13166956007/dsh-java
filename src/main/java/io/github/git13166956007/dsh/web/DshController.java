@@ -3,6 +3,7 @@ package io.github.git13166956007.dsh.web;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import io.github.git13166956007.dsh.agent.AgentLoop;
+import io.github.git13166956007.dsh.agent.AgentRunResult;
 import io.github.git13166956007.dsh.core.DshRuntime;
 import io.github.git13166956007.dsh.provider.deepseek.ModelConfigurationException;
 import org.springframework.http.HttpStatus;
@@ -40,7 +41,8 @@ public final class DshController {
         if (request == null || request.message() == null || request.message().trim().isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "message must not be blank");
         }
-        return new ChatResponse(agentLoop.run(request.message()));
+        AgentRunResult result = agentLoop.runDetailed(request.message());
+        return new ChatResponse(result.answer(), result.trace(), result.turns());
     }
 
     @ExceptionHandler(ModelConfigurationException.class)
@@ -52,7 +54,8 @@ public final class DshController {
     public record ChatRequest(String message) {
     }
 
-    public record ChatResponse(String message) {
+    public record ChatResponse(String message, java.util.List<io.github.git13166956007.dsh.agent.AgentTraceEvent> trace,
+                                int turns) {
     }
 
     public record ErrorResponse(String error) {

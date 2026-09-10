@@ -1,6 +1,11 @@
 out/
 build/
 .gradle/
+node_modules/
+frontend/dist/
+output/playwright/
+.playwright/
+.playwright-cli/
 *.class
 .idea/
 .vscode/

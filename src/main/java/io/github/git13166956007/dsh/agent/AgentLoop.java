@@ -21,18 +21,28 @@ public final class AgentLoop {
     }
 
     public String run(String prompt) throws Exception {
+        return runDetailed(prompt).answer();
+    }
+
+    public AgentRunResult runDetailed(String prompt) throws Exception {
         if (prompt == null || prompt.trim().isEmpty()) {
             throw new IllegalArgumentException("prompt must not be blank");
         }
 
         List<ChatMessage> messages = new ArrayList<ChatMessage>();
+        List<AgentTraceEvent> trace = new ArrayList<AgentTraceEvent>();
         messages.add(ChatMessage.system(SYSTEM_PROMPT));
         messages.add(ChatMessage.user(prompt));
 
         for (int turn = 0; turn < maxTurns; turn++) {
             ModelResponse response = model.complete(messages, tools.definitions());
             messages.add(ChatMessage.assistant(response.content(), response.toolCalls()));
-            if (response.toolCalls().isEmpty()) return response.content() == null ? "" : response.content();
+            if (response.content() != null && !response.content().isEmpty()) {
+                trace.add(AgentTraceEvent.model(response.content()));
+            }
+            if (response.toolCalls().isEmpty()) {
+                return new AgentRunResult(response.content() == null ? "" : response.content(), trace, turn + 1);
+            }
 
             for (ToolCall call : response.toolCalls()) {
                 String result;
@@ -41,6 +51,7 @@ public final class AgentLoop {
                 } catch (Exception exception) {
                     result = "Tool execution failed: " + exception.getMessage();
                 }
+                trace.add(AgentTraceEvent.tool(call.name(), call.arguments(), result));
                 messages.add(ChatMessage.tool(call.id(), result));
             }
         }

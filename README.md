@@ -23,6 +23,16 @@ Java 版 DeepSeek Harness 的最小运行时内核。
 
 启动后访问 `http://localhost:8080/api/v1/health`。如果 8080 已被其他服务占用，可以运行 `./gradlew bootRun --args='--server.port=18080'`。
 
+启动 Vue 调试前端：
+
+```bash
+cd frontend
+npm install
+VITE_API_TARGET=http://localhost:8080 npm run dev
+```
+
+打开 `http://localhost:5173`。前端开发服务器会把 `/api` 请求代理到 Spring Boot。
+
 配置 DeepSeek API Key 后运行智能体：
 
 ```bash
