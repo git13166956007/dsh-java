@@ -5,9 +5,11 @@ import io.github.git13166956007.dsh.agent.ChatModel;
 import io.github.git13166956007.dsh.agent.ModelResponse;
 import io.github.git13166956007.dsh.agent.ModelStreamListener;
 import io.github.git13166956007.dsh.provider.deepseek.DeepSeekChatModel;
+import io.github.git13166956007.dsh.provider.openai.OpenAiCompatibleChatModel;
 import io.github.git13166956007.dsh.tool.ToolDefinition;
 import tools.jackson.databind.ObjectMapper;
 import java.util.List;
+import java.util.Locale;
 
 public final class ModelRouter implements ChatModel {
     private final ModelRegistry registry;
@@ -47,8 +49,17 @@ public final class ModelRouter implements ChatModel {
         return profile.supportsTools() ? tools : List.of();
     }
 
-    private DeepSeekChatModel client(ModelProfileData profile) {
-        return new DeepSeekChatModel(objectMapper, profile.baseUrl(), profile.apiKey(), profile.model(),
-                profile.proxyHost(), profile.proxyPort());
+    private ChatModel client(ModelProfileData profile) {
+        String provider = profile.provider().toLowerCase(Locale.ROOT);
+        if ("deepseek".equals(provider)) {
+            return new DeepSeekChatModel(objectMapper, profile.baseUrl(), profile.apiKey(), profile.model(),
+                    profile.proxyHost(), profile.proxyPort());
+        }
+        if ("openai".equals(provider) || "openai_compatible".equals(provider)) {
+            return new OpenAiCompatibleChatModel(objectMapper, provider, profile.baseUrl(), profile.apiKey(),
+                    profile.model(), profile.proxyHost(), profile.proxyPort());
+        }
+        throw new IllegalArgumentException("unsupported model provider: " + profile.provider()
+                + "; use deepseek, openai, or openai_compatible");
     }
 }
