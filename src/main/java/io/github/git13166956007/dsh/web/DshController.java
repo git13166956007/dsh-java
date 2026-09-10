@@ -21,6 +21,8 @@ import io.github.git13166956007.dsh.agent.ChatMessage;
 import io.github.git13166956007.dsh.agent.ChatModel;
 import io.github.git13166956007.dsh.agent.ToolCall;
 import io.github.git13166956007.dsh.context.ContextManager;
+import io.github.git13166956007.dsh.context.ContextRequest;
+import io.github.git13166956007.dsh.context.ContextSnapshot;
 import io.github.git13166956007.dsh.context.ContextWindow;
 import io.github.git13166956007.dsh.mcp.McpServerInfo;
 import io.github.git13166956007.dsh.mcp.McpServerRegistry;
@@ -685,6 +687,21 @@ public final class DshController {
         ContextWindow window = contextManager.window(id, modelContextWindow(modelId, null), modelTokenizer(modelId, null));
         return new ContextResponse(id, window.messages().size(), window.estimatedTokens(), window.maxTokens(),
                 window.truncated());
+    }
+
+    @GetMapping("/context/providers")
+    public java.util.List<String> contextProviders() {
+        return contextManager.providerIds();
+    }
+
+    @GetMapping("/context/providers/preview")
+    public ContextSnapshot contextProviderPreview(@RequestParam(defaultValue = "") String query,
+                                                   @RequestParam(required = false) String conversationId,
+                                                   @RequestParam(required = false) String modelId,
+                                                   @RequestParam(required = false) String agentId,
+                                                   @RequestParam(required = false) String mode) {
+        return contextManager.collect(new ContextRequest(conversationId, query, modelId, agentId, mode),
+                modelTokenizer(modelId, agentId));
     }
 
     @PostMapping("/conversations/{id}/compact")

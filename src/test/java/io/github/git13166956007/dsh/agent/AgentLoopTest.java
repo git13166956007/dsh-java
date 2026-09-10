@@ -7,6 +7,10 @@ import io.github.git13166956007.dsh.run.InMemoryRunStore;
 import io.github.git13166956007.dsh.run.RunManager;
 import io.github.git13166956007.dsh.run.RunStatus;
 import io.github.git13166956007.dsh.run.RunStore;
+import io.github.git13166956007.dsh.context.ContextManager;
+import io.github.git13166956007.dsh.context.ContextProvider;
+import io.github.git13166956007.dsh.context.ContextFragment;
+import io.github.git13166956007.dsh.context.InMemoryConversationStore;
 import java.util.Collections;
 import java.util.ArrayList;
 import java.util.List;
@@ -344,6 +348,35 @@ class AgentLoopTest {
 
         assertEquals("1. Plan\n2. Verify", result.answer());
         assertEquals(List.of(0), definitionCounts);
+    }
+
+    @Test
+    void injectsRequestScopedProviderContextIntoTheSystemPrompt() throws Exception {
+        ContextManager contexts = new ContextManager(new InMemoryConversationStore(), 10, 100, 40);
+        contexts.registerProvider(new ContextProvider() {
+            @Override
+            public String id() {
+                return "workspace";
+            }
+
+            @Override
+            public List<ContextFragment> provide(io.github.git13166956007.dsh.context.ContextRequest request) {
+                return List.of(new ContextFragment("Current workspace", "release branch is ready", 1));
+            }
+        });
+        List<ChatMessage> captured = new ArrayList<>();
+        ChatModel model = (messages, definitions) -> {
+            captured.addAll(messages);
+            return new ModelResponse("done", List.of(), "stop");
+        };
+
+        AgentLoop loop = new AgentLoop(model, new ToolRegistry(), null, null, null, null, null,
+                new ObjectMapper(), contexts, 2);
+        AgentRunResult result = loop.runDetailed("check status", null, List.of());
+
+        assertEquals("done", result.answer());
+        assertTrue(captured.get(0).content().contains("release branch is ready"));
+        assertTrue(captured.get(0).content().contains("workspace"));
     }
 
     @Test

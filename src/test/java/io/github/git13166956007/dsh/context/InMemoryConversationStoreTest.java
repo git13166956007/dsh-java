@@ -9,6 +9,7 @@ import io.github.git13166956007.dsh.agent.ModelResponse;
 import io.github.git13166956007.dsh.model.ModelTokenizer;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
@@ -99,5 +100,52 @@ class InMemoryConversationStoreTest {
         assertEquals(1, window.messages().size());
         assertEquals("two", window.messages().get(0).content());
         assertTrue(window.truncated());
+    }
+
+    @Test
+    void collectsDynamicContextByPriorityWithinItsOwnBudgetAndIsolatesFailures() {
+        ContextManager context = new ContextManager(new InMemoryConversationStore(), 10, 20, 3);
+        AtomicBoolean called = new AtomicBoolean();
+        AutoCloseable registration = context.registerProvider(new ContextProvider() {
+            @Override
+            public String id() {
+                return "fixture";
+            }
+
+            @Override
+            public List<ContextFragment> provide(ContextRequest request) {
+                called.set("find release notes".equals(request.query()));
+                return List.of(new ContextFragment("high", "important", 10),
+                        new ContextFragment("low", "later", 1));
+            }
+        });
+        context.registerProvider(new ContextProvider() {
+            @Override
+            public String id() {
+                return "broken";
+            }
+
+            @Override
+            public List<ContextFragment> provide(ContextRequest request) {
+                throw new IllegalStateException("fixture failure");
+            }
+        });
+
+        ContextSnapshot snapshot = context.collect(
+                new ContextRequest("conversation", "find release notes", "model", "agent", "execution"),
+                message -> 2);
+
+        assertTrue(called.get());
+        assertEquals(List.of("high"), snapshot.fragments().stream().map(ContextFragment::title).toList());
+        assertTrue(snapshot.truncated());
+        assertEquals(List.of("broken: fixture failure"), snapshot.errors());
+        assertTrue(snapshot.promptText().contains("important"));
+
+        try {
+            registration.close();
+        } catch (Exception exception) {
+            throw new AssertionError(exception);
+        }
+        assertEquals(List.of("broken"), context.providerIds());
     }
 }

@@ -30,6 +30,7 @@ const skillSaving = ref(false)
 const models = ref([])
 const modelProviders = ref([])
 const contextInfo = ref(null)
+const contextProviders = ref([])
 const contextLoading = ref(false)
 const contextError = ref('')
 const selectedModelId = ref(null)
@@ -404,6 +405,16 @@ async function refreshContext() {
     contextError.value = ''
   } catch {
     contextInfo.value = null
+  }
+}
+
+async function refreshContextProviders() {
+  try {
+    const response = await fetch('/api/v1/context/providers')
+    if (!response.ok) throw new Error('Context providers unavailable')
+    contextProviders.value = await response.json()
+  } catch {
+    contextProviders.value = []
   }
 }
 
@@ -913,6 +924,7 @@ function openCapabilities(tab) {
   refreshMcpServers()
   refreshSkills()
   refreshModels()
+  refreshContextProviders()
   refreshAgents()
   refreshSubAgents()
   refreshSubAgentSessions()
@@ -1774,6 +1786,7 @@ onMounted(() => {
   refreshSubAgents()
   refreshMemories()
   refreshContext()
+  refreshContextProviders()
   refreshPlans()
 })
 
@@ -2390,10 +2403,12 @@ onUnmounted(() => {
           <div><span>Messages</span><strong>{{ contextInfo.messageCount }}</strong></div>
           <div><span>Estimated tokens</span><strong>{{ contextInfo.estimatedTokens }} / {{ contextInfo.maxTokens }}</strong></div>
           <div><span>State</span><strong>{{ contextInfo.truncated ? 'Compacted / truncated' : 'Within budget' }}</strong></div>
+          <div><span>Providers</span><strong>{{ contextProviders.length || 'None' }}</strong></div>
         </div>
         <p v-else class="tool-manager-empty">Send a message to create a conversation context.</p>
+        <p v-if="contextProviders.length" class="context-provider-list">{{ contextProviders.join(' · ') }}</p>
         <p v-if="contextError" class="tool-form-error">{{ contextError }}</p>
-        <div class="tool-form-footer skill-footer"><button class="secondary-button" type="button" @click="refreshContext">Refresh</button><button class="send-button" type="button" :disabled="!conversationId || contextLoading" @click="compactContext"><span>{{ contextLoading ? 'Compacting' : 'Compact context' }}</span><span class="send-arrow">↗</span></button></div>
+        <div class="tool-form-footer skill-footer"><button class="secondary-button" type="button" @click="refreshContext(); refreshContextProviders()">Refresh</button><button class="send-button" type="button" :disabled="!conversationId || contextLoading" @click="compactContext"><span>{{ contextLoading ? 'Compacting' : 'Compact context' }}</span><span class="send-arrow">↗</span></button></div>
       </div>
 
       <div v-if="capabilityTab === 'plans'" class="tool-manager-list">

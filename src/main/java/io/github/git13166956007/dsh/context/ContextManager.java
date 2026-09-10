@@ -6,23 +6,84 @@ import io.github.git13166956007.dsh.agent.ModelResponse;
 import io.github.git13166956007.dsh.model.ModelTokenizer;
 import io.github.git13166956007.dsh.tool.ToolDefinition;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class ContextManager {
     private final ConversationStore store;
     private final int maxHistoryMessages;
     private final int maxContextTokens;
+    private final int maxProviderTokens;
+    private final Map<String, ContextProvider> providers = new ConcurrentHashMap<String, ContextProvider>();
 
     public ContextManager(ConversationStore store, int maxHistoryMessages) {
         this(store, maxHistoryMessages, 12000);
     }
 
     public ContextManager(ConversationStore store, int maxHistoryMessages, int maxContextTokens) {
+        this(store, maxHistoryMessages, maxContextTokens, Math.min(maxContextTokens, 4000));
+    }
+
+    public ContextManager(ConversationStore store, int maxHistoryMessages, int maxContextTokens, int maxProviderTokens) {
         if (maxHistoryMessages < 1) throw new IllegalArgumentException("maxHistoryMessages must be positive");
         if (maxContextTokens < 1) throw new IllegalArgumentException("maxContextTokens must be positive");
+        if (maxProviderTokens < 1) throw new IllegalArgumentException("maxProviderTokens must be positive");
         this.store = store;
         this.maxHistoryMessages = maxHistoryMessages;
         this.maxContextTokens = maxContextTokens;
+        this.maxProviderTokens = Math.min(maxContextTokens, maxProviderTokens);
+    }
+
+    public AutoCloseable registerProvider(ContextProvider provider) {
+        if (provider == null || provider.id() == null || provider.id().isBlank()) {
+            throw new IllegalArgumentException("context provider id must not be blank");
+        }
+        String id = provider.id().trim().toLowerCase(java.util.Locale.ROOT);
+        if (!id.matches("[a-z0-9_-]{1,64}")) throw new IllegalArgumentException("invalid context provider id");
+        ContextProvider previous = providers.putIfAbsent(id, provider);
+        if (previous != null && previous != provider) throw new IllegalArgumentException("duplicate context provider: " + id);
+        return () -> providers.remove(id, provider);
+    }
+
+    public List<String> providerIds() {
+        return providers.keySet().stream().sorted().toList();
+    }
+
+    public ContextSnapshot collect(ContextRequest request, ModelTokenizer tokenizer) {
+        ModelTokenizer effectiveTokenizer = tokenizer == null ? ModelTokenizer.approximate() : tokenizer;
+        List<ContextFragment> available = new ArrayList<ContextFragment>();
+        List<String> errors = new ArrayList<String>();
+        ContextRequest effectiveRequest = request == null ? new ContextRequest(null, "", null, null, null) : request;
+        for (Map.Entry<String, ContextProvider> entry : providers.entrySet()) {
+            try {
+                List<ContextFragment> fragments = entry.getValue().provide(effectiveRequest);
+                if (fragments == null) continue;
+                for (ContextFragment fragment : fragments) {
+                    if (fragment != null) available.add(fragment.withProvider(entry.getKey()));
+                }
+            } catch (Exception exception) {
+                errors.add(entry.getKey() + ": " + (exception.getMessage() == null
+                        ? exception.getClass().getSimpleName() : exception.getMessage()));
+            }
+        }
+        available.sort(Comparator.comparingInt(ContextFragment::priority).reversed()
+                .thenComparing(ContextFragment::providerId).thenComparing(ContextFragment::title));
+        List<ContextFragment> selected = new ArrayList<ContextFragment>();
+        int tokens = 0;
+        boolean truncated = false;
+        for (ContextFragment fragment : available) {
+            int fragmentTokens = effectiveTokenizer.count(ChatMessage.system(fragment.content()));
+            if (tokens + fragmentTokens > maxProviderTokens) {
+                truncated = true;
+                continue;
+            }
+            selected.add(fragment);
+            tokens += fragmentTokens;
+        }
+        return new ContextSnapshot(selected, tokens, maxProviderTokens, truncated, errors);
     }
 
     public String open(String conversationId, String title) throws Exception {

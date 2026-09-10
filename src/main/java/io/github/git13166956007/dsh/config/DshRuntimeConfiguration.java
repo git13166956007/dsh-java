@@ -317,9 +317,11 @@ public class DshRuntimeConfiguration {
     public AgentLoop agentLoop(ChatModel chatModel, ToolRegistry toolRegistry, SkillRegistry skillRegistry,
                                AgentProfileRegistry agentProfileRegistry, MemoryManager memoryManager,
                                RunManager runManager, AgentContinuationStore continuations,
-                               ObjectMapper objectMapper, Environment environment) {
+                               ObjectMapper objectMapper, io.github.git13166956007.dsh.context.ContextManager contextManager,
+                               Environment environment) {
         return new AgentLoop(chatModel, toolRegistry, skillRegistry, agentProfileRegistry, memoryManager, runManager,
-                continuations, objectMapper, Integer.parseInt(environment.getProperty("dsh.agent.max-turns", "8")));
+                continuations, objectMapper, contextManager,
+                Integer.parseInt(environment.getProperty("dsh.agent.max-turns", "8")));
     }
 
     @Bean
@@ -374,7 +376,8 @@ public class DshRuntimeConfiguration {
     public ContextManager contextManager(ConversationStore conversationStore, Environment environment) {
         return new ContextManager(conversationStore, Integer.parseInt(
                 environment.getProperty("dsh.persistence.max-history-messages", "24")), Integer.parseInt(
-                environment.getProperty("dsh.persistence.max-context-tokens", "12000")));
+                environment.getProperty("dsh.persistence.max-context-tokens", "12000")), Integer.parseInt(
+                environment.getProperty("dsh.context.max-provider-tokens", "4000")));
     }
 
     @Bean

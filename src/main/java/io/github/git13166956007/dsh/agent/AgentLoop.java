@@ -7,6 +7,9 @@ import io.github.git13166956007.dsh.memory.MemoryManager;
 import io.github.git13166956007.dsh.run.Run;
 import io.github.git13166956007.dsh.run.RunManager;
 import io.github.git13166956007.dsh.run.RunSpec;
+import io.github.git13166956007.dsh.context.ContextManager;
+import io.github.git13166956007.dsh.context.ContextRequest;
+import io.github.git13166956007.dsh.context.ContextSnapshot;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -31,6 +34,7 @@ public final class AgentLoop implements AutoCloseable {
     private final MemoryManager memories;
     private final RunManager runs;
     private final AgentContinuationStore continuations;
+    private final ContextManager contexts;
     private final ObjectMapper objectMapper;
     private final int maxTurns;
     private final ExecutorService asyncExecutor = Executors.newCachedThreadPool();
@@ -66,6 +70,13 @@ public final class AgentLoop implements AutoCloseable {
     public AgentLoop(ChatModel model, ToolRegistry tools, SkillRegistry skills,
                      AgentProfileRegistry profiles, MemoryManager memories, RunManager runs,
                      AgentContinuationStore continuations, ObjectMapper objectMapper, int maxTurns) {
+        this(model, tools, skills, profiles, memories, runs, continuations, objectMapper, null, maxTurns);
+    }
+
+    public AgentLoop(ChatModel model, ToolRegistry tools, SkillRegistry skills,
+                     AgentProfileRegistry profiles, MemoryManager memories, RunManager runs,
+                     AgentContinuationStore continuations, ObjectMapper objectMapper, ContextManager contexts,
+                     int maxTurns) {
         if (maxTurns < 1) throw new IllegalArgumentException("maxTurns must be positive");
         this.model = model;
         this.tools = tools;
@@ -74,6 +85,7 @@ public final class AgentLoop implements AutoCloseable {
         this.memories = memories;
         this.runs = runs;
         this.continuations = continuations;
+        this.contexts = contexts;
         this.objectMapper = objectMapper == null ? new ObjectMapper() : objectMapper;
         this.maxTurns = maxTurns;
     }
@@ -199,7 +211,7 @@ public final class AgentLoop implements AutoCloseable {
             List<ChatMessage> messages = new ArrayList<ChatMessage>();
             List<AgentTraceEvent> trace = new ArrayList<AgentTraceEvent>();
             ExecutionBudget budget = new ExecutionBudget(options);
-            messages.add(ChatMessage.system(systemPrompt(options, prompt)));
+            messages.add(ChatMessage.system(systemPrompt(options, prompt, context)));
             messages.addAll(history);
             messages.add(ChatMessage.user(prompt));
             List<ToolDefinition> definitions = definitions(options);
@@ -317,7 +329,7 @@ public final class AgentLoop implements AutoCloseable {
             List<ChatMessage> messages = new ArrayList<ChatMessage>();
             List<AgentTraceEvent> trace = new ArrayList<AgentTraceEvent>();
             ExecutionBudget budget = new ExecutionBudget(options);
-            messages.add(ChatMessage.system(systemPrompt(options, prompt)));
+            messages.add(ChatMessage.system(systemPrompt(options, prompt, context)));
             messages.addAll(history);
             messages.add(ChatMessage.user(prompt));
             List<ToolDefinition> definitions = definitions(options);
@@ -631,7 +643,7 @@ public final class AgentLoop implements AutoCloseable {
                 profile.maxToolCalls(), profile.timeoutSeconds(), profile.maxDepth(), memoryNamespace, memorySubjectKey, agentId);
     }
 
-    private String systemPrompt(RunOptions options, String query) throws Exception {
+    private String systemPrompt(RunOptions options, String query, AgentRunContext context) throws Exception {
         String base = skills == null ? "You are a helpful assistant. Use available tools when they are useful, then give a concise final answer."
                 : skills.systemPrompt(options.skillIds());
         String modeInstruction = switch (options.mode()) {
@@ -643,8 +655,15 @@ public final class AgentLoop implements AutoCloseable {
         String result = custom == null || custom.isBlank() ? base + "\n\n" + modeInstruction
                 : base + "\n\n" + modeInstruction + "\n\nProfile instructions:\n" + custom;
         if (memories != null && options.memoryNamespace() != null && options.memorySubjectKey() != null) {
-            String context = memories.context(options.memoryNamespace(), options.memorySubjectKey(), query, 5);
-            if (!context.isBlank()) result += "\n\n" + context;
+            String memoryContext = memories.context(options.memoryNamespace(), options.memorySubjectKey(), query, 5);
+            if (!memoryContext.isBlank()) result += "\n\n" + memoryContext;
+        }
+        if (contexts != null) {
+            ContextSnapshot snapshot = contexts.collect(new ContextRequest(
+                    context == null ? null : context.conversationId(), query, options.modelId(),
+                    options.agentId(), options.mode().name()), null);
+            String dynamic = snapshot.promptText();
+            if (!dynamic.isBlank()) result += "\n\n" + dynamic;
         }
         return result;
     }
