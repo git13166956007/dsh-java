@@ -1,0 +1,44 @@
+README.md
+  h_eb697744b14c1b 97,109
+docker/mariadb/init/001_schema.sql
+  h_eb697744b14c1b 195-198
+docs/runtime-roadmap.md
+  h_eb697744b14c1b 12
+frontend/src/App.vue
+  h_eb697744b14c1b 50-53,60-62,485-488,507-510,539-542,559-575,2272,2283-2295,2338-2339
+frontend/src/style.css
+  h_eb697744b14c1b 164-168
+src/main/java/io/github/git13166956007/dsh/agent/AgentRunRecovery.java
+  h_eb697744b14c1b 17,22-27,33,56,66
+src/main/java/io/github/git13166956007/dsh/agent/MariaDbSubAgentProfileStore.java
+  h_eb697744b14c1b 30,37-38,49-50,54-56,69-72,94-96,113-116,134-140
+src/main/java/io/github/git13166956007/dsh/agent/SubAgentProfile.java
+  h_eb697744b14c1b 17-28,31-32,38-39
+src/main/java/io/github/git13166956007/dsh/agent/SubAgentProfileData.java
+  h_eb697744b14c1b 17-28,31-32
+src/main/java/io/github/git13166956007/dsh/agent/SubAgentProfileRegistry.java
+  h_eb697744b14c1b 4,8,15,48-68,72-73,80-88,95-98,114-123,134-138,199-215
+src/main/java/io/github/git13166956007/dsh/agent/SubAgentRunner.java
+  h_eb697744b14c1b 4,6-7,9-10,15-16,19-22,25,52-61,67-77,83-84,86-87,102-124,135-184
+src/main/java/io/github/git13166956007/dsh/config/DshRuntimeConfiguration.java
+  h_eb697744b14c1b 248-250,312-313,337-338,340
+src/main/java/io/github/git13166956007/dsh/plan/AdaptivePlanService.java
+  h_eb697744b14c1b 8-10,31-32,41-46,53-54,80-81,97,119-121,124-125,127-128,168-181,183-187,191-196,200-203,205-253,311-333
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 545-554,560-561,572-573,793,818,1125-1126
+src/test/java/io/github/git13166956007/dsh/agent/SubAgentProfileRegistryTest.java
+  h_eb697744b14c1b 37-55
+src/test/java/io/github/git13166956007/dsh/plan/AdaptivePlanServiceTest.java
+  h_eb697744b14c1b 14-17,121-140
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "04de7159fe585b679748d5ca60f5e4f50f318842",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
