@@ -1,0 +1,44 @@
+.env.example
+  h_eb697744b14c1b 11-14
+README.md
+  h_eb697744b14c1b 109,125-133,140,172
+docker/mariadb/init/001_schema.sql
+  h_eb697744b14c1b 51,152-163
+docs/runtime-roadmap.md
+  h_eb697744b14c1b 7-8,10,13
+frontend/src/App.vue
+  h_eb697744b14c1b 71,85-86,447-452,455,463-492,1379-1382,1935-1940
+frontend/src/style.css
+  h_eb697744b14c1b 148-151
+src/main/java/io/github/git13166956007/dsh/config/DshRuntimeConfiguration.java
+  h_eb697744b14c1b 65,68-69,135-149
+src/main/java/io/github/git13166956007/dsh/run/InMemoryRunStore.java
+  h_eb697744b14c1b 31,33
+src/main/java/io/github/git13166956007/dsh/run/MariaDbRunStore.java
+  h_eb697744b14c1b 82,92-96,98
+src/main/java/io/github/git13166956007/dsh/run/RunManager.java
+  h_eb697744b14c1b 8-11,15,55,57-80
+src/main/java/io/github/git13166956007/dsh/run/RunStore.java
+  h_eb697744b14c1b 12
+src/main/java/io/github/git13166956007/dsh/tool/WorkspaceProcessToolProvider.java
+  h_eb697744b14c1b 1-171
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 544-564
+src/main/resources/application.yml
+  h_eb697744b14c1b 34-38
+src/test/java/io/github/git13166956007/dsh/run/RunManagerTest.java
+  h_eb697744b14c1b 7,27-40
+src/test/java/io/github/git13166956007/dsh/tool/WorkspaceProcessToolProviderTest.java
+  h_eb697744b14c1b 1-45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d9607d5944d25ec525c45879d30a766802461f71",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
