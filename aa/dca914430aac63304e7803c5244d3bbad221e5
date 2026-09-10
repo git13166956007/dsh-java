@@ -1,0 +1,30 @@
+frontend/src/App.vue
+  h_eb697744b14c1b 863-864,883,885-890,913-960,1188,1195-1198
+src/main/java/io/github/git13166956007/dsh/agent/AgentLoop.java
+  h_eb697744b14c1b 11-13,23,149-152,240-243,262-341,416-440
+src/main/java/io/github/git13166956007/dsh/agent/AgentRunResult.java
+  h_eb697744b14c1b 7-8,10-14
+src/main/java/io/github/git13166956007/dsh/agent/PendingToolApproval.java
+  h_eb697744b14c1b 1-6
+src/main/java/io/github/git13166956007/dsh/run/RunManager.java
+  h_eb697744b14c1b 38-47,66-69,73
+src/main/java/io/github/git13166956007/dsh/run/RunStatus.java
+  h_eb697744b14c1b 5,29
+src/main/java/io/github/git13166956007/dsh/tool/ToolRegistry.java
+  h_eb697744b14c1b 145-152,159
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 435-458,552-556,611-617,719-720,725-729
+src/test/java/io/github/git13166956007/dsh/agent/AgentLoopTest.java
+  h_eb697744b14c1b 167-204
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "aadca914430aac63304e7803c5244d3bbad221e5",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
