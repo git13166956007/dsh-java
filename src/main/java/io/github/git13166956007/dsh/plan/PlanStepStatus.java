@@ -5,6 +5,7 @@ import java.util.Locale;
 public enum PlanStepStatus {
     PENDING("pending"),
     RUNNING("running"),
+    WAITING_APPROVAL("waiting_approval"),
     COMPLETED("completed"),
     FAILED("failed"),
     CANCELLED("cancelled");

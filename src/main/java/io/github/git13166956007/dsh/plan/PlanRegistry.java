@@ -117,6 +117,29 @@ public final class PlanRegistry {
         return savePlan(withStatus(require(id), PlanStatus.COMPLETED));
     }
 
+    public synchronized Plan waitForApproval(String id) {
+        return savePlan(withStatus(require(id), PlanStatus.WAITING_APPROVAL));
+    }
+
+    public synchronized Plan resume(String id) {
+        PlanData plan = require(id);
+        if (plan.status() != PlanStatus.WAITING_APPROVAL) {
+            throw new IllegalStateException("plan is not awaiting approval: " + id);
+        }
+        return savePlan(withStatus(plan, PlanStatus.RUNNING));
+    }
+
+    public synchronized Plan waitStepForApproval(String planId, String stepId, String result) {
+        PlanData plan = require(planId);
+        List<PlanStepData> planSteps = steps.get(planId);
+        PlanStepData step = findStep(planSteps, stepId);
+        PlanStepData updated = new PlanStepData(step.id(), step.planId(), step.stepNo(), step.subAgentId(), step.dependsOn(),
+                step.title(), step.instruction(), PlanStepStatus.WAITING_APPROVAL, result, step.attempts(), step.maxAttempts());
+        replaceStep(planSteps, updated);
+        saveStep(updated);
+        return view(plan);
+    }
+
     public synchronized Plan cancel(String id) {
         PlanData plan = require(id);
         if (plan.status().terminal()) return view(plan);

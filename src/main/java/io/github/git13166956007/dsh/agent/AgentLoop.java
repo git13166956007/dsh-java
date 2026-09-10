@@ -300,6 +300,10 @@ public final class AgentLoop {
         }
     }
 
+    public boolean cancelPendingApproval(String runId) {
+        return runId != null && pendingApprovals.remove(runId) != null;
+    }
+
     private AgentRunResult continueDetailed(PendingExecution pending) throws Exception {
         for (int turn = pending.nextTurn; turn < pending.options.maxTurns(); turn++) {
             pending.budget.check();

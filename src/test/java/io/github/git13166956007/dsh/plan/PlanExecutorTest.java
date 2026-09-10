@@ -18,6 +18,7 @@ import io.github.git13166956007.dsh.run.RunManager;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.node.JsonNodeFactory;
 
 class PlanExecutorTest {
     @Test
@@ -86,5 +87,56 @@ class PlanExecutorTest {
         Run agentRun = saved.stream().filter(run -> run.kind() == RunKind.AGENT).findFirst().orElseThrow();
         assertEquals(planRun.id(), stepRun.parentRunId());
         assertEquals(stepRun.id(), agentRun.parentRunId());
+    }
+
+    @Test
+    void pausesPlanForToolApprovalAndResumesTheStep() throws Exception {
+        AtomicInteger executions = new AtomicInteger();
+        ToolRegistry tools = new ToolRegistry();
+        tools.register(new ToolDefinition("plan_approval_tool", "Approval tool.",
+                JsonNodeFactory.instance.objectNode().put("type", "object")), arguments -> {
+            executions.incrementAndGet();
+            return "tool ok";
+        });
+        tools.setApprovalRequired("plan_approval_tool", true);
+        ChatModel model = new ChatModel() {
+            private int calls;
+
+            @Override
+            public ModelResponse complete(List<ChatMessage> messages, List<ToolDefinition> definitions) {
+                calls++;
+                if (calls == 1) return new ModelResponse(null,
+                        List.of(new io.github.git13166956007.dsh.agent.ToolCall("plan-call", "plan_approval_tool",
+                                JsonNodeFactory.instance.objectNode())), "tool_calls");
+                return new ModelResponse("step completed", List.of(), "stop");
+            }
+        };
+        PlanRegistry registry = new PlanRegistry(new InMemoryPlanStore());
+        Plan plan = registry.create("Approval plan", "Run one approved step", null, null, false, 1,
+                List.of(new PlanRegistry.PlanStepInput("Approved step", "Use the approval tool", 1)));
+        RunManager runs = new RunManager(new InMemoryRunStore());
+        AgentLoop agent = new AgentLoop(model, tools, null, null, null, runs, 2);
+        try (PlanExecutor executor = new PlanExecutor(registry, agent,
+                new io.github.git13166956007.dsh.agent.SubAgentRunner(agent,
+                        new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 2)), runs)) {
+            executor.execute(plan.id(), null);
+            long deadline = System.currentTimeMillis() + 3000;
+            Run waiting;
+            do {
+                Thread.sleep(20);
+                waiting = runs.list().stream().filter(run -> run.kind() == RunKind.AGENT).findFirst().orElse(null);
+            } while ((waiting == null || waiting.status() != io.github.git13166956007.dsh.run.RunStatus.WAITING_APPROVAL)
+                    && System.currentTimeMillis() < deadline);
+
+            assertEquals(PlanStatus.WAITING_APPROVAL, registry.find(plan.id()).status());
+            assertEquals(0, executions.get());
+            executor.resumeApproval(waiting.id(), true);
+
+            do {
+                Thread.sleep(20);
+            } while (!registry.find(plan.id()).status().terminal() && System.currentTimeMillis() < deadline);
+            assertEquals(PlanStatus.COMPLETED, registry.find(plan.id()).status());
+            assertEquals(1, executions.get());
+        }
     }
 }

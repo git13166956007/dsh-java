@@ -456,6 +456,15 @@ public final class DshController {
         return all.stream().filter(run -> isDescendant(run, id, byId)).toList();
     }
 
+    @PostMapping("/runs/{id}/cancel")
+    public Run cancelRun(@PathVariable String id) throws Exception {
+        Run run = runManager.find(id);
+        if (run == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown run: " + id);
+        agentLoop.cancelPendingApproval(id);
+        runManager.cancel(id);
+        return runManager.find(id);
+    }
+
     @PostMapping("/runs/{id}/approval")
     public ChatResponse approveRun(@PathVariable String id, @RequestBody ApprovalRequest request) throws Exception {
         if (request == null || request.approved() == null) {
@@ -467,7 +476,9 @@ public final class DshController {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "run is not awaiting approval: " + id);
         }
         try {
-            AgentRunResult result = agentLoop.resumeApproval(id, request.approved());
+            AgentRunResult result = run.planId() == null
+                    ? agentLoop.resumeApproval(id, request.approved())
+                    : planExecutor.resumeApproval(id, request.approved());
             if (result.pendingApproval() == null && run.conversationId() != null) {
                 contextManager.append(run.conversationId(), ChatMessage.assistant(result.answer(), java.util.List.of()));
             }

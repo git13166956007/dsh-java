@@ -63,6 +63,7 @@ const agentSaving = ref(false)
 const plans = ref([])
 const selectedPlanId = ref(null)
 const planDetail = ref(null)
+const planApprovalRun = ref(null)
 const planForm = ref({
   title: '',
   goal: '',
@@ -357,10 +358,35 @@ async function refreshPlanDetail(id) {
   planDetail.value = await response.json()
   const index = plans.value.findIndex((plan) => plan.id === id)
   if (index >= 0) plans.value[index] = planDetail.value
+  try {
+    const runsResponse = await fetch(`/api/v1/runs?planId=${encodeURIComponent(id)}`)
+    const planRuns = runsResponse.ok ? await runsResponse.json() : []
+    planApprovalRun.value = planRuns.find((run) => run.status === 'WAITING_APPROVAL') || null
+  } catch {
+    planApprovalRun.value = null
+  }
   if (planDetail.value.status === 'RUNNING') {
     clearTimeout(planPollTimer)
     planPollTimer = setTimeout(() => refreshPlanDetail(id), 1200)
   }
+}
+
+async function approvePlanRun(approved) {
+  if (!planApprovalRun.value) return
+  const runId = planApprovalRun.value.id
+  const response = await fetch(`/api/v1/runs/${encodeURIComponent(runId)}/approval`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ approved })
+  })
+  if (!response.ok) return
+  planApprovalRun.value = null
+  if (selectedPlanId.value) {
+    await refreshPlanDetail(selectedPlanId.value)
+    clearTimeout(planPollTimer)
+    planPollTimer = setTimeout(() => refreshPlanDetail(selectedPlanId.value), 500)
+  }
+  await refreshPlans()
 }
 
 function resetPlanForm() {
@@ -1607,6 +1633,11 @@ onUnmounted(() => clearTimeout(planPollTimer))
             <span class="tool-form-note">{{ String(planDetail.status).toLowerCase() }}</span>
           </div>
           <p class="plan-detail-goal">{{ planDetail.goal }}</p>
+          <div v-if="planApprovalRun" class="plan-approval-panel">
+            <strong>Tool approval required</strong>
+            <span>Run {{ planApprovalRun.id }}</span>
+            <div class="tool-approval-actions"><button class="secondary-button compact" type="button" @click="approvePlanRun(true)">Approve</button><button class="secondary-button compact" type="button" @click="approvePlanRun(false)">Deny</button></div>
+          </div>
           <div v-for="step in planDetail.steps" :key="step.id" class="plan-step" :class="String(step.status).toLowerCase()">
             <div class="plan-step-index">{{ step.stepNo }}</div>
             <div class="plan-step-copy"><strong>{{ step.title }}</strong><span>{{ String(step.status).toLowerCase() }} · {{ step.attempts }}/{{ step.maxAttempts }}</span><p>{{ step.instruction }}</p><pre v-if="step.result">{{ step.result }}</pre></div>
