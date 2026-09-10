@@ -88,6 +88,8 @@ export DSH_PERSISTENCE_ENABLED=true
 
 Agent Profile 管理接口为 `GET/POST/PATCH/DELETE /api/v1/agents`，以及 `POST /api/v1/agents/{id}/activate`。Profile 支持 `mode`（`chat`、`planning`、`execution`）、`modelId`、`systemPrompt`、`maxTurns`、`enabled` 和 `active`。聊天请求可以传 `agentId` 和 `mode`；不传时使用当前 active Agent Profile。Planning 模式不会向模型暴露工具，并要求输出结构化的执行计划；Execution 模式允许使用已启用工具。
 
+Sub-agent Profile 管理接口为 `GET/POST/PATCH/DELETE /api/v1/sub-agents`。每个子智能体可以独立配置 `mode`、`modelId`、`systemPrompt`、`maxTurns`、工具白名单 `allowedToolNames`、Skill 白名单 `skillIds` 和 `enabled`。白名单会在模型请求和实际工具执行两处生效。计划步骤可以填写 `subAgentId`，执行时由对应子智能体完成。
+
 计划接口为 `GET /api/v1/plans`、`GET /api/v1/plans/{id}`、`POST /api/v1/plans`、`POST /api/v1/plans/{id}/approve`、`POST /api/v1/plans/{id}/execute` 和 `POST /api/v1/plans/{id}/cancel`。Plan 创建时提交有序步骤；需要人工确认的计划先处于 `draft`，审批后进入 `approved`，执行过程中会持久化每个步骤的 `pending/running/completed/failed/cancelled` 状态，并支持单步骤重试。
 
 同一个 `conversationId` 会复用最近的历史消息；不传时服务会创建新的会话 ID。工具管理接口为 `GET /api/v1/tools` 和 `PATCH /api/v1/tools/{name}`，请求体示例为 `{"enabled":false}`。

@@ -27,6 +27,20 @@ const selectedModelId = ref(null)
 const agents = ref([])
 const selectedAgentId = ref(null)
 const selectedMode = ref('chat')
+const subAgents = ref([])
+const subAgentForm = ref({
+  id: null,
+  name: '',
+  mode: 'execution',
+  modelId: '',
+  systemPrompt: '',
+  maxTurns: 8,
+  allowedToolNames: '',
+  skillIds: '',
+  enabled: true
+})
+const subAgentFormError = ref('')
+const subAgentSaving = ref(false)
 const agentForm = ref({
   id: null,
   name: '',
@@ -48,7 +62,7 @@ const planForm = ref({
   agentId: '',
   modelId: '',
   approvalRequired: true,
-  steps: [{ title: '', instruction: '', maxAttempts: 1 }]
+  steps: [{ title: '', instruction: '', maxAttempts: 1, subAgentId: '' }]
 })
 const planFormError = ref('')
 const planSaving = ref(false)
@@ -164,6 +178,97 @@ async function refreshAgents() {
   }
 }
 
+async function refreshSubAgents() {
+  try {
+    const response = await fetch('/api/v1/sub-agents')
+    if (!response.ok) throw new Error('Sub-agent profiles unavailable')
+    subAgents.value = await response.json()
+  } catch {
+    subAgents.value = []
+  }
+}
+
+function resetSubAgentForm() {
+  subAgentForm.value = {
+    id: null,
+    name: '',
+    mode: 'execution',
+    modelId: '',
+    systemPrompt: '',
+    maxTurns: 8,
+    allowedToolNames: '',
+    skillIds: '',
+    enabled: true
+  }
+  subAgentFormError.value = ''
+}
+
+function editSubAgent(profile) {
+  subAgentForm.value = {
+    id: profile.id,
+    name: profile.name,
+    mode: String(profile.mode || 'EXECUTION').toLowerCase(),
+    modelId: profile.modelId || '',
+    systemPrompt: profile.systemPrompt || '',
+    maxTurns: profile.maxTurns || 8,
+    allowedToolNames: (profile.allowedToolNames || []).join(', '),
+    skillIds: (profile.skillIds || []).join(', '),
+    enabled: profile.enabled
+  }
+  subAgentFormError.value = ''
+}
+
+async function saveSubAgent() {
+  subAgentFormError.value = ''
+  if (!subAgentForm.value.name.trim()) {
+    subAgentFormError.value = 'Please provide a sub-agent name'
+    return
+  }
+  subAgentSaving.value = true
+  try {
+    const editing = Boolean(subAgentForm.value.id)
+    const response = await fetch(editing ? `/api/v1/sub-agents/${encodeURIComponent(subAgentForm.value.id)}` : '/api/v1/sub-agents', {
+      method: editing ? 'PATCH' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: subAgentForm.value.name.trim(),
+        mode: subAgentForm.value.mode,
+        modelId: subAgentForm.value.modelId.trim() || null,
+        systemPrompt: subAgentForm.value.systemPrompt,
+        maxTurns: Number(subAgentForm.value.maxTurns) || 8,
+        allowedToolNames: subAgentForm.value.allowedToolNames.split(',').map((value) => value.trim()).filter(Boolean),
+        skillIds: subAgentForm.value.skillIds.split(',').map((value) => value.trim()).filter(Boolean),
+        enabled: subAgentForm.value.enabled
+      })
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload.message || payload.error || 'Sub-agent profile save failed')
+    await refreshSubAgents()
+    resetSubAgentForm()
+  } catch (requestError) {
+    subAgentFormError.value = requestError.message
+  } finally {
+    subAgentSaving.value = false
+  }
+}
+
+async function toggleSubAgent(profile) {
+  const response = await fetch(`/api/v1/sub-agents/${encodeURIComponent(profile.id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled: !profile.enabled })
+  })
+  if (response.ok) await refreshSubAgents()
+}
+
+async function deleteSubAgent(profile) {
+  const response = await fetch(`/api/v1/sub-agents/${encodeURIComponent(profile.id)}`, { method: 'DELETE' })
+  if (response.ok) {
+    await refreshSubAgents()
+    resetSubAgentForm()
+  }
+}
+
 async function refreshPlans() {
   try {
     const response = await fetch('/api/v1/plans')
@@ -197,13 +302,13 @@ function resetPlanForm() {
     agentId: selectedAgentId.value || '',
     modelId: selectedModelId.value || '',
     approvalRequired: true,
-    steps: [{ title: '', instruction: '', maxAttempts: 1 }]
+    steps: [{ title: '', instruction: '', maxAttempts: 1, subAgentId: '' }]
   }
   planFormError.value = ''
 }
 
 function addPlanStep() {
-  planForm.value.steps.push({ title: '', instruction: '', maxAttempts: 1 })
+  planForm.value.steps.push({ title: '', instruction: '', maxAttempts: 1, subAgentId: '' })
 }
 
 function removePlanStep(index) {
@@ -231,7 +336,8 @@ async function createPlan() {
         steps: planForm.value.steps.map((step) => ({
           title: step.title.trim(),
           instruction: step.instruction.trim(),
-          maxAttempts: Number(step.maxAttempts) || 1
+          maxAttempts: Number(step.maxAttempts) || 1,
+          subAgentId: step.subAgentId.trim() || null
         }))
       })
     })
@@ -286,6 +392,7 @@ function openCapabilities(tab) {
   refreshSkills()
   refreshModels()
   refreshAgents()
+  refreshSubAgents()
   refreshPlans()
 }
 
@@ -798,6 +905,7 @@ onMounted(() => {
   refreshSkills()
   refreshModels()
   refreshAgents()
+  refreshSubAgents()
   refreshPlans()
 })
 
@@ -1005,6 +1113,7 @@ onUnmounted(() => clearTimeout(planPollTimer))
         <button :class="{ active: capabilityTab === 'skills' }" type="button" @click="capabilityTab = 'skills'">Skills</button>
         <button :class="{ active: capabilityTab === 'models' }" type="button" @click="capabilityTab = 'models'">Models</button>
         <button :class="{ active: capabilityTab === 'agents' }" type="button" @click="capabilityTab = 'agents'">Agents</button>
+        <button :class="{ active: capabilityTab === 'sub-agents' }" type="button" @click="capabilityTab = 'sub-agents'">Sub-agents</button>
         <button :class="{ active: capabilityTab === 'plans' }" type="button" @click="capabilityTab = 'plans'">Plans</button>
       </nav>
 
@@ -1207,6 +1316,35 @@ onUnmounted(() => clearTimeout(planPollTimer))
         </form>
       </div>
 
+      <div v-if="capabilityTab === 'sub-agents'" class="tool-manager-list">
+        <div v-for="profile in subAgents" :key="profile.id" class="managed-tool model-item">
+          <div class="managed-tool-copy">
+            <div class="managed-tool-title"><strong>{{ profile.name }}</strong><span class="tool-source">{{ String(profile.mode).toLowerCase() }}</span></div>
+            <p>{{ profile.maxTurns }} turns · {{ profile.allowedToolNames.length }} tools · {{ profile.skillIds.length }} skills</p>
+          </div>
+          <div class="managed-tool-actions model-actions">
+            <button class="secondary-button compact" type="button" @click="editSubAgent(profile)">Edit</button>
+            <label class="tool-toggle" :title="profile.enabled ? 'Disable sub-agent profile' : 'Enable sub-agent profile'"><input type="checkbox" :checked="profile.enabled" @change="toggleSubAgent(profile)" /><span></span></label>
+            <button class="delete-tool-button" type="button" title="Delete sub-agent profile" aria-label="Delete sub-agent profile" @click="deleteSubAgent(profile)">×</button>
+          </div>
+        </div>
+        <p v-if="subAgents.length === 0" class="tool-manager-empty">No sub-agent profiles configured.</p>
+
+        <form class="tool-create-form inline-form" @submit.prevent="saveSubAgent">
+          <div class="tool-form-heading"><div><div class="eyebrow">SUB-AGENT PROFILE</div><h3>{{ subAgentForm.id ? 'Edit sub-agent' : 'Add sub-agent' }}</h3></div><span class="tool-form-note">Capability-scoped</span></div>
+          <div class="tool-form-grid">
+            <label><span>Name</span><input v-model="subAgentForm.name" placeholder="Research worker" autocomplete="off" /></label>
+            <label><span>Mode</span><select v-model="subAgentForm.mode"><option value="chat">Chat</option><option value="planning">Planning</option><option value="execution">Execution</option></select></label>
+          </div>
+          <label><span>Model profile ID</span><input v-model="subAgentForm.modelId" placeholder="Optional" autocomplete="off" /></label>
+          <label><span>Instructions</span><textarea v-model="subAgentForm.systemPrompt" rows="3" placeholder="Instructions for this worker"></textarea></label>
+          <div class="tool-form-grid"><label><span>Allowed tools</span><input v-model="subAgentForm.allowedToolNames" placeholder="time_now, search" autocomplete="off" /></label><label><span>Allowed skills</span><input v-model="subAgentForm.skillIds" placeholder="skill_id" autocomplete="off" /></label></div>
+          <label><span>Max turns</span><input v-model="subAgentForm.maxTurns" type="number" min="1" max="64" inputmode="numeric" /></label>
+          <p v-if="subAgentFormError" class="tool-form-error">{{ subAgentFormError }}</p>
+          <div class="tool-form-footer"><button class="secondary-button" type="button" @click="resetSubAgentForm">Reset</button><button class="send-button" type="submit" :disabled="subAgentSaving"><span>{{ subAgentSaving ? 'Saving' : 'Save sub-agent' }}</span><span class="send-arrow">↗</span></button></div>
+        </form>
+      </div>
+
       <div v-if="capabilityTab === 'plans'" class="tool-manager-list">
         <div v-for="plan in plans" :key="plan.id" class="managed-tool plan-item" :class="{ selected: selectedPlanId === plan.id }">
           <button class="plan-select" type="button" @click="selectedPlanId = plan.id; refreshPlanDetail(plan.id)">
@@ -1251,6 +1389,7 @@ onUnmounted(() => clearTimeout(planPollTimer))
             <div class="plan-form-step-header"><span>STEP {{ index + 1 }}</span><button v-if="planForm.steps.length > 1" class="delete-tool-button" type="button" title="Remove step" aria-label="Remove step" @click="removePlanStep(index)">×</button></div>
             <label><span>Title</span><input v-model="step.title" placeholder="Build" autocomplete="off" /></label>
             <label><span>Instruction</span><textarea v-model="step.instruction" rows="2" placeholder="Tell the execution agent what to do"></textarea></label>
+            <label><span>Sub-agent profile ID</span><input v-model="step.subAgentId" placeholder="Optional" autocomplete="off" /></label>
             <label><span>Max attempts</span><input v-model="step.maxAttempts" type="number" min="1" max="10" inputmode="numeric" /></label>
           </div>
           <button class="secondary-button" type="button" @click="addPlanStep">+ Add step</button>

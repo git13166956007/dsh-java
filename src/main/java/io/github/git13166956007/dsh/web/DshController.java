@@ -7,6 +7,8 @@ import io.github.git13166956007.dsh.agent.AgentLoop;
 import io.github.git13166956007.dsh.agent.AgentMode;
 import io.github.git13166956007.dsh.agent.AgentProfile;
 import io.github.git13166956007.dsh.agent.AgentProfileRegistry;
+import io.github.git13166956007.dsh.agent.SubAgentProfile;
+import io.github.git13166956007.dsh.agent.SubAgentProfileRegistry;
 import io.github.git13166956007.dsh.agent.AgentStreamListener;
 import io.github.git13166956007.dsh.agent.AgentRunResult;
 import io.github.git13166956007.dsh.agent.ChatMessage;
@@ -56,12 +58,14 @@ public final class DshController {
     private final AgentProfileRegistry agentProfileRegistry;
     private final PlanRegistry planRegistry;
     private final PlanExecutor planExecutor;
+    private final SubAgentProfileRegistry subAgentProfileRegistry;
 
     public DshController(DshRuntime runtime, AgentLoop agentLoop, ContextManager contextManager,
                          ToolRegistry toolRegistry, McpServerRegistry mcpServerRegistry,
                          McpClientManager mcpClientManager, SkillRegistry skillRegistry,
                          ModelRegistry modelRegistry, AgentProfileRegistry agentProfileRegistry,
-                         PlanRegistry planRegistry, PlanExecutor planExecutor) {
+                         PlanRegistry planRegistry, PlanExecutor planExecutor,
+                         SubAgentProfileRegistry subAgentProfileRegistry) {
         this.runtime = runtime;
         this.agentLoop = agentLoop;
         this.contextManager = contextManager;
@@ -73,6 +77,7 @@ public final class DshController {
         this.agentProfileRegistry = agentProfileRegistry;
         this.planRegistry = planRegistry;
         this.planExecutor = planExecutor;
+        this.subAgentProfileRegistry = subAgentProfileRegistry;
     }
 
     @GetMapping("/health")
@@ -308,6 +313,39 @@ public final class DshController {
         }
     }
 
+    @GetMapping("/sub-agents")
+    public java.util.List<SubAgentProfile> subAgents() {
+        return subAgentProfileRegistry.list();
+    }
+
+    @PostMapping("/sub-agents")
+    public SubAgentProfile createSubAgent(@RequestBody SubAgentProfileRequest request) {
+        try {
+            return subAgentProfileRegistry.create(request.name(), AgentMode.parse(request.mode()), request.modelId(),
+                    request.systemPrompt(), request.maxTurns(), request.allowedToolNames(), request.skillIds(), request.enabled());
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
+        }
+    }
+
+    @PatchMapping("/sub-agents/{id}")
+    public SubAgentProfile updateSubAgent(@PathVariable String id, @RequestBody SubAgentProfileRequest request) {
+        try {
+            return subAgentProfileRegistry.update(id, request.name(), request.mode() == null ? null : AgentMode.parse(request.mode()),
+                    request.modelId(), request.systemPrompt(), request.maxTurns(), request.allowedToolNames(),
+                    request.skillIds(), request.enabled());
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
+        }
+    }
+
+    @DeleteMapping("/sub-agents/{id}")
+    public void deleteSubAgent(@PathVariable String id) {
+        if (!subAgentProfileRegistry.delete(id)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown sub-agent profile: " + id);
+        }
+    }
+
     @GetMapping("/plans")
     public java.util.List<Plan> plans() {
         return planRegistry.list();
@@ -328,7 +366,7 @@ public final class DshController {
         try {
             java.util.List<io.github.git13166956007.dsh.plan.PlanRegistry.PlanStepInput> steps = request.steps().stream()
                     .map(step -> new io.github.git13166956007.dsh.plan.PlanRegistry.PlanStepInput(
-                            step.title(), step.instruction(), step.maxAttempts()))
+                            step.title(), step.instruction(), step.maxAttempts(), step.subAgentId()))
                     .toList();
             return planRegistry.create(request.title(), request.goal(), request.agentId(), request.modelId(),
                     request.approvalRequired() == null || request.approvalRequired(), steps);
@@ -496,11 +534,16 @@ public final class DshController {
                                       Integer maxTurns, Boolean enabled, Boolean active) {
     }
 
+    public record SubAgentProfileRequest(String name, String mode, String modelId, String systemPrompt,
+                                         Integer maxTurns, java.util.List<String> allowedToolNames,
+                                         java.util.List<String> skillIds, Boolean enabled) {
+    }
+
     public record PlanRequest(String title, String goal, String agentId, String modelId,
                                Boolean approvalRequired, java.util.List<PlanStepRequest> steps) {
     }
 
-    public record PlanStepRequest(String title, String instruction, Integer maxAttempts) {
+    public record PlanStepRequest(String title, String instruction, Integer maxAttempts, String subAgentId) {
     }
 
     public record PlanExecuteRequest(String apiKey) {

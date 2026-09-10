@@ -43,7 +43,7 @@ public final class AgentLoop {
     }
 
     public AgentRunResult runDetailed(String prompt, String apiKey, List<ChatMessage> history) throws Exception {
-        return runDetailed(prompt, apiKey, history, null);
+        return runDetailed(prompt, apiKey, history, (String) null);
     }
 
     public AgentRunResult runDetailed(String prompt, String apiKey, List<ChatMessage> history,
@@ -53,18 +53,30 @@ public final class AgentLoop {
 
     public AgentRunResult runDetailed(String prompt, String apiKey, List<ChatMessage> history,
                                       String modelId, String agentId, AgentMode modeOverride) throws Exception {
+        return runResolved(prompt, apiKey, history, options(modelId, agentId, modeOverride));
+    }
+
+    public AgentRunResult runDetailed(String prompt, String apiKey, List<ChatMessage> history,
+                                      AgentExecutionOptions executionOptions) throws Exception {
+        if (executionOptions == null) throw new IllegalArgumentException("executionOptions must not be null");
+        return runResolved(prompt, apiKey, history, new RunOptions(executionOptions.modelId(), executionOptions.mode(),
+                executionOptions.maxTurns(), executionOptions.systemPrompt(), executionOptions.allowedToolNames(),
+                executionOptions.skillIds()));
+    }
+
+    private AgentRunResult runResolved(String prompt, String apiKey, List<ChatMessage> history,
+                                       RunOptions options) throws Exception {
         if (prompt == null || prompt.trim().isEmpty()) {
             throw new IllegalArgumentException("prompt must not be blank");
         }
 
-        RunOptions options = options(modelId, agentId, modeOverride);
         List<ChatMessage> messages = new ArrayList<ChatMessage>();
         List<AgentTraceEvent> trace = new ArrayList<AgentTraceEvent>();
         messages.add(ChatMessage.system(systemPrompt(options)));
         messages.addAll(history);
         messages.add(ChatMessage.user(prompt));
         List<io.github.git13166956007.dsh.tool.ToolDefinition> definitions = options.mode().toolsEnabled()
-                ? tools.definitions() : List.of();
+                ? tools.definitions(options.allowedToolNames()) : List.of();
 
         for (int turn = 0; turn < options.maxTurns(); turn++) {
             ModelResponse response = model.complete(messages, definitions, apiKey, options.modelId());
@@ -79,7 +91,7 @@ public final class AgentLoop {
             for (ToolCall call : response.toolCalls()) {
                 String result;
                 try {
-                    result = tools.execute(call.name(), call.arguments());
+                    result = tools.execute(call.name(), call.arguments(), options.allowedToolNames());
                 } catch (Exception exception) {
                     result = "Tool execution failed: " + exception.getMessage();
                 }
@@ -119,7 +131,7 @@ public final class AgentLoop {
         messages.addAll(history);
         messages.add(ChatMessage.user(prompt));
         List<io.github.git13166956007.dsh.tool.ToolDefinition> definitions = options.mode().toolsEnabled()
-                ? tools.definitions() : List.of();
+                ? tools.definitions(options.allowedToolNames()) : List.of();
 
         for (int turn = 0; turn < options.maxTurns(); turn++) {
             ModelResponse response = model.stream(messages, definitions, apiKey, options.modelId(), listener::onText);
@@ -135,7 +147,7 @@ public final class AgentLoop {
                 listener.onToolCall(call);
                 String result;
                 try {
-                    result = tools.execute(call.name(), call.arguments());
+                    result = tools.execute(call.name(), call.arguments(), options.allowedToolNames());
                 } catch (Exception exception) {
                     result = "Tool execution failed: " + exception.getMessage();
                 }
@@ -152,16 +164,16 @@ public final class AgentLoop {
     private RunOptions options(String modelId, String agentId, AgentMode modeOverride) {
         if (profiles == null) {
             return new RunOptions(blankToNull(modelId), modeOverride == null ? AgentMode.CHAT : modeOverride,
-                    maxTurns, "");
+                    maxTurns, "", null, null);
         }
         AgentProfileData profile = profiles.resolve(agentId);
         return new RunOptions(blankToNull(modelId) == null ? profile.modelId() : blankToNull(modelId),
-                modeOverride == null ? profile.mode() : modeOverride, profile.maxTurns(), profile.systemPrompt());
+                modeOverride == null ? profile.mode() : modeOverride, profile.maxTurns(), profile.systemPrompt(), null, null);
     }
 
     private String systemPrompt(RunOptions options) {
         String base = skills == null ? "You are a helpful assistant. Use available tools when they are useful, then give a concise final answer."
-                : skills.systemPrompt();
+                : skills.systemPrompt(options.skillIds());
         String modeInstruction = switch (options.mode()) {
             case CHAT -> "Stay conversational and use tools only when they help answer the request.";
             case PLANNING -> "You are in planning mode. Do not execute tools. Produce a clear, ordered plan with assumptions, dependencies, and verification steps.";
@@ -176,6 +188,7 @@ public final class AgentLoop {
         return value == null || value.trim().isEmpty() ? null : value.trim();
     }
 
-    private record RunOptions(String modelId, AgentMode mode, int maxTurns, String systemPrompt) {
+    private record RunOptions(String modelId, AgentMode mode, int maxTurns, String systemPrompt,
+                              java.util.Set<String> allowedToolNames, java.util.Set<String> skillIds) {
     }
 }

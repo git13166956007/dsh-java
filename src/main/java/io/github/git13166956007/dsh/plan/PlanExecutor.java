@@ -2,6 +2,7 @@ package io.github.git13166956007.dsh.plan;
 
 import io.github.git13166956007.dsh.agent.AgentLoop;
 import io.github.git13166956007.dsh.agent.AgentMode;
+import io.github.git13166956007.dsh.agent.SubAgentRunner;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -11,12 +12,14 @@ import java.util.concurrent.Executors;
 public final class PlanExecutor implements AutoCloseable {
     private final PlanRegistry plans;
     private final AgentLoop agentLoop;
+    private final SubAgentRunner subAgents;
     private final ExecutorService executor = Executors.newCachedThreadPool();
     private final Set<String> cancelled = ConcurrentHashMap.newKeySet();
 
-    public PlanExecutor(PlanRegistry plans, AgentLoop agentLoop) {
+    public PlanExecutor(PlanRegistry plans, AgentLoop agentLoop, SubAgentRunner subAgents) {
         this.plans = plans;
         this.agentLoop = agentLoop;
+        this.subAgents = subAgents;
     }
 
     public Plan execute(String id, String apiKey) {
@@ -48,8 +51,10 @@ public final class PlanExecutor implements AutoCloseable {
                     plans.startStep(id, step.id());
                     try {
                         Plan current = plans.find(id);
-                        String result = agentLoop.runDetailed(step.instruction(), apiKey, List.of(), current.modelId(),
-                                current.agentId(), AgentMode.EXECUTION).answer();
+                        String result = step.subAgentId() == null
+                                ? agentLoop.runDetailed(step.instruction(), apiKey, List.of(), current.modelId(),
+                                current.agentId(), AgentMode.EXECUTION).answer()
+                                : subAgents.run(step.instruction(), apiKey, step.subAgentId()).answer();
                         plans.completeStep(id, step.id(), result);
                         completed = true;
                     } catch (Exception exception) {

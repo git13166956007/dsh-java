@@ -3,6 +3,7 @@ package io.github.git13166956007.dsh.plan;
 public record PlanStep(
         String id,
         int stepNo,
+        String subAgentId,
         String title,
         String instruction,
         PlanStepStatus status,
@@ -10,7 +11,7 @@ public record PlanStep(
         int attempts,
         int maxAttempts) {
     static PlanStep from(PlanStepData data) {
-        return new PlanStep(data.id(), data.stepNo(), data.title(), data.instruction(), data.status(),
+        return new PlanStep(data.id(), data.stepNo(), data.subAgentId(), data.title(), data.instruction(), data.status(),
                 data.result(), data.attempts(), data.maxAttempts());
     }
 }

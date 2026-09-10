@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class AgentLoopTest {
     @Test
@@ -119,5 +120,43 @@ class AgentLoopTest {
 
         assertEquals("1. Plan\n2. Verify", result.answer());
         assertEquals(List.of(0), definitionCounts);
+    }
+
+    @Test
+    void subAgentCapabilityListFiltersDefinitionsAndExecution() throws Exception {
+        ToolRegistry tools = new ToolRegistry();
+        AtomicInteger executions = new AtomicInteger();
+        tools.register(new ToolDefinition("allowed_tool", "Allowed tool.",
+                JsonNodeFactory.instance.objectNode().put("type", "object")), arguments -> {
+            executions.incrementAndGet();
+            return "allowed";
+        });
+        tools.register(new ToolDefinition("blocked_tool", "Blocked tool.",
+                JsonNodeFactory.instance.objectNode().put("type", "object")), arguments -> "blocked");
+
+        ChatModel model = new ChatModel() {
+            private int calls;
+
+            @Override
+            public ModelResponse complete(List<ChatMessage> messages, List<ToolDefinition> definitions) {
+                assertEquals(List.of("allowed_tool"), definitions.stream().map(ToolDefinition::name).toList());
+                calls++;
+                if (calls == 1) return new ModelResponse(null,
+                        List.of(new ToolCall("call-1", "allowed_tool", JsonNodeFactory.instance.objectNode())),
+                        "tool_calls");
+                return new ModelResponse("finished", List.of(), "stop");
+            }
+        };
+        SubAgentProfileRegistry profiles = new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 8);
+        SubAgentProfile profile = profiles.create("Worker", AgentMode.EXECUTION, null, "", 2,
+                List.of("allowed_tool"), List.of(), true);
+
+        AgentRunResult result = new SubAgentRunner(new AgentLoop(model, tools, 2), profiles)
+                .run("do work", null, profile.id());
+
+        assertEquals("finished", result.answer());
+        assertEquals(1, executions.get());
+        assertThrows(IllegalStateException.class, () -> tools.execute("blocked_tool", JsonNodeFactory.instance.objectNode(),
+                java.util.Set.of("allowed_tool")));
     }
 }

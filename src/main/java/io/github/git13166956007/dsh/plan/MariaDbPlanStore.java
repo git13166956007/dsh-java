@@ -40,7 +40,7 @@ public final class MariaDbPlanStore implements PlanStore {
         List<PlanStepData> result = new ArrayList<PlanStepData>();
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(
-                     "SELECT id, plan_id, step_no, title, instruction, status, result_text, attempts, max_attempts "
+                     "SELECT id, plan_id, step_no, sub_agent_id, title, instruction, status, result_text, attempts, max_attempts "
                              + "FROM dsh_plan_step WHERE plan_id = ? ORDER BY step_no, id")) {
             statement.setString(1, planId);
             try (ResultSet rows = statement.executeQuery()) {
@@ -75,19 +75,21 @@ public final class MariaDbPlanStore implements PlanStore {
     public void saveStep(PlanStepData step) throws SQLException {
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(
-                     "INSERT INTO dsh_plan_step (id, plan_id, step_no, title, instruction, status, result_text, attempts, max_attempts) "
-                             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE step_no=VALUES(step_no), "
+                     "INSERT INTO dsh_plan_step (id, plan_id, step_no, sub_agent_id, title, instruction, status, result_text, attempts, max_attempts) "
+                             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE step_no=VALUES(step_no), "
+                             + "sub_agent_id=VALUES(sub_agent_id), "
                              + "title=VALUES(title), instruction=VALUES(instruction), status=VALUES(status), "
                              + "result_text=VALUES(result_text), attempts=VALUES(attempts), max_attempts=VALUES(max_attempts)")) {
             statement.setString(1, step.id());
             statement.setString(2, step.planId());
             statement.setInt(3, step.stepNo());
-            statement.setString(4, step.title());
-            statement.setString(5, step.instruction());
-            statement.setString(6, step.status().value());
-            statement.setString(7, step.result());
-            statement.setInt(8, step.attempts());
-            statement.setInt(9, step.maxAttempts());
+            statement.setString(4, step.subAgentId());
+            statement.setString(5, step.title());
+            statement.setString(6, step.instruction());
+            statement.setString(7, step.status().value());
+            statement.setString(8, step.result());
+            statement.setInt(9, step.attempts());
+            statement.setInt(10, step.maxAttempts());
             statement.executeUpdate();
         }
     }
@@ -114,7 +116,7 @@ public final class MariaDbPlanStore implements PlanStore {
             }
             try (PreparedStatement statement = connection.prepareStatement(
                     "CREATE TABLE IF NOT EXISTS dsh_plan_step ("
-                            + "id VARCHAR(64) NOT NULL PRIMARY KEY, plan_id VARCHAR(64) NOT NULL, step_no INT NOT NULL, "
+                            + "id VARCHAR(64) NOT NULL PRIMARY KEY, plan_id VARCHAR(64) NOT NULL, step_no INT NOT NULL, sub_agent_id VARCHAR(64) NULL, "
                             + "title VARCHAR(255) NOT NULL, instruction TEXT NOT NULL, status VARCHAR(32) NOT NULL, "
                             + "result_text LONGTEXT NULL, attempts INT NOT NULL DEFAULT 0, max_attempts INT NOT NULL DEFAULT 1, "
                             + "created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3), "
@@ -137,7 +139,7 @@ public final class MariaDbPlanStore implements PlanStore {
 
     private PlanStepData readStep(ResultSet rows) throws SQLException {
         return new PlanStepData(rows.getString("id"), rows.getString("plan_id"), rows.getInt("step_no"),
-                rows.getString("title"), rows.getString("instruction"), PlanStepStatus.parse(rows.getString("status")),
+                rows.getString("sub_agent_id"), rows.getString("title"), rows.getString("instruction"), PlanStepStatus.parse(rows.getString("status")),
                 rows.getString("result_text"), rows.getInt("attempts"), rows.getInt("max_attempts"));
     }
 

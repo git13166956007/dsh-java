@@ -90,6 +90,21 @@ CREATE TABLE IF NOT EXISTS dsh_agent_profile (
     INDEX idx_dsh_agent_active (active, enabled)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS dsh_sub_agent_profile (
+    id VARCHAR(64) NOT NULL PRIMARY KEY,
+    name VARCHAR(128) NOT NULL,
+    mode VARCHAR(32) NOT NULL,
+    model_id VARCHAR(64) NULL,
+    system_prompt TEXT NULL,
+    max_turns INT NOT NULL DEFAULT 8,
+    allowed_tools TEXT NULL,
+    skill_ids TEXT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    INDEX idx_dsh_sub_agent_enabled (enabled)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS dsh_plan (
     id VARCHAR(64) NOT NULL PRIMARY KEY,
     title VARCHAR(255) NOT NULL,
@@ -108,6 +123,7 @@ CREATE TABLE IF NOT EXISTS dsh_plan_step (
     id VARCHAR(64) NOT NULL PRIMARY KEY,
     plan_id VARCHAR(64) NOT NULL,
     step_no INT NOT NULL,
+    sub_agent_id VARCHAR(64) NULL,
     title VARCHAR(255) NOT NULL,
     instruction TEXT NOT NULL,
     status VARCHAR(32) NOT NULL,

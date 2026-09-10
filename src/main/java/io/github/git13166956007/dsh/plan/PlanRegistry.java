@@ -49,7 +49,8 @@ public final class PlanRegistry {
             int maxAttempts = input.maxAttempts() == null ? 1 : input.maxAttempts();
             if (maxAttempts < 1 || maxAttempts > 10) throw new IllegalArgumentException("maxAttempts must be between 1 and 10");
             planSteps.add(new PlanStepData(UUID.randomUUID().toString(), planId, stepNo++,
-                    required(input.title(), "step.title"), required(input.instruction(), "step.instruction"),
+                    blankToNull(input.subAgentId()), required(input.title(), "step.title"),
+                    required(input.instruction(), "step.instruction"),
                     PlanStepStatus.PENDING, null, 0, maxAttempts));
         }
         savePlan(plan, planSteps);
@@ -74,7 +75,7 @@ public final class PlanRegistry {
         PlanData plan = require(planId);
         List<PlanStepData> planSteps = steps.get(planId);
         PlanStepData step = findStep(planSteps, stepId);
-        PlanStepData updated = new PlanStepData(step.id(), step.planId(), step.stepNo(), step.title(), step.instruction(),
+        PlanStepData updated = new PlanStepData(step.id(), step.planId(), step.stepNo(), step.subAgentId(), step.title(), step.instruction(),
                 PlanStepStatus.RUNNING, step.result(), step.attempts() + 1, step.maxAttempts());
         replaceStep(planSteps, updated);
         saveStep(updated);
@@ -85,7 +86,7 @@ public final class PlanRegistry {
         PlanData plan = require(planId);
         List<PlanStepData> planSteps = steps.get(planId);
         PlanStepData step = findStep(planSteps, stepId);
-        PlanStepData updated = new PlanStepData(step.id(), step.planId(), step.stepNo(), step.title(), step.instruction(),
+        PlanStepData updated = new PlanStepData(step.id(), step.planId(), step.stepNo(), step.subAgentId(), step.title(), step.instruction(),
                 PlanStepStatus.COMPLETED, result, step.attempts(), step.maxAttempts());
         replaceStep(planSteps, updated);
         saveStep(updated);
@@ -96,7 +97,7 @@ public final class PlanRegistry {
         PlanData plan = require(planId);
         List<PlanStepData> planSteps = steps.get(planId);
         PlanStepData step = findStep(planSteps, stepId);
-        PlanStepData updated = new PlanStepData(step.id(), step.planId(), step.stepNo(), step.title(), step.instruction(),
+        PlanStepData updated = new PlanStepData(step.id(), step.planId(), step.stepNo(), step.subAgentId(), step.title(), step.instruction(),
                 PlanStepStatus.FAILED, result, step.attempts(), step.maxAttempts());
         replaceStep(planSteps, updated);
         saveStep(updated);
@@ -114,7 +115,7 @@ public final class PlanRegistry {
         for (int index = 0; index < planSteps.size(); index++) {
             PlanStepData step = planSteps.get(index);
             if (step.status() == PlanStepStatus.PENDING || step.status() == PlanStepStatus.RUNNING) {
-                PlanStepData cancelled = new PlanStepData(step.id(), step.planId(), step.stepNo(), step.title(),
+                PlanStepData cancelled = new PlanStepData(step.id(), step.planId(), step.stepNo(), step.subAgentId(), step.title(),
                         step.instruction(), PlanStepStatus.CANCELLED, step.result(), step.attempts(), step.maxAttempts());
                 planSteps.set(index, cancelled);
                 saveStep(cancelled);
@@ -210,6 +211,9 @@ public final class PlanRegistry {
         return value == null || value.trim().isEmpty() ? null : value.trim();
     }
 
-    public record PlanStepInput(String title, String instruction, Integer maxAttempts) {
+    public record PlanStepInput(String title, String instruction, Integer maxAttempts, String subAgentId) {
+        public PlanStepInput(String title, String instruction, Integer maxAttempts) {
+            this(title, instruction, maxAttempts, null);
+        }
     }
 }

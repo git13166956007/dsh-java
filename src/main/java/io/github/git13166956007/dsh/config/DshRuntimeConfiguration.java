@@ -12,6 +12,11 @@ import io.github.git13166956007.dsh.context.InMemoryConversationStore;
 import io.github.git13166956007.dsh.context.MariaDbConversationStore;
 import io.github.git13166956007.dsh.agent.InMemoryAgentProfileStore;
 import io.github.git13166956007.dsh.agent.MariaDbAgentProfileStore;
+import io.github.git13166956007.dsh.agent.InMemorySubAgentProfileStore;
+import io.github.git13166956007.dsh.agent.MariaDbSubAgentProfileStore;
+import io.github.git13166956007.dsh.agent.SubAgentProfileRegistry;
+import io.github.git13166956007.dsh.agent.SubAgentProfileStore;
+import io.github.git13166956007.dsh.agent.SubAgentRunner;
 import io.github.git13166956007.dsh.core.DshRuntime;
 import io.github.git13166956007.dsh.mcp.McpServerRegistry;
 import io.github.git13166956007.dsh.mcp.McpClientManager;
@@ -92,6 +97,22 @@ public class DshRuntimeConfiguration {
     }
 
     @Bean
+    public SubAgentProfileStore subAgentProfileStore(Environment environment) {
+        boolean enabled = Boolean.parseBoolean(environment.getProperty("dsh.persistence.enabled", "false"));
+        if (!enabled) return new InMemorySubAgentProfileStore();
+        return new MariaDbSubAgentProfileStore(
+                environment.getProperty("dsh.persistence.jdbc-url"),
+                environment.getProperty("dsh.persistence.username"),
+                environment.getProperty("dsh.persistence.password"));
+    }
+
+    @Bean
+    public SubAgentProfileRegistry subAgentProfileRegistry(SubAgentProfileStore store, Environment environment) {
+        return new SubAgentProfileRegistry(store, Integer.parseInt(
+                environment.getProperty("dsh.agent.max-turns", "8")));
+    }
+
+    @Bean
     public ChatModel chatModel(ObjectMapper objectMapper, ModelRegistry modelRegistry) {
         return new ModelRouter(modelRegistry, objectMapper);
     }
@@ -110,6 +131,11 @@ public class DshRuntimeConfiguration {
     }
 
     @Bean
+    public SubAgentRunner subAgentRunner(AgentLoop agentLoop, SubAgentProfileRegistry profiles) {
+        return new SubAgentRunner(agentLoop, profiles);
+    }
+
+    @Bean
     public PlanStore planStore(Environment environment) {
         boolean enabled = Boolean.parseBoolean(environment.getProperty("dsh.persistence.enabled", "false"));
         if (!enabled) return new InMemoryPlanStore();
@@ -125,8 +151,8 @@ public class DshRuntimeConfiguration {
     }
 
     @Bean(destroyMethod = "close")
-    public PlanExecutor planExecutor(PlanRegistry planRegistry, AgentLoop agentLoop) {
-        return new PlanExecutor(planRegistry, agentLoop);
+    public PlanExecutor planExecutor(PlanRegistry planRegistry, AgentLoop agentLoop, SubAgentRunner subAgents) {
+        return new PlanExecutor(planRegistry, agentLoop, subAgents);
     }
 
     @Bean

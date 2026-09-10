@@ -4,6 +4,7 @@ record PlanStepData(
         String id,
         String planId,
         int stepNo,
+        String subAgentId,
         String title,
         String instruction,
         PlanStepStatus status,
