@@ -277,7 +277,10 @@ public final class DshController {
                     request.temperature(), request.topP(), request.maxTokens(), request.frequencyPenalty(),
                     request.presencePenalty(), request.timeoutSeconds());
         } catch (IllegalArgumentException exception) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
+            throw new ResponseStatusException(
+                    exception.getMessage() != null && exception.getMessage().startsWith("unknown model:")
+                            ? HttpStatus.NOT_FOUND : HttpStatus.BAD_REQUEST,
+                    exception.getMessage(), exception);
         }
     }
 
