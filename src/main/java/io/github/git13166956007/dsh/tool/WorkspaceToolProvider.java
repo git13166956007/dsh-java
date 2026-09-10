@@ -45,8 +45,10 @@ public final class WorkspaceToolProvider {
                 listSchema(objectMapper)), this::listFiles, SOURCE, false);
         tools.registerExternal(new ToolDefinition("workspace_read_file", "Read a UTF-8 text file from the configured workspace.",
                 fileSchema(objectMapper, "Read a workspace-relative file path.")), this::readFile, SOURCE, false);
-        tools.registerExternal(new ToolDefinition("workspace_write_file", "Write UTF-8 text to a file in the configured workspace.",
-                writeSchema(objectMapper)), this::writeFile, SOURCE, true);
+        if (writeEnabled) {
+            tools.registerExternal(new ToolDefinition("workspace_write_file", "Write UTF-8 text to a file in the configured workspace.",
+                    writeSchema(objectMapper)), this::writeFile, SOURCE, true);
+        }
     }
 
     private String listFiles(JsonNode arguments) throws Exception {

@@ -112,7 +112,7 @@ Sub-agent Profile 管理接口为 `GET/POST/PATCH/DELETE /api/v1/sub-agents`。�
 
 自定义调试工具在启用 MariaDB 持久化时会保存名称、描述、JSON Schema、固定返回值和启用状态，重启后自动恢复；内置工具和已连接 MCP 工具仍由运行时负责注册。MCP Server 配置同样会保存，启用的 Server 会在应用启动后异步尝试恢复连接，失败不会阻塞应用启动；仍可显式调用 `POST /api/v1/mcp/servers/{id}/connect` 重试。
 
-工作区文件工具是受控的真实执行适配器，默认关闭。启用后会注册 `workspace_list_files`、`workspace_read_file` 和 `workspace_write_file`，所有路径都必须位于 `DSH_WORKSPACE_DIR` 下；读取和写入分别受字节数上限约束，符号链接和绝对路径会被拒绝。写工具默认仍关闭，并且每次调用都会进入现有工具审批流程：
+工作区文件工具是受控的真实执行适配器，默认关闭。启用后会注册 `workspace_list_files` 和 `workspace_read_file`；再启用写入开关后才会注册 `workspace_write_file`。所有路径都必须位于 `DSH_WORKSPACE_DIR` 下；读取和写入分别受字节数上限约束，符号链接和绝对路径会被拒绝。写工具每次调用都会进入现有工具审批流程：
 
 ```bash
 export DSH_WORKSPACE_TOOLS_ENABLED=true

@@ -46,4 +46,12 @@ class WorkspaceToolProviderTest {
         assertThrows(IllegalArgumentException.class, () -> registry.executeApproved("workspace_write_file",
                 new ObjectMapper().readTree("{\"path\":\"../outside.txt\",\"content\":\"x\"}"), null));
     }
+
+    @Test
+    void doesNotExposeWriteToolWhenWritesAreDisabled() {
+        ToolRegistry registry = new ToolRegistry();
+        new WorkspaceToolProvider(root, 1024, 1024, false, new ObjectMapper()).register(registry);
+
+        assertTrue(registry.definitions().stream().noneMatch(tool -> tool.name().equals("workspace_write_file")));
+    }
 }
