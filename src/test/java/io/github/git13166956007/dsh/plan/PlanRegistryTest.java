@@ -46,4 +46,18 @@ class PlanRegistryTest {
 
         assertEquals(PlanStatus.APPROVED, plan.status());
     }
+
+    @Test
+    void validatesDependenciesAndStoresConcurrencyPolicy() {
+        PlanRegistry registry = new PlanRegistry(new InMemoryPlanStore());
+        Plan plan = registry.create("Parallel", "Run dependent work", null, null, false, 2,
+                List.of(new PlanRegistry.PlanStepInput("First", "Do first", 1, null, List.of()),
+                        new PlanRegistry.PlanStepInput("Second", "Do second", 1, null, List.of(1))));
+
+        assertEquals(2, plan.maxConcurrency());
+        assertEquals(List.of(1), plan.steps().get(1).dependsOn());
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> registry.create(
+                "Invalid", "Bad dependency", null, null, false, 1,
+                List.of(new PlanRegistry.PlanStepInput("First", "Do first", 1, null, List.of(1)))));
+    }
 }

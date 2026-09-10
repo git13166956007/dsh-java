@@ -36,11 +36,19 @@ public final class PlanRegistry {
 
     public synchronized Plan create(String title, String goal, String agentId, String modelId,
                                     boolean approvalRequired, List<PlanStepInput> inputs) {
+        return create(title, goal, agentId, modelId, approvalRequired, 1, inputs);
+    }
+
+    public synchronized Plan create(String title, String goal, String agentId, String modelId,
+                                    boolean approvalRequired, int maxConcurrency, List<PlanStepInput> inputs) {
+        if (maxConcurrency < 1 || maxConcurrency > 16) {
+            throw new IllegalArgumentException("maxConcurrency must be between 1 and 16");
+        }
         String planId = UUID.randomUUID().toString();
         Instant now = Instant.now();
         PlanStatus status = approvalRequired ? PlanStatus.DRAFT : PlanStatus.APPROVED;
         PlanData plan = new PlanData(planId, required(title, "title"), required(goal, "goal"),
-                blankToNull(agentId), blankToNull(modelId), approvalRequired, status, now, now);
+                blankToNull(agentId), blankToNull(modelId), approvalRequired, maxConcurrency, status, now, now);
         List<PlanStepData> planSteps = new ArrayList<PlanStepData>();
         if (inputs == null || inputs.isEmpty()) throw new IllegalArgumentException("steps must not be empty");
         int stepNo = 1;
@@ -48,8 +56,9 @@ public final class PlanRegistry {
             if (input == null) throw new IllegalArgumentException("steps must not contain null");
             int maxAttempts = input.maxAttempts() == null ? 1 : input.maxAttempts();
             if (maxAttempts < 1 || maxAttempts > 10) throw new IllegalArgumentException("maxAttempts must be between 1 and 10");
+            List<Integer> dependencies = normalizeDependencies(input.dependsOn(), stepNo);
             planSteps.add(new PlanStepData(UUID.randomUUID().toString(), planId, stepNo++,
-                    blankToNull(input.subAgentId()), required(input.title(), "step.title"),
+                    blankToNull(input.subAgentId()), dependencies, required(input.title(), "step.title"),
                     required(input.instruction(), "step.instruction"),
                     PlanStepStatus.PENDING, null, 0, maxAttempts));
         }
@@ -75,7 +84,7 @@ public final class PlanRegistry {
         PlanData plan = require(planId);
         List<PlanStepData> planSteps = steps.get(planId);
         PlanStepData step = findStep(planSteps, stepId);
-        PlanStepData updated = new PlanStepData(step.id(), step.planId(), step.stepNo(), step.subAgentId(), step.title(), step.instruction(),
+        PlanStepData updated = new PlanStepData(step.id(), step.planId(), step.stepNo(), step.subAgentId(), step.dependsOn(), step.title(), step.instruction(),
                 PlanStepStatus.RUNNING, step.result(), step.attempts() + 1, step.maxAttempts());
         replaceStep(planSteps, updated);
         saveStep(updated);
@@ -86,7 +95,7 @@ public final class PlanRegistry {
         PlanData plan = require(planId);
         List<PlanStepData> planSteps = steps.get(planId);
         PlanStepData step = findStep(planSteps, stepId);
-        PlanStepData updated = new PlanStepData(step.id(), step.planId(), step.stepNo(), step.subAgentId(), step.title(), step.instruction(),
+        PlanStepData updated = new PlanStepData(step.id(), step.planId(), step.stepNo(), step.subAgentId(), step.dependsOn(), step.title(), step.instruction(),
                 PlanStepStatus.COMPLETED, result, step.attempts(), step.maxAttempts());
         replaceStep(planSteps, updated);
         saveStep(updated);
@@ -97,7 +106,7 @@ public final class PlanRegistry {
         PlanData plan = require(planId);
         List<PlanStepData> planSteps = steps.get(planId);
         PlanStepData step = findStep(planSteps, stepId);
-        PlanStepData updated = new PlanStepData(step.id(), step.planId(), step.stepNo(), step.subAgentId(), step.title(), step.instruction(),
+        PlanStepData updated = new PlanStepData(step.id(), step.planId(), step.stepNo(), step.subAgentId(), step.dependsOn(), step.title(), step.instruction(),
                 PlanStepStatus.FAILED, result, step.attempts(), step.maxAttempts());
         replaceStep(planSteps, updated);
         saveStep(updated);
@@ -115,7 +124,7 @@ public final class PlanRegistry {
         for (int index = 0; index < planSteps.size(); index++) {
             PlanStepData step = planSteps.get(index);
             if (step.status() == PlanStepStatus.PENDING || step.status() == PlanStepStatus.RUNNING) {
-                PlanStepData cancelled = new PlanStepData(step.id(), step.planId(), step.stepNo(), step.subAgentId(), step.title(),
+                PlanStepData cancelled = new PlanStepData(step.id(), step.planId(), step.stepNo(), step.subAgentId(), step.dependsOn(), step.title(),
                         step.instruction(), PlanStepStatus.CANCELLED, step.result(), step.attempts(), step.maxAttempts());
                 planSteps.set(index, cancelled);
                 saveStep(cancelled);
@@ -176,7 +185,7 @@ public final class PlanRegistry {
 
     private static PlanData withStatus(PlanData plan, PlanStatus status) {
         return new PlanData(plan.id(), plan.title(), plan.goal(), plan.agentId(), plan.modelId(),
-                plan.approvalRequired(), status, plan.createdAt(), Instant.now());
+                plan.approvalRequired(), plan.maxConcurrency(), status, plan.createdAt(), Instant.now());
     }
 
     private static void replaceStep(List<PlanStepData> planSteps, PlanStepData updated) {
@@ -211,9 +220,26 @@ public final class PlanRegistry {
         return value == null || value.trim().isEmpty() ? null : value.trim();
     }
 
-    public record PlanStepInput(String title, String instruction, Integer maxAttempts, String subAgentId) {
+    private static List<Integer> normalizeDependencies(List<Integer> values, int currentStepNo) {
+        if (values == null || values.isEmpty()) return List.of();
+        List<Integer> result = new ArrayList<Integer>();
+        for (Integer value : values) {
+            if (value == null || value < 1 || value >= currentStepNo || result.contains(value)) {
+                throw new IllegalArgumentException("step dependencies must reference earlier steps");
+            }
+            result.add(value);
+        }
+        return List.copyOf(result);
+    }
+
+    public record PlanStepInput(String title, String instruction, Integer maxAttempts, String subAgentId,
+                                List<Integer> dependsOn) {
         public PlanStepInput(String title, String instruction, Integer maxAttempts) {
-            this(title, instruction, maxAttempts, null);
+            this(title, instruction, maxAttempts, null, List.of());
+        }
+
+        public PlanStepInput(String title, String instruction, Integer maxAttempts, String subAgentId) {
+            this(title, instruction, maxAttempts, subAgentId, List.of());
         }
     }
 }

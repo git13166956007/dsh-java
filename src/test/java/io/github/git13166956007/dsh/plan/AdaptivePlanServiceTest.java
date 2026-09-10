@@ -32,7 +32,7 @@ class AdaptivePlanServiceTest {
         AdaptivePlanService service = new AdaptivePlanService(new AgentLoop(model, new ToolRegistry(), 2),
                 new PlanRegistry(new InMemoryPlanStore()), subAgents, new ObjectMapper());
 
-        Plan plan = service.create("Inspect the repository", null, null, null, false, 4);
+        Plan plan = service.create("Inspect the repository", null, null, null, false, 4, 1);
 
         assertEquals(PlanStatus.APPROVED, plan.status());
         assertEquals(1, plan.steps().size());

@@ -369,10 +369,11 @@ public final class DshController {
         try {
             java.util.List<io.github.git13166956007.dsh.plan.PlanRegistry.PlanStepInput> steps = request.steps().stream()
                     .map(step -> new io.github.git13166956007.dsh.plan.PlanRegistry.PlanStepInput(
-                            step.title(), step.instruction(), step.maxAttempts(), step.subAgentId()))
+                            step.title(), step.instruction(), step.maxAttempts(), step.subAgentId(), step.dependsOn()))
                     .toList();
             return planRegistry.create(request.title(), request.goal(), request.agentId(), request.modelId(),
-                    request.approvalRequired() == null || request.approvalRequired(), steps);
+                    request.approvalRequired() == null || request.approvalRequired(),
+                    request.maxConcurrency() == null ? 1 : request.maxConcurrency(), steps);
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
         }
@@ -385,7 +386,7 @@ public final class DshController {
         }
         try {
             return adaptivePlanService.create(request.prompt(), request.apiKey(), request.agentId(), request.modelId(),
-                    request.approvalRequired() == null || request.approvalRequired(), request.maxSteps());
+                    request.approvalRequired() == null || request.approvalRequired(), request.maxSteps(), request.maxConcurrency());
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
         }
@@ -556,17 +557,18 @@ public final class DshController {
     }
 
     public record PlanRequest(String title, String goal, String agentId, String modelId,
-                               Boolean approvalRequired, java.util.List<PlanStepRequest> steps) {
+                               Boolean approvalRequired, Integer maxConcurrency, java.util.List<PlanStepRequest> steps) {
     }
 
-    public record PlanStepRequest(String title, String instruction, Integer maxAttempts, String subAgentId) {
+    public record PlanStepRequest(String title, String instruction, Integer maxAttempts, String subAgentId,
+                                  java.util.List<Integer> dependsOn) {
     }
 
     public record PlanExecuteRequest(String apiKey) {
     }
 
     public record AdaptivePlanRequest(String prompt, String apiKey, String agentId, String modelId,
-                                      Boolean approvalRequired, Integer maxSteps) {
+                                      Boolean approvalRequired, Integer maxSteps, Integer maxConcurrency) {
     }
 
     public record ToolCreateRequest(String name, String description, tools.jackson.databind.JsonNode parameters,

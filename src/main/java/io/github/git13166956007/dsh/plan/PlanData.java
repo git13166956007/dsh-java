@@ -9,6 +9,7 @@ record PlanData(
         String agentId,
         String modelId,
         boolean approvalRequired,
+        int maxConcurrency,
         PlanStatus status,
         Instant createdAt,
         Instant updatedAt) {

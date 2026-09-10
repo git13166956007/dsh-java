@@ -62,11 +62,12 @@ const planForm = ref({
   agentId: '',
   modelId: '',
   approvalRequired: true,
-  steps: [{ title: '', instruction: '', maxAttempts: 1, subAgentId: '' }]
+  maxConcurrency: 1,
+  steps: [{ title: '', instruction: '', maxAttempts: 1, subAgentId: '', dependsOn: '' }]
 })
 const planFormError = ref('')
 const planSaving = ref(false)
-const adaptivePlanForm = ref({ prompt: '', maxSteps: 6, approvalRequired: true })
+const adaptivePlanForm = ref({ prompt: '', maxSteps: 6, maxConcurrency: 1, approvalRequired: true })
 let planPollTimer = null
 const modelForm = ref({
   id: null,
@@ -303,13 +304,14 @@ function resetPlanForm() {
     agentId: selectedAgentId.value || '',
     modelId: selectedModelId.value || '',
     approvalRequired: true,
-    steps: [{ title: '', instruction: '', maxAttempts: 1, subAgentId: '' }]
+    maxConcurrency: 1,
+    steps: [{ title: '', instruction: '', maxAttempts: 1, subAgentId: '', dependsOn: '' }]
   }
   planFormError.value = ''
 }
 
 function addPlanStep() {
-  planForm.value.steps.push({ title: '', instruction: '', maxAttempts: 1, subAgentId: '' })
+  planForm.value.steps.push({ title: '', instruction: '', maxAttempts: 1, subAgentId: '', dependsOn: '' })
 }
 
 function removePlanStep(index) {
@@ -334,11 +336,13 @@ async function createPlan() {
         agentId: planForm.value.agentId.trim() || null,
         modelId: planForm.value.modelId.trim() || null,
         approvalRequired: planForm.value.approvalRequired,
+        maxConcurrency: Number(planForm.value.maxConcurrency) || 1,
         steps: planForm.value.steps.map((step) => ({
           title: step.title.trim(),
           instruction: step.instruction.trim(),
           maxAttempts: Number(step.maxAttempts) || 1,
-          subAgentId: step.subAgentId.trim() || null
+          subAgentId: step.subAgentId.trim() || null,
+          dependsOn: step.dependsOn.split(',').map((value) => Number(value.trim())).filter((value) => Number.isInteger(value) && value > 0)
         }))
       })
     })
@@ -372,7 +376,8 @@ async function createAdaptivePlan() {
         agentId: selectedAgentId.value,
         modelId: selectedModelId.value,
         approvalRequired: adaptivePlanForm.value.approvalRequired,
-        maxSteps: Number(adaptivePlanForm.value.maxSteps) || 6
+        maxSteps: Number(adaptivePlanForm.value.maxSteps) || 6,
+        maxConcurrency: Number(adaptivePlanForm.value.maxConcurrency) || 1
       })
     })
     const payload = await response.json().catch(() => ({}))
@@ -1418,12 +1423,13 @@ onUnmounted(() => clearTimeout(planPollTimer))
             <label><span>Agent profile ID</span><input v-model="planForm.agentId" placeholder="Optional" autocomplete="off" /></label>
             <label><span>Model profile ID</span><input v-model="planForm.modelId" placeholder="Optional" autocomplete="off" /></label>
           </div>
-          <label class="plan-approval-toggle"><input v-model="planForm.approvalRequired" type="checkbox" /> Require approval before execution</label>
+          <div class="tool-form-grid"><label><span>Max concurrency</span><input v-model="planForm.maxConcurrency" type="number" min="1" max="16" inputmode="numeric" /></label><label class="plan-approval-toggle"><input v-model="planForm.approvalRequired" type="checkbox" /> Require approval before execution</label></div>
           <div v-for="(step, index) in planForm.steps" :key="index" class="plan-form-step">
             <div class="plan-form-step-header"><span>STEP {{ index + 1 }}</span><button v-if="planForm.steps.length > 1" class="delete-tool-button" type="button" title="Remove step" aria-label="Remove step" @click="removePlanStep(index)">×</button></div>
             <label><span>Title</span><input v-model="step.title" placeholder="Build" autocomplete="off" /></label>
             <label><span>Instruction</span><textarea v-model="step.instruction" rows="2" placeholder="Tell the execution agent what to do"></textarea></label>
             <label><span>Sub-agent profile ID</span><input v-model="step.subAgentId" placeholder="Optional" autocomplete="off" /></label>
+            <label><span>Depends on step numbers</span><input v-model="step.dependsOn" placeholder="1, 2" autocomplete="off" /></label>
             <label><span>Max attempts</span><input v-model="step.maxAttempts" type="number" min="1" max="10" inputmode="numeric" /></label>
           </div>
           <button class="secondary-button" type="button" @click="addPlanStep">+ Add step</button>
@@ -1434,7 +1440,8 @@ onUnmounted(() => clearTimeout(planPollTimer))
         <form class="tool-create-form inline-form" @submit.prevent="createAdaptivePlan">
           <div class="tool-form-heading"><div><div class="eyebrow">ADAPTIVE PLANNER</div><h3>Generate from task</h3></div><span class="tool-form-note">Planner + auto delegation</span></div>
           <label><span>Task</span><textarea v-model="adaptivePlanForm.prompt" rows="3" placeholder="Describe a complex task and let the planner split it into executable steps"></textarea></label>
-          <div class="tool-form-grid"><label><span>Max steps</span><input v-model="adaptivePlanForm.maxSteps" type="number" min="1" max="16" inputmode="numeric" /></label><label class="plan-approval-toggle"><input v-model="adaptivePlanForm.approvalRequired" type="checkbox" /> Require approval</label></div>
+          <div class="tool-form-grid"><label><span>Max steps</span><input v-model="adaptivePlanForm.maxSteps" type="number" min="1" max="16" inputmode="numeric" /></label><label><span>Max concurrency</span><input v-model="adaptivePlanForm.maxConcurrency" type="number" min="1" max="16" inputmode="numeric" /></label></div>
+          <label class="plan-approval-toggle"><input v-model="adaptivePlanForm.approvalRequired" type="checkbox" /> Require approval</label>
           <div class="tool-form-footer"><button class="send-button" type="submit" :disabled="planSaving"><span>{{ planSaving ? 'Planning' : 'Generate adaptive plan' }}</span><span class="send-arrow">↗</span></button></div>
         </form>
       </div>

@@ -30,6 +30,11 @@ public final class AdaptivePlanService {
 
     public Plan create(String prompt, String apiKey, String agentId, String modelId,
                        boolean approvalRequired, Integer maxSteps) throws Exception {
+        return create(prompt, apiKey, agentId, modelId, approvalRequired, maxSteps, 1);
+    }
+
+    public Plan create(String prompt, String apiKey, String agentId, String modelId,
+                       boolean approvalRequired, Integer maxSteps, Integer maxConcurrency) throws Exception {
         if (prompt == null || prompt.trim().isEmpty()) throw new IllegalArgumentException("prompt must not be blank");
         int stepLimit = maxSteps == null ? 8 : maxSteps;
         if (stepLimit < 1 || stepLimit > 16) throw new IllegalArgumentException("maxSteps must be between 1 and 16");
@@ -53,7 +58,8 @@ public final class AdaptivePlanService {
             String instruction = required(step.path("instruction").asText(null), "generated step instruction");
             steps.add(new PlanRegistry.PlanStepInput(stepTitle, instruction, 1, chooseSubAgent(stepTitle + "\n" + instruction)));
         }
-        return plans.create(title, goal, agentId, modelId, approvalRequired, steps);
+        return plans.create(title, goal, agentId, modelId, approvalRequired,
+                maxConcurrency == null ? 1 : maxConcurrency, steps);
     }
 
     private String chooseSubAgent(String text) {
