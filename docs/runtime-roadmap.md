@@ -12,7 +12,7 @@
 | Sub-agents | Persisted sub-agent profiles with independent model/mode/prompt, tool and Skill allowlists; plan steps can dispatch them; adaptive planner selects workers | Parent-child run tree, parallel scheduling, budgets and adaptive creation |
 | Plans | Persisted Plan/PlanStep state, approval, dependency-aware asynchronous execution, bounded parallelism, retries and cancellation API | Streaming plan events, durable run IDs and richer dependency policies |
 | Context | Per-request `List<ChatMessage>` | Conversation IDs, persisted messages, token budget, truncation, summarization, system/context providers |
-| Memory | JSONL session store exists but is not in the Agent Loop | Explicit memory extraction, durable storage, retrieval policy, user/workspace namespaces, forgetting/update rules |
+| Memory | MariaDB/in-memory explicit memories, namespace isolation, keyword retrieval and conversation-context injection | Automatic extraction, user/workspace namespaces, forgetting/update rules and semantic retrieval |
 | Security | API key can be supplied for debugging | Authentication, tool approval, secret references, execution sandbox and audit trail |
 | Operations | Health endpoint and trace events | Run IDs, structured logs, metrics, cancellation, timeout and failure replay |
 

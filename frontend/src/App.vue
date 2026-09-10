@@ -41,6 +41,10 @@ const subAgentForm = ref({
 })
 const subAgentFormError = ref('')
 const subAgentSaving = ref(false)
+const memories = ref([])
+const memoryForm = ref({ memoryType: 'fact', content: '', importance: 0.5 })
+const memoryFormError = ref('')
+const memorySaving = ref(false)
 const agentForm = ref({
   id: null,
   name: '',
@@ -188,6 +192,50 @@ async function refreshSubAgents() {
   } catch {
     subAgents.value = []
   }
+}
+
+function memorySubjectKey() {
+  return conversationId.value || 'global'
+}
+
+async function refreshMemories() {
+  try {
+    const params = new URLSearchParams({ namespace: 'conversation', subjectKey: memorySubjectKey(), limit: '50' })
+    const response = await fetch(`/api/v1/memories?${params}`)
+    if (!response.ok) throw new Error('Memories unavailable')
+    memories.value = await response.json()
+  } catch {
+    memories.value = []
+  }
+}
+
+async function saveMemory() {
+  memoryFormError.value = ''
+  if (!memoryForm.value.content.trim()) {
+    memoryFormError.value = 'Please provide memory content'
+    return
+  }
+  memorySaving.value = true
+  try {
+    const response = await fetch('/api/v1/memories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ namespace: 'conversation', subjectKey: memorySubjectKey(), memoryType: memoryForm.value.memoryType, content: memoryForm.value.content.trim(), importance: Number(memoryForm.value.importance) || 0.5 })
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload.message || payload.error || 'Memory save failed')
+    memoryForm.value.content = ''
+    await refreshMemories()
+  } catch (requestError) {
+    memoryFormError.value = requestError.message
+  } finally {
+    memorySaving.value = false
+  }
+}
+
+async function deleteMemory(memory) {
+  const response = await fetch(`/api/v1/memories/${memory.id}`, { method: 'DELETE' })
+  if (response.ok) await refreshMemories()
 }
 
 function resetSubAgentForm() {
@@ -432,6 +480,7 @@ function openCapabilities(tab) {
   refreshModels()
   refreshAgents()
   refreshSubAgents()
+  refreshMemories()
   refreshPlans()
 }
 
@@ -945,6 +994,7 @@ onMounted(() => {
   refreshModels()
   refreshAgents()
   refreshSubAgents()
+  refreshMemories()
   refreshPlans()
 })
 
@@ -1153,6 +1203,7 @@ onUnmounted(() => clearTimeout(planPollTimer))
         <button :class="{ active: capabilityTab === 'models' }" type="button" @click="capabilityTab = 'models'">Models</button>
         <button :class="{ active: capabilityTab === 'agents' }" type="button" @click="capabilityTab = 'agents'">Agents</button>
         <button :class="{ active: capabilityTab === 'sub-agents' }" type="button" @click="capabilityTab = 'sub-agents'">Sub-agents</button>
+        <button :class="{ active: capabilityTab === 'memory' }" type="button" @click="capabilityTab = 'memory'">Memory</button>
         <button :class="{ active: capabilityTab === 'plans' }" type="button" @click="capabilityTab = 'plans'">Plans</button>
       </nav>
 
@@ -1381,6 +1432,22 @@ onUnmounted(() => clearTimeout(planPollTimer))
           <label><span>Max turns</span><input v-model="subAgentForm.maxTurns" type="number" min="1" max="64" inputmode="numeric" /></label>
           <p v-if="subAgentFormError" class="tool-form-error">{{ subAgentFormError }}</p>
           <div class="tool-form-footer"><button class="secondary-button" type="button" @click="resetSubAgentForm">Reset</button><button class="send-button" type="submit" :disabled="subAgentSaving"><span>{{ subAgentSaving ? 'Saving' : 'Save sub-agent' }}</span><span class="send-arrow">↗</span></button></div>
+        </form>
+      </div>
+
+      <div v-if="capabilityTab === 'memory'" class="tool-manager-list">
+        <div class="tool-form-heading"><div><div class="eyebrow">CONTEXT MEMORY</div><h3>Conversation memories</h3></div><span class="tool-form-note">{{ memorySubjectKey() }}</span></div>
+        <div v-for="memory in memories" :key="memory.id" class="managed-tool memory-item">
+          <div class="managed-tool-copy"><div class="managed-tool-title"><strong>{{ memory.memoryType }}</strong><span class="tool-source">{{ memory.importance.toFixed(2) }}</span></div><p>{{ memory.content }}</p></div>
+          <button class="delete-tool-button" type="button" title="Delete memory" aria-label="Delete memory" @click="deleteMemory(memory)">×</button>
+        </div>
+        <p v-if="memories.length === 0" class="tool-manager-empty">No memories for this conversation.</p>
+        <form class="tool-create-form inline-form" @submit.prevent="saveMemory">
+          <div class="tool-form-heading"><div><div class="eyebrow">EXPLICIT MEMORY</div><h3>Remember something</h3></div><span class="tool-form-note">Injected on matching runs</span></div>
+          <div class="tool-form-grid"><label><span>Type</span><input v-model="memoryForm.memoryType" placeholder="fact" autocomplete="off" /></label><label><span>Importance</span><input v-model="memoryForm.importance" type="number" min="0" max="1" step="0.1" /></label></div>
+          <label><span>Content</span><textarea v-model="memoryForm.content" rows="3" placeholder="The user prefers concise answers"></textarea></label>
+          <p v-if="memoryFormError" class="tool-form-error">{{ memoryFormError }}</p>
+          <div class="tool-form-footer"><button class="send-button" type="submit" :disabled="memorySaving"><span>{{ memorySaving ? 'Saving' : 'Save memory' }}</span><span class="send-arrow">↗</span></button></div>
         </form>
       </div>
 

@@ -122,6 +122,8 @@ h2 { font-size: 17px; }
 .model-item { align-items: center; }
 .model-item .managed-tool-copy p { line-height: 1.65; }
 .plan-item { align-items: center; }
+.memory-item { align-items: flex-start; }
+.memory-item .managed-tool-copy p { color: #aebbb7; line-height: 1.6; }
 .plan-item.selected { border-left: 2px solid #8fd7bf; padding-left: 11px; }
 .plan-select { min-width: 0; flex: 1; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; }
 .plan-select .managed-tool-title, .plan-select .managed-tool-copy { display: block; }

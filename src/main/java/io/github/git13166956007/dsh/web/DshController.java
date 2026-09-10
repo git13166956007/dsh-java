@@ -17,6 +17,8 @@ import io.github.git13166956007.dsh.context.ContextManager;
 import io.github.git13166956007.dsh.mcp.McpServerInfo;
 import io.github.git13166956007.dsh.mcp.McpServerRegistry;
 import io.github.git13166956007.dsh.mcp.McpClientManager;
+import io.github.git13166956007.dsh.memory.MemoryManager;
+import io.github.git13166956007.dsh.memory.MemoryRecord;
 import io.github.git13166956007.dsh.skill.SkillInfo;
 import io.github.git13166956007.dsh.skill.SkillRegistry;
 import io.github.git13166956007.dsh.model.ModelProfile;
@@ -41,6 +43,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.springframework.web.server.ResponseStatusException;
@@ -61,13 +64,15 @@ public final class DshController {
     private final PlanExecutor planExecutor;
     private final SubAgentProfileRegistry subAgentProfileRegistry;
     private final AdaptivePlanService adaptivePlanService;
+    private final MemoryManager memoryManager;
 
     public DshController(DshRuntime runtime, AgentLoop agentLoop, ContextManager contextManager,
                          ToolRegistry toolRegistry, McpServerRegistry mcpServerRegistry,
                          McpClientManager mcpClientManager, SkillRegistry skillRegistry,
                          ModelRegistry modelRegistry, AgentProfileRegistry agentProfileRegistry,
                          PlanRegistry planRegistry, PlanExecutor planExecutor,
-                         SubAgentProfileRegistry subAgentProfileRegistry, AdaptivePlanService adaptivePlanService) {
+                         SubAgentProfileRegistry subAgentProfileRegistry, AdaptivePlanService adaptivePlanService,
+                         MemoryManager memoryManager) {
         this.runtime = runtime;
         this.agentLoop = agentLoop;
         this.contextManager = contextManager;
@@ -81,6 +86,7 @@ public final class DshController {
         this.planExecutor = planExecutor;
         this.subAgentProfileRegistry = subAgentProfileRegistry;
         this.adaptivePlanService = adaptivePlanService;
+        this.memoryManager = memoryManager;
     }
 
     @GetMapping("/health")
@@ -349,6 +355,36 @@ public final class DshController {
         }
     }
 
+    @GetMapping("/memories")
+    public java.util.List<MemoryRecord> memories(@RequestParam String namespace,
+                                                 @RequestParam String subjectKey,
+                                                 @RequestParam(defaultValue = "50") int limit) throws Exception {
+        return memoryManager.list(namespace, subjectKey, limit);
+    }
+
+    @GetMapping("/memories/search")
+    public java.util.List<MemoryRecord> searchMemories(@RequestParam String namespace,
+                                                       @RequestParam String subjectKey,
+                                                       @RequestParam(defaultValue = "") String query,
+                                                       @RequestParam(defaultValue = "20") int limit) throws Exception {
+        return memoryManager.search(namespace, subjectKey, query, limit);
+    }
+
+    @PostMapping("/memories")
+    public MemoryRecord createMemory(@RequestBody MemoryRequest request) throws Exception {
+        try {
+            return memoryManager.save(request.namespace(), request.subjectKey(), request.memoryType(), request.content(),
+                    request.metadataJson(), request.importance());
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
+        }
+    }
+
+    @DeleteMapping("/memories/{id}")
+    public void deleteMemory(@PathVariable long id) throws Exception {
+        memoryManager.delete(id);
+    }
+
     @GetMapping("/plans")
     public java.util.List<Plan> plans() {
         return planRegistry.list();
@@ -439,7 +475,7 @@ public final class DshController {
             java.util.List<ChatMessage> history = contextManager.history(conversationId);
             contextManager.append(conversationId, ChatMessage.user(request.message()));
             AgentRunResult result = agentLoop.runDetailed(request.message(), request.apiKey(), history, request.modelId(),
-                    request.agentId(), mode);
+                    request.agentId(), mode, "conversation", conversationId);
             contextManager.append(conversationId, ChatMessage.assistant(result.answer(), java.util.List.of()));
             return new ChatResponse(conversationId, result.answer(), result.trace(), result.turns());
         } catch (Exception exception) {
@@ -474,7 +510,8 @@ public final class DshController {
         java.util.concurrent.CompletableFuture.runAsync(() -> {
             try {
                 AgentRunResult result = agentLoop.runStreaming(request.message(), request.apiKey(), finalHistory,
-                        request.modelId(), request.agentId(), mode, new AgentStreamListener() {
+                        request.modelId(), request.agentId(), mode, "conversation", finalConversationId,
+                        new AgentStreamListener() {
                     @Override
                     public void onText(String delta) {
                         send(emitter, "delta", delta);
@@ -569,6 +606,10 @@ public final class DshController {
 
     public record AdaptivePlanRequest(String prompt, String apiKey, String agentId, String modelId,
                                       Boolean approvalRequired, Integer maxSteps, Integer maxConcurrency) {
+    }
+
+    public record MemoryRequest(String namespace, String subjectKey, String memoryType, String content,
+                                String metadataJson, Double importance) {
     }
 
     public record ToolCreateRequest(String name, String description, tools.jackson.databind.JsonNode parameters,

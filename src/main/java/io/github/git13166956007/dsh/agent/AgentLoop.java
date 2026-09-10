@@ -2,6 +2,7 @@ package io.github.git13166956007.dsh.agent;
 
 import io.github.git13166956007.dsh.tool.ToolRegistry;
 import io.github.git13166956007.dsh.skill.SkillRegistry;
+import io.github.git13166956007.dsh.memory.MemoryManager;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -10,23 +11,30 @@ public final class AgentLoop {
     private final ToolRegistry tools;
     private final SkillRegistry skills;
     private final AgentProfileRegistry profiles;
+    private final MemoryManager memories;
     private final int maxTurns;
 
     public AgentLoop(ChatModel model, ToolRegistry tools, int maxTurns) {
-        this(model, tools, null, null, maxTurns);
+        this(model, tools, null, null, null, maxTurns);
     }
 
     public AgentLoop(ChatModel model, ToolRegistry tools, SkillRegistry skills, int maxTurns) {
-        this(model, tools, skills, null, maxTurns);
+        this(model, tools, skills, null, null, maxTurns);
     }
 
     public AgentLoop(ChatModel model, ToolRegistry tools, SkillRegistry skills,
                      AgentProfileRegistry profiles, int maxTurns) {
+        this(model, tools, skills, profiles, null, maxTurns);
+    }
+
+    public AgentLoop(ChatModel model, ToolRegistry tools, SkillRegistry skills,
+                     AgentProfileRegistry profiles, MemoryManager memories, int maxTurns) {
         if (maxTurns < 1) throw new IllegalArgumentException("maxTurns must be positive");
         this.model = model;
         this.tools = tools;
         this.skills = skills;
         this.profiles = profiles;
+        this.memories = memories;
         this.maxTurns = maxTurns;
     }
 
@@ -53,7 +61,14 @@ public final class AgentLoop {
 
     public AgentRunResult runDetailed(String prompt, String apiKey, List<ChatMessage> history,
                                       String modelId, String agentId, AgentMode modeOverride) throws Exception {
-        return runResolved(prompt, apiKey, history, options(modelId, agentId, modeOverride));
+        return runResolved(prompt, apiKey, history, options(modelId, agentId, modeOverride, null, null));
+    }
+
+    public AgentRunResult runDetailed(String prompt, String apiKey, List<ChatMessage> history,
+                                      String modelId, String agentId, AgentMode modeOverride,
+                                      String memoryNamespace, String memorySubjectKey) throws Exception {
+        return runResolved(prompt, apiKey, history,
+                options(modelId, agentId, modeOverride, memoryNamespace, memorySubjectKey));
     }
 
     public AgentRunResult runDetailed(String prompt, String apiKey, List<ChatMessage> history,
@@ -61,7 +76,7 @@ public final class AgentLoop {
         if (executionOptions == null) throw new IllegalArgumentException("executionOptions must not be null");
         return runResolved(prompt, apiKey, history, new RunOptions(executionOptions.modelId(), executionOptions.mode(),
                 executionOptions.maxTurns(), executionOptions.systemPrompt(), executionOptions.allowedToolNames(),
-                executionOptions.skillIds()));
+                executionOptions.skillIds(), null, null));
     }
 
     private AgentRunResult runResolved(String prompt, String apiKey, List<ChatMessage> history,
@@ -72,7 +87,7 @@ public final class AgentLoop {
 
         List<ChatMessage> messages = new ArrayList<ChatMessage>();
         List<AgentTraceEvent> trace = new ArrayList<AgentTraceEvent>();
-        messages.add(ChatMessage.system(systemPrompt(options)));
+        messages.add(ChatMessage.system(systemPrompt(options, prompt)));
         messages.addAll(history);
         messages.add(ChatMessage.user(prompt));
         List<io.github.git13166956007.dsh.tool.ToolDefinition> definitions = options.mode().toolsEnabled()
@@ -120,14 +135,22 @@ public final class AgentLoop {
     public AgentRunResult runStreaming(String prompt, String apiKey, List<ChatMessage> history,
                                        String modelId, String agentId, AgentMode modeOverride,
                                        AgentStreamListener listener) throws Exception {
+        return runStreaming(prompt, apiKey, history, modelId, agentId, modeOverride,
+                null, null, listener);
+    }
+
+    public AgentRunResult runStreaming(String prompt, String apiKey, List<ChatMessage> history,
+                                       String modelId, String agentId, AgentMode modeOverride,
+                                       String memoryNamespace, String memorySubjectKey,
+                                       AgentStreamListener listener) throws Exception {
         if (prompt == null || prompt.trim().isEmpty()) {
             throw new IllegalArgumentException("prompt must not be blank");
         }
 
-        RunOptions options = options(modelId, agentId, modeOverride);
+        RunOptions options = options(modelId, agentId, modeOverride, memoryNamespace, memorySubjectKey);
         List<ChatMessage> messages = new ArrayList<ChatMessage>();
         List<AgentTraceEvent> trace = new ArrayList<AgentTraceEvent>();
-        messages.add(ChatMessage.system(systemPrompt(options)));
+        messages.add(ChatMessage.system(systemPrompt(options, prompt)));
         messages.addAll(history);
         messages.add(ChatMessage.user(prompt));
         List<io.github.git13166956007.dsh.tool.ToolDefinition> definitions = options.mode().toolsEnabled()
@@ -162,16 +185,22 @@ public final class AgentLoop {
     }
 
     private RunOptions options(String modelId, String agentId, AgentMode modeOverride) {
+        return options(modelId, agentId, modeOverride, null, null);
+    }
+
+    private RunOptions options(String modelId, String agentId, AgentMode modeOverride,
+                               String memoryNamespace, String memorySubjectKey) {
         if (profiles == null) {
             return new RunOptions(blankToNull(modelId), modeOverride == null ? AgentMode.CHAT : modeOverride,
-                    maxTurns, "", null, null);
+                    maxTurns, "", null, null, memoryNamespace, memorySubjectKey);
         }
         AgentProfileData profile = profiles.resolve(agentId);
         return new RunOptions(blankToNull(modelId) == null ? profile.modelId() : blankToNull(modelId),
-                modeOverride == null ? profile.mode() : modeOverride, profile.maxTurns(), profile.systemPrompt(), null, null);
+                modeOverride == null ? profile.mode() : modeOverride, profile.maxTurns(), profile.systemPrompt(), null, null,
+                memoryNamespace, memorySubjectKey);
     }
 
-    private String systemPrompt(RunOptions options) {
+    private String systemPrompt(RunOptions options, String query) throws Exception {
         String base = skills == null ? "You are a helpful assistant. Use available tools when they are useful, then give a concise final answer."
                 : skills.systemPrompt(options.skillIds());
         String modeInstruction = switch (options.mode()) {
@@ -180,8 +209,13 @@ public final class AgentLoop {
             case EXECUTION -> "You are in execution mode. Carry out the requested plan with available tools, verify important results, and report what was completed.";
         };
         String custom = options.systemPrompt();
-        if (custom == null || custom.isBlank()) return base + "\n\n" + modeInstruction;
-        return base + "\n\n" + modeInstruction + "\n\nProfile instructions:\n" + custom;
+        String result = custom == null || custom.isBlank() ? base + "\n\n" + modeInstruction
+                : base + "\n\n" + modeInstruction + "\n\nProfile instructions:\n" + custom;
+        if (memories != null && options.memoryNamespace() != null && options.memorySubjectKey() != null) {
+            String context = memories.context(options.memoryNamespace(), options.memorySubjectKey(), query, 5);
+            if (!context.isBlank()) result += "\n\n" + context;
+        }
+        return result;
     }
 
     private static String blankToNull(String value) {
@@ -189,6 +223,7 @@ public final class AgentLoop {
     }
 
     private record RunOptions(String modelId, AgentMode mode, int maxTurns, String systemPrompt,
-                              java.util.Set<String> allowedToolNames, java.util.Set<String> skillIds) {
+                              java.util.Set<String> allowedToolNames, java.util.Set<String> skillIds,
+                              String memoryNamespace, String memorySubjectKey) {
     }
 }
