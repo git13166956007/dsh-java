@@ -110,6 +110,7 @@ public final class DshController {
         result.put("name", "dsh-java");
         result.put("runtimeStarted", runtime.isStarted());
         result.put("pluginCount", runtime.pluginCount());
+        result.put("plugins", runtime.pluginIds());
         return result;
     }
 

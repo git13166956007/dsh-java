@@ -26,3 +26,5 @@ dsh:
     max-turns: ${DSH_AGENT_MAX_TURNS:8}
   skills:
     directory: ${DSH_SKILLS_DIR:skills}
+  plugins:
+    directory: ${DSH_PLUGINS_DIR:plugins}

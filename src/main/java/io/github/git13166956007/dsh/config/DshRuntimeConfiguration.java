@@ -57,6 +57,8 @@ import io.github.git13166956007.dsh.tool.ToolRegistry;
 import io.github.git13166956007.dsh.tool.InMemoryToolProfileStore;
 import io.github.git13166956007.dsh.tool.MariaDbToolProfileStore;
 import io.github.git13166956007.dsh.tool.ToolProfileStore;
+import io.github.git13166956007.dsh.plugin.DshServices;
+import java.nio.file.Path;
 import java.time.OffsetDateTime;
 import org.springframework.core.env.Environment;
 import org.springframework.context.annotation.Bean;
@@ -65,8 +67,26 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class DshRuntimeConfiguration {
     @Bean(destroyMethod = "close")
-    public DshRuntime dshRuntime() {
+    public DshRuntime dshRuntime(ToolRegistry toolRegistry, ModelRegistry modelRegistry,
+                                McpServerRegistry mcpServerRegistry, SkillRegistry skillRegistry,
+                                AgentProfileRegistry agentProfileRegistry,
+                                SubAgentProfileRegistry subAgentProfileRegistry, MemoryManager memoryManager,
+                                ContextManager contextManager, RunManager runManager, Environment environment) {
         DshRuntime runtime = new DshRuntime();
+        runtime.provide(DshServices.TOOLS, toolRegistry);
+        runtime.provide(DshServices.MODELS, modelRegistry);
+        runtime.provide(DshServices.MCP_SERVERS, mcpServerRegistry);
+        runtime.provide(DshServices.SKILLS, skillRegistry);
+        runtime.provide(DshServices.AGENTS, agentProfileRegistry);
+        runtime.provide(DshServices.SUB_AGENTS, subAgentProfileRegistry);
+        runtime.provide(DshServices.MEMORIES, memoryManager);
+        runtime.provide(DshServices.CONTEXT, contextManager);
+        runtime.provide(DshServices.RUNS, runManager);
+        try {
+            runtime.loadPlugins(Path.of(environment.getProperty("dsh.plugins.directory", "plugins")));
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to load DSH plugins", exception);
+        }
         runtime.start();
         return runtime;
     }
