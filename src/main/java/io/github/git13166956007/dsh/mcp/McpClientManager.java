@@ -29,6 +29,7 @@ public final class McpClientManager implements AutoCloseable {
     private final McpServerRegistry servers;
     private final ToolRegistry tools;
     private final ObjectMapper objectMapper;
+    private final McpHealthStore healthStore;
     private final Map<String, ConnectedServer> connected = new ConcurrentHashMap<String, ConnectedServer>();
     private final ExecutorService restoreExecutor = Executors.newCachedThreadPool();
     private final ScheduledExecutorService reconnectExecutor = Executors.newScheduledThreadPool(1);
@@ -39,11 +40,18 @@ public final class McpClientManager implements AutoCloseable {
     private volatile boolean closed;
 
     public McpClientManager(McpServerRegistry servers, ToolRegistry tools, ObjectMapper objectMapper) {
-        this(servers, tools, objectMapper, 1_000, 60_000, 8);
+        this(servers, tools, objectMapper, new InMemoryMcpHealthStore(), 1_000, 60_000, 8);
     }
 
     public McpClientManager(McpServerRegistry servers, ToolRegistry tools, ObjectMapper objectMapper,
                             long reconnectInitialDelayMs, long reconnectMaxDelayMs, int reconnectMaxAttempts) {
+        this(servers, tools, objectMapper, new InMemoryMcpHealthStore(), reconnectInitialDelayMs,
+                reconnectMaxDelayMs, reconnectMaxAttempts);
+    }
+
+    public McpClientManager(McpServerRegistry servers, ToolRegistry tools, ObjectMapper objectMapper,
+                            McpHealthStore healthStore, long reconnectInitialDelayMs, long reconnectMaxDelayMs,
+                            int reconnectMaxAttempts) {
         if (reconnectInitialDelayMs < 1 || reconnectMaxDelayMs < reconnectInitialDelayMs) {
             throw new IllegalArgumentException("invalid MCP reconnect delay configuration");
         }
@@ -51,6 +59,7 @@ public final class McpClientManager implements AutoCloseable {
         this.servers = servers;
         this.tools = tools;
         this.objectMapper = objectMapper;
+        this.healthStore = healthStore;
         this.reconnectInitialDelayMs = reconnectInitialDelayMs;
         this.reconnectMaxDelayMs = reconnectMaxDelayMs;
         this.reconnectMaxAttempts = reconnectMaxAttempts;
@@ -64,16 +73,19 @@ public final class McpClientManager implements AutoCloseable {
         disconnect(id);
         String source = source(id);
         McpSyncClient client = null;
+        long started = System.nanoTime();
         try {
             client = buildClient(server);
             client.initialize();
             registerTools(server, client);
             connected.put(id, new ConnectedServer(client, source));
             reconnects.remove(id);
+            recordSuccess(id, elapsedMs(started));
             return servers.setStatus(id, "CONNECTED");
         } catch (RuntimeException exception) {
             if (client != null) client.close();
             tools.removeBySource(source);
+            recordFailure(id, elapsedMs(started), exception);
             servers.setStatus(id, "ERROR");
             throw new IllegalStateException(connectionError(server, exception), exception);
         }
@@ -84,8 +96,15 @@ public final class McpClientManager implements AutoCloseable {
         ConnectedServer connection = connected.get(id);
         if (connection == null) return connect(id);
         McpServerInfo server = servers.find(id);
-        registerTools(server, connection.client());
-        return servers.setStatus(id, "CONNECTED");
+        long started = System.nanoTime();
+        try {
+            registerTools(server, connection.client());
+            recordSuccess(id, elapsedMs(started));
+            return servers.setStatus(id, "CONNECTED");
+        } catch (RuntimeException exception) {
+            recordFailure(id, elapsedMs(started), exception);
+            throw exception;
+        }
     }
 
     public synchronized void restoreEnabled() {
@@ -169,12 +188,18 @@ public final class McpClientManager implements AutoCloseable {
         ConnectedServer connection = connected.remove(id);
         tools.removeBySource(source(id));
         if (connection != null) connection.client().close();
+        if (connection != null) recordDisconnected(id);
         return servers.setStatus(server.id(), "DISCONNECTED");
     }
 
     public synchronized void remove(String id) {
         if (servers.find(id) != null) disconnect(id);
         servers.delete(id);
+        try {
+            healthStore.delete(id);
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to delete MCP health", exception);
+        }
     }
 
     private McpSyncClient buildClient(McpServerInfo server) {
@@ -218,7 +243,7 @@ public final class McpClientManager implements AutoCloseable {
         for (McpSchema.Tool remote : remoteTools) {
             String exposedName = exposedName(server, remote.name());
             tools.registerExternal(new ToolDefinition(exposedName, description(server, remote), schema(remote)),
-                    arguments -> call(clientFor(server.id()), remote.name(), arguments), source);
+                    arguments -> call(clientFor(server.id()), remote.name(), arguments), source, server.approvalRequired());
         }
     }
 
@@ -371,6 +396,61 @@ public final class McpClientManager implements AutoCloseable {
             if (current.getMessage() != null) message = current.getMessage();
         }
         return message == null ? exception.getClass().getSimpleName() : message;
+    }
+
+    public synchronized McpHealth health(String id) {
+        if (servers.find(id) == null) throw new IllegalArgumentException("unknown MCP server: " + id);
+        try {
+            McpHealthData value = healthStore.find(id);
+            return value == null ? McpHealth.unknown(id) : McpHealth.from(value);
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to load MCP health", exception);
+        }
+    }
+
+    private void recordSuccess(String id, long latencyMs) {
+        try {
+            McpHealthData previous = healthStore.find(id);
+            long successes = previous == null ? 0 : previous.successCount();
+            long failures = previous == null ? 0 : previous.failureCount();
+            java.time.Instant now = java.time.Instant.now();
+            healthStore.save(new McpHealthData(id, "HEALTHY", successes + 1, failures, Math.max(0, latencyMs),
+                    now, now, previous == null ? null : previous.lastDisconnectedAt(), null));
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void recordFailure(String id, long latencyMs, Throwable failure) {
+        try {
+            McpHealthData previous = healthStore.find(id);
+            long successes = previous == null ? 0 : previous.successCount();
+            long failures = previous == null ? 0 : previous.failureCount();
+            java.time.Instant now = java.time.Instant.now();
+            String message = failure == null ? "MCP operation failed" : failure.getMessage();
+            healthStore.save(new McpHealthData(id, "UNHEALTHY", successes, failures + 1, Math.max(0, latencyMs),
+                    now, previous == null ? null : previous.lastConnectedAt(),
+                    previous == null ? null : previous.lastDisconnectedAt(),
+                    message == null ? failure.getClass().getSimpleName() : message));
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void recordDisconnected(String id) {
+        try {
+            McpHealthData previous = healthStore.find(id);
+            java.time.Instant now = java.time.Instant.now();
+            healthStore.save(new McpHealthData(id, previous == null ? "UNKNOWN" : previous.status(),
+                    previous == null ? 0 : previous.successCount(), previous == null ? 0 : previous.failureCount(),
+                    previous == null ? null : previous.lastLatencyMs(),
+                    previous == null ? null : previous.lastCheckedAt(),
+                    previous == null ? null : previous.lastConnectedAt(), now,
+                    previous == null ? null : previous.lastError()));
+        } catch (Exception ignored) {
+        }
+    }
+
+    private static long elapsedMs(long started) {
+        return Math.max(0, (System.nanoTime() - started) / 1_000_000);
     }
 
     record ResolvedEndpoint(String baseUri, String endpoint) { }

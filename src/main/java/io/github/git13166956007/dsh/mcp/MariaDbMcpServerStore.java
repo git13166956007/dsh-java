@@ -39,12 +39,13 @@ public final class MariaDbMcpServerStore implements McpServerStore {
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(
                      "SELECT id, name, transport, endpoint, command, arguments_json, credential_ref, enabled "
-                             + "FROM dsh_mcp_server ORDER BY created_at, id");
+                             + ", approval_required FROM dsh_mcp_server ORDER BY created_at, id");
              ResultSet rows = statement.executeQuery()) {
             while (rows.next()) {
                 result.add(new McpServerInfo(rows.getString("id"), rows.getString("name"), rows.getString("transport"),
                         rows.getString("endpoint"), rows.getString("command"), readArguments(rows.getString("arguments_json")),
-                        rows.getBoolean("enabled"), "DISCONNECTED", rows.getString("credential_ref"), List.of(), List.of()));
+                        rows.getBoolean("enabled"), rows.getBoolean("approval_required"), "DISCONNECTED",
+                        rows.getString("credential_ref"), List.of(), List.of()));
             }
         }
         return result;
@@ -54,10 +55,10 @@ public final class MariaDbMcpServerStore implements McpServerStore {
     public void save(McpServerInfo server) throws SQLException {
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(
-                     "INSERT INTO dsh_mcp_server (id, name, transport, endpoint, command, arguments_json, credential_ref, enabled) "
-                             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=VALUES(name), transport=VALUES(transport), "
+                     "INSERT INTO dsh_mcp_server (id, name, transport, endpoint, command, arguments_json, credential_ref, enabled, approval_required) "
+                             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=VALUES(name), transport=VALUES(transport), "
                              + "endpoint=VALUES(endpoint), command=VALUES(command), arguments_json=VALUES(arguments_json), "
-                             + "credential_ref=VALUES(credential_ref), enabled=VALUES(enabled)")) {
+                             + "credential_ref=VALUES(credential_ref), enabled=VALUES(enabled), approval_required=VALUES(approval_required)")) {
             statement.setString(1, server.id());
             statement.setString(2, server.name());
             statement.setString(3, server.transport());
@@ -66,6 +67,7 @@ public final class MariaDbMcpServerStore implements McpServerStore {
             statement.setString(6, objectMapper.writeValueAsString(server.arguments()));
             statement.setString(7, server.credentialRef());
             statement.setBoolean(8, server.enabled());
+            statement.setBoolean(9, server.approvalRequired());
             statement.executeUpdate();
         }
     }
@@ -112,6 +114,7 @@ public final class MariaDbMcpServerStore implements McpServerStore {
                              + "transport VARCHAR(16) NOT NULL, endpoint VARCHAR(1000) NULL, command VARCHAR(1000) NULL, "
                              + "arguments_json TEXT NULL, headers_json LONGTEXT NULL, environment_json LONGTEXT NULL, "
                              + "credential_ref VARCHAR(255) NULL, enabled BOOLEAN NOT NULL DEFAULT TRUE, "
+                             + "approval_required BOOLEAN NOT NULL DEFAULT TRUE, "
                              + "created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), updated_at TIMESTAMP(3) NOT NULL "
                              + "DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4")) {
             statement.executeUpdate();
@@ -121,6 +124,7 @@ public final class MariaDbMcpServerStore implements McpServerStore {
             }
             addColumn(connection, "headers_json LONGTEXT NULL");
             addColumn(connection, "credential_ref VARCHAR(255) NULL");
+            addColumn(connection, "approval_required BOOLEAN NOT NULL DEFAULT TRUE");
         } catch (SQLException exception) {
             throw new IllegalStateException("failed to initialize MCP server schema", exception);
         }

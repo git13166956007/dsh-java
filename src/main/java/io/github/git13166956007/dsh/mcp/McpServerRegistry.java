@@ -34,12 +34,19 @@ public final class McpServerRegistry {
 
     public synchronized McpServerInfo create(String name, String transport, String endpoint,
                                               String command, List<String> arguments) {
-        return create(name, transport, endpoint, command, arguments, null, Map.of(), Map.of());
+        return create(name, transport, endpoint, command, arguments, null, Map.of(), Map.of(), true);
     }
 
     public synchronized McpServerInfo create(String name, String transport, String endpoint,
                                               String command, List<String> arguments, String credentialRef,
                                               Map<String, String> headers, Map<String, String> environment) {
+        return create(name, transport, endpoint, command, arguments, credentialRef, headers, environment, true);
+    }
+
+    public synchronized McpServerInfo create(String name, String transport, String endpoint,
+                                              String command, List<String> arguments, String credentialRef,
+                                              Map<String, String> headers, Map<String, String> environment,
+                                              Boolean approvalRequired) {
         String normalizedName = required(name, "name");
         String normalizedTransport = normalizeTransport(transport);
         validateTransport(normalizedTransport, endpoint, command);
@@ -47,7 +54,8 @@ public final class McpServerRegistry {
             throw new IllegalArgumentException("duplicate MCP server: " + normalizedName);
         }
         McpServerInfo server = new McpServerInfo(UUID.randomUUID().toString(), normalizedName,
-                normalizedTransport, blankToNull(endpoint), blankToNull(command), arguments, true, "DISCONNECTED",
+                normalizedTransport, blankToNull(endpoint), blankToNull(command), arguments, true,
+                approvalRequired == null || approvalRequired, "DISCONNECTED",
                 blankToNull(credentialRef), names(headers), names(environment));
         save(server, new McpServerSecrets(headers, environment));
         return server;
@@ -70,6 +78,14 @@ public final class McpServerRegistry {
                                               String command, List<String> arguments, Boolean enabled,
                                               String credentialRef, Map<String, String> headers,
                                               Map<String, String> environment) {
+        return update(id, name, transport, endpoint, command, arguments, enabled, credentialRef, headers, environment,
+                null);
+    }
+
+    public synchronized McpServerInfo update(String id, String name, String transport, String endpoint,
+                                              String command, List<String> arguments, Boolean enabled,
+                                              String credentialRef, Map<String, String> headers,
+                                              Map<String, String> environment, Boolean approvalRequired) {
         McpServerInfo current = require(id);
         McpServerSecrets currentSecrets = secrets.getOrDefault(id, McpServerSecrets.empty());
         McpServerSecrets nextSecrets = new McpServerSecrets(
@@ -87,7 +103,9 @@ public final class McpServerRegistry {
         String nextCredentialRef = credentialRef == null ? current.credentialRef() : blankToNull(credentialRef);
         McpServerInfo updated = new McpServerInfo(id, nextName, nextTransport, nextEndpoint, nextCommand,
                 arguments == null ? current.arguments() : arguments,
-                enabled == null ? current.enabled() : enabled, "DISCONNECTED", nextCredentialRef,
+                enabled == null ? current.enabled() : enabled,
+                approvalRequired == null ? current.approvalRequired() : approvalRequired,
+                "DISCONNECTED", nextCredentialRef,
                 names(nextSecrets.headers()), names(nextSecrets.environment()));
         save(updated, nextSecrets);
         return updated;
@@ -108,7 +126,7 @@ public final class McpServerRegistry {
     public synchronized McpServerInfo setStatus(String id, String status) {
         McpServerInfo current = require(id);
         McpServerInfo updated = new McpServerInfo(current.id(), current.name(), current.transport(),
-                current.endpoint(), current.command(), current.arguments(), current.enabled(), status,
+                current.endpoint(), current.command(), current.arguments(), current.enabled(), current.approvalRequired(), status,
                 current.credentialRef(), current.headerNames(), current.environmentNames());
         save(updated, secrets.getOrDefault(id, McpServerSecrets.empty()));
         return updated;
@@ -172,7 +190,7 @@ public final class McpServerRegistry {
 
     private static McpServerInfo withSecretMetadata(McpServerInfo server, McpServerSecrets value) {
         return new McpServerInfo(server.id(), server.name(), server.transport(), server.endpoint(), server.command(),
-                server.arguments(), server.enabled(), server.status(), server.credentialRef(),
+                server.arguments(), server.enabled(), server.approvalRequired(), server.status(), server.credentialRef(),
                 names(value.headers()), names(value.environment()));
     }
 }

@@ -25,6 +25,7 @@ import io.github.git13166956007.dsh.mcp.McpPromptInfo;
 import io.github.git13166956007.dsh.mcp.McpPromptResult;
 import io.github.git13166956007.dsh.mcp.McpResourceContent;
 import io.github.git13166956007.dsh.mcp.McpResourceInfo;
+import io.github.git13166956007.dsh.mcp.McpHealth;
 import io.github.git13166956007.dsh.memory.MemoryManager;
 import io.github.git13166956007.dsh.memory.MemoryRecord;
 import io.github.git13166956007.dsh.run.Run;
@@ -190,7 +191,8 @@ public final class DshController {
     public McpServerInfo createMcpServer(@RequestBody McpServerRequest request) {
         try {
             return mcpServerRegistry.create(request.name(), request.transport(), request.endpoint(),
-                    request.command(), request.arguments(), request.credentialRef(), request.headers(), request.environment());
+                    request.command(), request.arguments(), request.credentialRef(), request.headers(), request.environment(),
+                    request.approvalRequired());
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
         }
@@ -199,11 +201,14 @@ public final class DshController {
     @PatchMapping("/mcp/servers/{id}")
     public McpServerInfo updateMcpServer(@PathVariable String id, @RequestBody McpServerRequest request) {
         try {
-            mcpClientManager.disconnect(id);
+            McpServerInfo current = mcpServerRegistry.find(id);
+            if (current == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown MCP server: " + id);
+            boolean wasConnected = "CONNECTED".equals(current.status());
+            if (wasConnected) mcpClientManager.disconnect(id);
             McpServerInfo updated = mcpServerRegistry.update(id, request.name(), request.transport(), request.endpoint(),
                     request.command(), request.arguments(), request.enabled(), request.credentialRef(),
-                    request.headers(), request.environment());
-            return updated.enabled() ? mcpClientManager.connect(id) : updated;
+                    request.headers(), request.environment(), request.approvalRequired());
+            return updated.enabled() && wasConnected ? mcpClientManager.connect(id) : updated;
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
         }
@@ -262,6 +267,15 @@ public final class DshController {
     public McpServerInfo disconnectMcpServer(@PathVariable String id) {
         try {
             return mcpClientManager.disconnect(id);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
+        }
+    }
+
+    @GetMapping("/mcp/servers/{id}/health")
+    public McpHealth mcpHealth(@PathVariable String id) {
+        try {
+            return mcpClientManager.health(id);
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
         }
@@ -859,7 +873,8 @@ public final class DshController {
 
     public record McpServerRequest(String name, String transport, String endpoint, String command,
                                    java.util.List<String> arguments, Boolean enabled, String credentialRef,
-                                   Map<String, String> headers, Map<String, String> environment) {
+                                   Map<String, String> headers, Map<String, String> environment,
+                                   Boolean approvalRequired) {
     }
 
     public record ChatResponse(String conversationId, String message,

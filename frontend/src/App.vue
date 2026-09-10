@@ -108,7 +108,7 @@ const modelForm = ref({
 const modelFormError = ref('')
 const modelSaving = ref(false)
 const modelTesting = ref(null)
-const mcpForm = ref({ name: '', transport: 'stdio', endpoint: '', command: '', arguments: '', credentialRef: '', headers: '{}', environment: '{}' })
+const mcpForm = ref({ name: '', transport: 'stdio', endpoint: '', command: '', arguments: '', credentialRef: '', headers: '{}', environment: '{}', approvalRequired: true })
 const mcpFormError = ref('')
 const mcpSaving = ref(false)
 const toolForm = ref({
@@ -175,7 +175,15 @@ async function refreshMcpServers() {
   try {
     const response = await fetch('/api/v1/mcp/servers')
     if (!response.ok) throw new Error('MCP 列表不可用')
-    mcpServers.value = await response.json()
+    const servers = await response.json()
+    mcpServers.value = await Promise.all(servers.map(async (server) => {
+      try {
+        const healthResponse = await fetch(`/api/v1/mcp/servers/${encodeURIComponent(server.id)}/health`)
+        return { ...server, health: healthResponse.ok ? await healthResponse.json() : null }
+      } catch {
+        return { ...server, health: null }
+      }
+    }))
   } catch {
     mcpServers.value = []
   }
@@ -764,7 +772,7 @@ async function deleteTool(tool) {
 }
 
 function resetMcpForm() {
-  mcpForm.value = { name: '', transport: 'stdio', endpoint: '', command: '', arguments: '', credentialRef: '', headers: '{}', environment: '{}' }
+  mcpForm.value = { name: '', transport: 'stdio', endpoint: '', command: '', arguments: '', credentialRef: '', headers: '{}', environment: '{}', approvalRequired: true }
   mcpFormError.value = ''
 }
 
@@ -804,7 +812,8 @@ async function createMcpServer() {
         arguments: mcpForm.value.arguments.split(/\s+/).filter(Boolean),
         credentialRef: mcpForm.value.credentialRef.trim() || null,
         headers,
-        environment
+        environment,
+        approvalRequired: mcpForm.value.approvalRequired
       })
     })
     const payload = await response.json().catch(() => ({}))
@@ -826,7 +835,32 @@ async function mcpAction(server, action) {
     return
   }
   Object.assign(server, payload)
+  await refreshMcpHealth(server)
   await refreshTools()
+}
+
+async function toggleMcpApproval(server) {
+  const response = await fetch(`/api/v1/mcp/servers/${encodeURIComponent(server.id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ approvalRequired: !server.approvalRequired })
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    mcpFormError.value = payload.message || payload.error || 'MCP approval setting failed'
+    return
+  }
+  Object.assign(server, payload)
+  await refreshTools()
+}
+
+async function refreshMcpHealth(server) {
+  try {
+    const response = await fetch(`/api/v1/mcp/servers/${encodeURIComponent(server.id)}/health`)
+    server.health = response.ok ? await response.json() : null
+  } catch {
+    server.health = null
+  }
 }
 
 async function inspectMcp(server, kind) {
@@ -1585,7 +1619,7 @@ onUnmounted(() => clearTimeout(planPollTimer))
               <strong>{{ server.name }}</strong>
               <span :class="['tool-source', server.status === 'CONNECTED' ? 'connected' : '']">{{ server.status }}</span>
             </div>
-            <p>{{ server.transport }} · {{ server.endpoint || server.command }}</p>
+            <p>{{ server.transport }} · {{ server.endpoint || server.command }} · {{ server.approvalRequired ? 'approval required' : 'auto run' }}<br /><span v-if="server.health">health {{ server.health.status.toLowerCase() }} · {{ server.health.successCount }}/{{ server.health.failureCount }} · {{ server.health.lastLatencyMs == null ? 'no latency' : `${server.health.lastLatencyMs}ms` }}</span></p>
           </div>
           <div class="managed-tool-actions">
             <button v-if="server.status === 'CONNECTED'" class="secondary-button compact" type="button" @click="mcpAction(server, 'disconnect')">断开</button>
@@ -1593,6 +1627,9 @@ onUnmounted(() => clearTimeout(planPollTimer))
             <button v-if="server.status === 'CONNECTED'" class="secondary-button compact" type="button" title="Refresh MCP tools" @click="mcpAction(server, 'refresh')">刷新</button>
             <button v-if="server.status === 'CONNECTED'" class="secondary-button compact" type="button" @click="inspectMcp(server, 'resources')">Resources</button>
             <button v-if="server.status === 'CONNECTED'" class="secondary-button compact" type="button" @click="inspectMcp(server, 'prompts')">Prompts</button>
+            <label class="tool-toggle" :title="server.approvalRequired ? 'Disable approval requirement' : 'Require approval before execution'">
+              <input type="checkbox" :checked="server.approvalRequired" @change="toggleMcpApproval(server)" />
+            </label>
             <button class="delete-tool-button" type="button" title="Delete MCP server" aria-label="Delete MCP server" @click="deleteMcpServer(server)">×</button>
           </div>
           <div v-if="server.resources" class="mcp-inspector">
@@ -1632,6 +1669,7 @@ onUnmounted(() => clearTimeout(planPollTimer))
           <label><span>Credential reference</span><input v-model="mcpForm.credentialRef" placeholder="AMAP_API_KEY" autocomplete="off" /></label>
           <label><span>Headers JSON</span><textarea v-model="mcpForm.headers" rows="3" spellcheck="false" placeholder='{"X-Tenant": "demo"}'></textarea></label>
           <label><span>Environment JSON</span><textarea v-model="mcpForm.environment" rows="3" spellcheck="false" placeholder='{"API_KEY": "env:AMAP_API_KEY"}'></textarea></label>
+          <label class="plan-approval-toggle"><input v-model="mcpForm.approvalRequired" type="checkbox" /> Require approval for MCP tools</label>
           <p v-if="mcpFormError" class="tool-form-error">{{ mcpFormError }}</p>
           <div class="tool-form-footer"><button class="secondary-button" type="button" @click="resetMcpForm">Reset</button><button class="send-button" type="submit" :disabled="mcpSaving"><span>{{ mcpSaving ? 'Adding' : 'Add server' }}</span><span class="send-arrow">↗</span></button></div>
         </form>

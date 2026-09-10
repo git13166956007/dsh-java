@@ -55,4 +55,20 @@ class McpServerRegistryTest {
         assertEquals(List.of("Authorization"), restored.headerNames());
         assertEquals(List.of("API_KEY"), restored.environmentNames());
     }
+
+    @Test
+    void persistsServerToolApprovalPolicy() {
+        InMemoryMcpServerStore store = new InMemoryMcpServerStore();
+        McpServerRegistry first = new McpServerRegistry(store);
+        McpServerInfo created = first.create("approval", "stdio", null, "node", List.of("server.js"),
+                null, Map.of(), Map.of(), false);
+
+        assertEquals(false, created.approvalRequired());
+        McpServerInfo restored = new McpServerRegistry(store).find(created.id());
+        assertEquals(false, restored.approvalRequired());
+
+        McpServerInfo updated = first.update(created.id(), null, null, null, null, null, null,
+                null, null, null, true);
+        assertEquals(true, updated.approvalRequired());
+    }
 }

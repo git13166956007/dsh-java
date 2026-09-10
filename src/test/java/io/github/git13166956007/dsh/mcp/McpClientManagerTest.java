@@ -30,4 +30,18 @@ class McpClientManagerTest {
         assertEquals(4000, McpClientManager.reconnectDelay(1000, 5000, 2));
         assertEquals(5000, McpClientManager.reconnectDelay(1000, 5000, 8));
     }
+
+    @Test
+    void exposesUnknownHealthForConfiguredServerBeforeFirstConnection() {
+        McpServerRegistry servers = new McpServerRegistry();
+        McpServerInfo server = servers.create("health", "stdio", null, "node", java.util.List.of("server.js"));
+        McpClientManager manager = new McpClientManager(servers, new io.github.git13166956007.dsh.tool.ToolRegistry(),
+                new tools.jackson.databind.ObjectMapper());
+        try {
+            assertEquals("UNKNOWN", manager.health(server.id()).status());
+            assertEquals(0, manager.health(server.id()).successCount());
+        } finally {
+            manager.close();
+        }
+    }
 }
