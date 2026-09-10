@@ -1,0 +1,40 @@
+frontend/src/App.vue
+  h_eb697744b14c1b 111,178-186,775,815-816,838,842-865,1622,1630-1632,1672
+src/main/java/io/github/git13166956007/dsh/config/DshRuntimeConfiguration.java
+  h_eb697744b14c1b 28-30,332-339,342-344
+src/main/java/io/github/git13166956007/dsh/mcp/InMemoryMcpHealthStore.java
+  h_eb697744b14c1b 1-23
+src/main/java/io/github/git13166956007/dsh/mcp/MariaDbMcpHealthStore.java
+  h_eb697744b14c1b 1-112
+src/main/java/io/github/git13166956007/dsh/mcp/MariaDbMcpServerStore.java
+  h_eb697744b14c1b 42,47-48,58-59,61,70,117,127
+src/main/java/io/github/git13166956007/dsh/mcp/McpClientManager.java
+  h_eb697744b14c1b 32,43,48-54,62,76,83,88,99-107,191,198-202,246,401-455
+src/main/java/io/github/git13166956007/dsh/mcp/McpHealth.java
+  h_eb697744b14c1b 1-24
+src/main/java/io/github/git13166956007/dsh/mcp/McpHealthData.java
+  h_eb697744b14c1b 1-15
+src/main/java/io/github/git13166956007/dsh/mcp/McpHealthStore.java
+  h_eb697744b14c1b 1-9
+src/main/java/io/github/git13166956007/dsh/mcp/McpServerInfo.java
+  h_eb697744b14c1b 13,20
+src/main/java/io/github/git13166956007/dsh/mcp/McpServerRegistry.java
+  h_eb697744b14c1b 37,43-49,57-58,81-88,106-108,129,193
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 28,194-195,204-207,210-211,275-283,876-877
+src/test/java/io/github/git13166956007/dsh/mcp/McpClientManagerTest.java
+  h_eb697744b14c1b 33-46
+src/test/java/io/github/git13166956007/dsh/mcp/McpServerRegistryTest.java
+  h_eb697744b14c1b 58-73
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5711db18fbbe827226d70f621d9845aece894955",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
