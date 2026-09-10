@@ -64,6 +64,9 @@ const agentForm = ref({
   modelId: '',
   systemPrompt: '',
   maxTurns: 8,
+  maxToolCalls: 64,
+  timeoutSeconds: 300,
+  maxDepth: 4,
   enabled: true,
   active: false
 })
@@ -682,6 +685,9 @@ function resetAgentForm() {
     modelId: '',
     systemPrompt: '',
     maxTurns: 8,
+    maxToolCalls: 64,
+    timeoutSeconds: 300,
+    maxDepth: 4,
     enabled: true,
     active: false
   }
@@ -696,6 +702,9 @@ function editAgent(agent) {
     modelId: agent.modelId || '',
     systemPrompt: agent.systemPrompt || '',
     maxTurns: agent.maxTurns || 8,
+    maxToolCalls: agent.maxToolCalls ?? 64,
+    timeoutSeconds: agent.timeoutSeconds ?? 300,
+    maxDepth: agent.maxDepth ?? 4,
     enabled: agent.enabled,
     active: agent.active
   }
@@ -720,6 +729,9 @@ async function saveAgent() {
         modelId: agentForm.value.modelId.trim() || null,
         systemPrompt: agentForm.value.systemPrompt,
         maxTurns: Number(agentForm.value.maxTurns) || 8,
+        maxToolCalls: Number(agentForm.value.maxToolCalls) || 0,
+        timeoutSeconds: Number(agentForm.value.timeoutSeconds) || 0,
+        maxDepth: Number(agentForm.value.maxDepth) || 0,
         enabled: agentForm.value.enabled,
         active: agentForm.value.active
       })
@@ -1924,7 +1936,7 @@ onUnmounted(() => {
               <strong>{{ agent.name }}</strong>
               <span :class="['tool-source', agent.active ? 'connected' : '']">{{ agent.active ? 'DEFAULT' : String(agent.mode).toLowerCase() }}</span>
             </div>
-            <p>{{ String(agent.mode).toLowerCase() }} · {{ agent.maxTurns }} turns{{ agent.modelId ? ` · ${agent.modelId}` : ' · active model' }}</p>
+            <p>{{ String(agent.mode).toLowerCase() }} · {{ agent.maxTurns }} turns · {{ agent.maxToolCalls ?? 64 }} tool calls · {{ agent.timeoutSeconds ?? 300 }}s · depth {{ agent.maxDepth ?? 4 }}{{ agent.modelId ? ` · ${agent.modelId}` : ' · active model' }}</p>
           </div>
           <div class="managed-tool-actions model-actions">
             <button v-if="!agent.active && agent.enabled" class="secondary-button compact" type="button" @click="activateAgent(agent)">Default</button>
@@ -1952,7 +1964,14 @@ onUnmounted(() => {
           </div>
           <label><span>Model profile ID</span><input v-model="agentForm.modelId" placeholder="Leave blank to use selected model" autocomplete="off" /></label>
           <label><span>Profile instructions</span><textarea v-model="agentForm.systemPrompt" rows="3" placeholder="Optional instructions for this agent profile"></textarea></label>
-          <label><span>Max turns</span><input v-model="agentForm.maxTurns" type="number" min="1" max="64" inputmode="numeric" /></label>
+          <div class="tool-form-grid">
+            <label><span>Max turns</span><input v-model="agentForm.maxTurns" type="number" min="1" max="64" inputmode="numeric" /></label>
+            <label><span>Max tool calls</span><input v-model="agentForm.maxToolCalls" type="number" min="0" max="10000" inputmode="numeric" /></label>
+          </div>
+          <div class="tool-form-grid">
+            <label><span>Timeout seconds</span><input v-model="agentForm.timeoutSeconds" type="number" min="0" max="86400" inputmode="numeric" /></label>
+            <label><span>Max delegation depth</span><input v-model="agentForm.maxDepth" type="number" min="0" max="32" inputmode="numeric" /></label>
+          </div>
           <p v-if="agentFormError" class="tool-form-error">{{ agentFormError }}</p>
           <div class="tool-form-footer">
             <button class="secondary-button" type="button" @click="resetAgentForm">Reset</button>
