@@ -1,0 +1,46 @@
+README.md
+  h_eb697744b14c1b 91
+docker/mariadb/init/001_schema.sql
+  h_eb697744b14c1b 154-163
+docs/runtime-roadmap.md
+  h_eb697744b14c1b 10,12
+frontend/src/App.vue
+  h_eb697744b14c1b 262-265,267,270,2166
+src/main/java/io/github/git13166956007/dsh/agent/ModelResponse.java
+  h_eb697744b14c1b 11-13,16-20,24-26,40-51
+src/main/java/io/github/git13166956007/dsh/config/DshRuntimeConfiguration.java
+  h_eb697744b14c1b 53-54,56,180-192
+src/main/java/io/github/git13166956007/dsh/model/InMemoryModelUsageStore.java
+  h_eb697744b14c1b 1-23
+src/main/java/io/github/git13166956007/dsh/model/MariaDbModelUsageStore.java
+  h_eb697744b14c1b 1-88
+src/main/java/io/github/git13166956007/dsh/model/ModelRegistry.java
+  h_eb697744b14c1b 3-4,20,26-27,32-36,39,352,398-435,445-449
+src/main/java/io/github/git13166956007/dsh/model/ModelRouter.java
+  h_eb697744b14c1b 47,80
+src/main/java/io/github/git13166956007/dsh/model/ModelUsage.java
+  h_eb697744b14c1b 1-21
+src/main/java/io/github/git13166956007/dsh/model/ModelUsageData.java
+  h_eb697744b14c1b 1-13
+src/main/java/io/github/git13166956007/dsh/model/ModelUsageStore.java
+  h_eb697744b14c1b 1-9
+src/main/java/io/github/git13166956007/dsh/provider/openai/OpenAiCompatibleChatModel.java
+  h_eb697744b14c1b 118-120,136-141,190-191,199-207
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 44,498-506
+src/test/java/io/github/git13166956007/dsh/model/ModelRegistryTest.java
+  h_eb697744b14c1b 8-10,163-203
+src/test/java/io/github/git13166956007/dsh/model/ModelRouterTest.java
+  h_eb697744b14c1b 28-29,46-47,53-57,75-107
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a30fca3b78420656d924fd2d173a083adce4d602",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
