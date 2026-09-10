@@ -112,6 +112,18 @@ Sub-agent Profile 管理接口为 `GET/POST/PATCH/DELETE /api/v1/sub-agents`。�
 
 自定义调试工具在启用 MariaDB 持久化时会保存名称、描述、JSON Schema、固定返回值和启用状态，重启后自动恢复；内置工具和已连接 MCP 工具仍由运行时负责注册。MCP Server 配置同样会保存，启用的 Server 会在应用启动后异步尝试恢复连接，失败不会阻塞应用启动；仍可显式调用 `POST /api/v1/mcp/servers/{id}/connect` 重试。
 
+工作区文件工具是受控的真实执行适配器，默认关闭。启用后会注册 `workspace_list_files`、`workspace_read_file` 和 `workspace_write_file`，所有路径都必须位于 `DSH_WORKSPACE_DIR` 下；读取和写入分别受字节数上限约束，符号链接和绝对路径会被拒绝。写工具默认仍关闭，并且每次调用都会进入现有工具审批流程：
+
+```bash
+export DSH_WORKSPACE_TOOLS_ENABLED=true
+export DSH_WORKSPACE_DIR=/path/to/sandbox
+export DSH_WORKSPACE_WRITE_ENABLED=true
+export DSH_WORKSPACE_MAX_READ_BYTES=1000000
+export DSH_WORKSPACE_MAX_WRITE_BYTES=1000000
+```
+
+工作区工具不允许通过 HTTP 直接绕过 Agent 审批执行；插件和 MCP 工具也继续复用统一的 `ToolRegistry`、白名单、审批和 Run Trace 边界。
+
 上下文窗口同时受 `DSH_MAX_HISTORY_MESSAGES` 和 `DSH_MAX_CONTEXT_TOKENS` 限制，按最新消息优先裁剪；`GET /api/v1/conversations/{id}/context` 可以查看当前消息数、估算 token 数和是否发生裁剪。token 数是运行时估算值，不依赖特定模型 tokenizer。
 
 前端右上角的 `Tools` 可以添加调试工具。启用 MariaDB 持久化后，自定义工具的名称、描述、JSON Schema、固定返回值、启用状态和审批策略会保存并在重启后恢复；真正的业务执行工具通过插件或 MCP 接入。

@@ -58,6 +58,7 @@ import io.github.git13166956007.dsh.tool.InMemoryToolProfileStore;
 import io.github.git13166956007.dsh.tool.MariaDbToolProfileStore;
 import io.github.git13166956007.dsh.tool.ToolProfileStore;
 import io.github.git13166956007.dsh.plugin.DshServices;
+import io.github.git13166956007.dsh.tool.WorkspaceToolProvider;
 import java.nio.file.Path;
 import java.time.OffsetDateTime;
 import org.springframework.core.env.Environment;
@@ -109,6 +110,20 @@ public class DshRuntimeConfiguration {
                 "Get the current server time in ISO-8601 format.",
                 noArguments), arguments -> OffsetDateTime.now().toString());
         return registry;
+    }
+
+    @Bean
+    public WorkspaceToolProvider workspaceToolProvider(ToolRegistry tools, ObjectMapper objectMapper,
+                                                       Environment environment) {
+        boolean enabled = Boolean.parseBoolean(environment.getProperty("dsh.tools.workspace.enabled", "false"));
+        WorkspaceToolProvider provider = new WorkspaceToolProvider(
+                Path.of(environment.getProperty("dsh.tools.workspace.directory", ".")),
+                Long.parseLong(environment.getProperty("dsh.tools.workspace.max-read-bytes", "1000000")),
+                Long.parseLong(environment.getProperty("dsh.tools.workspace.max-write-bytes", "1000000")),
+                Boolean.parseBoolean(environment.getProperty("dsh.tools.workspace.write-enabled", "false")),
+                objectMapper);
+        if (enabled) provider.register(tools);
+        return provider;
     }
 
     @Bean

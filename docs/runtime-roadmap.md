@@ -4,7 +4,7 @@
 
 | Area | Current implementation | Missing for a usable runtime |
 | --- | --- | --- |
-| Tools | In-process `ToolRegistry`, local `time_now`, durable custom debug tools, management API | Permissions, reload, approval policy and real executable adapters |
+| Tools | In-process `ToolRegistry`, local `time_now`, durable custom debug tools, management API, sandboxed workspace list/read/write adapters | Process/shell adapters, richer permission policies and controlled reload |
 | MCP | Java SDK client with stdio/SSE/Streamable HTTP, durable profiles, encrypted credentials, startup reconnect, initialize/list-tools/call-tool, resource/prompt inspection, lifecycle API and ToolRegistry synchronization | Reconnect backoff, health history and approval policy |
 | Skills | Filesystem `skills/<name>/SKILL.md`, front matter, durable enable/disable state and system-prompt injection | Package/version management and resource indexing |
 | Models | Persisted profiles with active selection, OpenAI-compatible routing, encrypted API keys, proxy/request parameters, capability flags, context budgets, Provider extension JSON, connectivity tests and durable health counters | Provider-specific tokenizers and failover policies |

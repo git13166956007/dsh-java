@@ -24,6 +24,13 @@ dsh:
     secret-key: ${DSH_SECRET_KEY:}
   agent:
     max-turns: ${DSH_AGENT_MAX_TURNS:8}
+  tools:
+    workspace:
+      enabled: ${DSH_WORKSPACE_TOOLS_ENABLED:false}
+      directory: ${DSH_WORKSPACE_DIR:.}
+      max-read-bytes: ${DSH_WORKSPACE_MAX_READ_BYTES:1000000}
+      max-write-bytes: ${DSH_WORKSPACE_MAX_WRITE_BYTES:1000000}
+      write-enabled: ${DSH_WORKSPACE_WRITE_ENABLED:false}
   skills:
     directory: ${DSH_SKILLS_DIR:skills}
   plugins:
