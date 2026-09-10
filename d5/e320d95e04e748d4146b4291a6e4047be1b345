@@ -1,0 +1,34 @@
+README.md
+  h_eb697744b14c1b 92
+docs/runtime-roadmap.md
+  h_eb697744b14c1b 14
+src/main/java/io/github/git13166956007/dsh/agent/AgentLoop.java
+  h_eb697744b14c1b 212,224-227,234,248,253,259-261,341,365-368,375,390,395,403-405,470-472,508,514-517,524,537,542,548-550
+src/main/java/io/github/git13166956007/dsh/agent/AgentRunResult.java
+  h_eb697744b14c1b 8,10,14-19,24-25
+src/main/java/io/github/git13166956007/dsh/agent/SubAgentSessionManager.java
+  h_eb697744b14c1b 87,152-153,161-165
+src/main/java/io/github/git13166956007/dsh/context/MariaDbConversationStore.java
+  h_eb697744b14c1b 4,14-17,23,26-29,33,57,66,89-90,96-97,158-161,167-168,170,175-212
+src/main/java/io/github/git13166956007/dsh/model/ModelRegistry.java
+  h_eb697744b14c1b 200,215
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 877,990,1058,1083-1089
+src/test/java/io/github/git13166956007/dsh/agent/AgentLoopTest.java
+  h_eb697744b14c1b 86-87,89-93,457-458,464-466
+src/test/java/io/github/git13166956007/dsh/context/InMemoryConversationStoreTest.java
+  h_eb697744b14c1b 9,30-47
+src/test/java/io/github/git13166956007/dsh/model/ModelRegistryTest.java
+  h_eb697744b14c1b 238-253
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d5e320d95e04e748d4146b4291a6e4047be1b345",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
