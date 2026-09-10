@@ -62,8 +62,11 @@ import io.github.git13166956007.dsh.tool.MariaDbToolProfileStore;
 import io.github.git13166956007.dsh.tool.ToolProfileStore;
 import io.github.git13166956007.dsh.plugin.DshServices;
 import io.github.git13166956007.dsh.tool.WorkspaceToolProvider;
+import io.github.git13166956007.dsh.tool.WorkspaceProcessToolProvider;
 import java.nio.file.Path;
 import java.time.OffsetDateTime;
+import java.util.Arrays;
+import java.util.Set;
 import org.springframework.core.env.Environment;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -125,6 +128,21 @@ public class DshRuntimeConfiguration {
                 Long.parseLong(environment.getProperty("dsh.tools.workspace.max-write-bytes", "1000000")),
                 Boolean.parseBoolean(environment.getProperty("dsh.tools.workspace.write-enabled", "false")),
                 objectMapper);
+        if (enabled) provider.register(tools);
+        return provider;
+    }
+
+    @Bean(destroyMethod = "close")
+    public WorkspaceProcessToolProvider workspaceProcessToolProvider(ToolRegistry tools, ObjectMapper objectMapper,
+                                                                      Environment environment) {
+        boolean enabled = Boolean.parseBoolean(environment.getProperty("dsh.tools.process.enabled", "false"));
+        Set<String> commands = Arrays.stream(environment.getProperty("dsh.tools.process.allowed-commands", "")
+                        .split(","))
+                .map(String::trim).filter(value -> !value.isEmpty()).collect(java.util.stream.Collectors.toSet());
+        WorkspaceProcessToolProvider provider = new WorkspaceProcessToolProvider(
+                Path.of(environment.getProperty("dsh.tools.workspace.directory", ".")), commands,
+                Integer.parseInt(environment.getProperty("dsh.tools.process.max-timeout-seconds", "120")),
+                Long.parseLong(environment.getProperty("dsh.tools.process.max-output-bytes", "1000000")), objectMapper);
         if (enabled) provider.register(tools);
         return provider;
     }

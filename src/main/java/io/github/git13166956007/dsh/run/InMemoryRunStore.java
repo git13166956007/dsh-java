@@ -28,8 +28,9 @@ public final class InMemoryRunStore implements RunStore {
     }
 
     @Override
-    public synchronized void saveEvent(RunEventData event) {
+    public synchronized RunEventData saveEvent(RunEventData event) {
         events.computeIfAbsent(event.runId(), ignored -> new ArrayList<RunEventData>()).add(event);
+        return event;
     }
 
     public long nextEventId() {

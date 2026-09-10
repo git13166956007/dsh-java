@@ -145,6 +145,10 @@ h2 { font-size: 17px; }
 .plan-step-copy > span { display: block; margin-top: 3px; color: #73807f; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase; }
 .plan-step-copy p { margin: 7px 0 0; color: #85918f; font-size: 12px; line-height: 1.5; }
 .plan-step-copy pre { max-height: 110px; margin-top: 8px; }
+.plan-event-log { margin-top: 15px; border-top: 1px solid #273235; padding-top: 10px; }
+.plan-event { display: flex; gap: 10px; padding: 5px 0; color: #8da29b; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.plan-event span { flex: 0 0 130px; color: #b6c8c3; }
+.plan-event small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .plan-approval-toggle { display: flex !important; align-items: center; gap: 8px; color: #aebbb7 !important; font: 11px inherit !important; text-transform: none !important; }
 .plan-approval-toggle input { width: auto !important; }
 .plan-form-step { margin-top: 15px; padding: 12px; border: 1px solid #29383a; background: #12191b; }

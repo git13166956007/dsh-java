@@ -31,6 +31,11 @@ dsh:
       max-read-bytes: ${DSH_WORKSPACE_MAX_READ_BYTES:1000000}
       max-write-bytes: ${DSH_WORKSPACE_MAX_WRITE_BYTES:1000000}
       write-enabled: ${DSH_WORKSPACE_WRITE_ENABLED:false}
+    process:
+      enabled: ${DSH_WORKSPACE_PROCESS_ENABLED:false}
+      allowed-commands: ${DSH_WORKSPACE_PROCESS_COMMANDS:}
+      max-timeout-seconds: ${DSH_WORKSPACE_PROCESS_MAX_TIMEOUT_SECONDS:120}
+      max-output-bytes: ${DSH_WORKSPACE_PROCESS_MAX_OUTPUT_BYTES:1000000}
   skills:
     directory: ${DSH_SKILLS_DIR:skills}
   plugins:

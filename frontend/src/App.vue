@@ -68,6 +68,7 @@ const plans = ref([])
 const selectedPlanId = ref(null)
 const planDetail = ref(null)
 const planApprovalRun = ref(null)
+const planEvents = ref([])
 const planForm = ref({
   title: '',
   goal: '',
@@ -81,6 +82,8 @@ const planFormError = ref('')
 const planSaving = ref(false)
 const adaptivePlanForm = ref({ prompt: '', maxSteps: 6, maxConcurrency: 1, approvalRequired: true, allowDynamicSubAgents: false })
 let planPollTimer = null
+let planEventSource = null
+let planEventRunId = null
 const modelForm = ref({
   id: null,
   name: '',
@@ -441,13 +444,50 @@ async function refreshPlanDetail(id) {
     const runsResponse = await fetch(`/api/v1/runs?planId=${encodeURIComponent(id)}`)
     const planRuns = runsResponse.ok ? await runsResponse.json() : []
     planApprovalRun.value = planRuns.find((run) => run.status === 'WAITING_APPROVAL') || null
+    const planRun = planRuns.find((run) => String(run.kind).toUpperCase() === 'PLAN')
+    if (planRun && ['RUNNING', 'WAITING_APPROVAL'].includes(String(planDetail.value.status).toUpperCase())) {
+      openPlanEventStream(planRun.id)
+    } else {
+      closePlanEventStream()
+    }
   } catch {
     planApprovalRun.value = null
+    closePlanEventStream()
   }
   if (planDetail.value.status === 'RUNNING') {
     clearTimeout(planPollTimer)
     planPollTimer = setTimeout(() => refreshPlanDetail(id), 1200)
   }
+}
+
+function openPlanEventStream(runId) {
+  if (!runId || planEventRunId === runId) return
+  closePlanEventStream()
+  planEvents.value = []
+  planEventRunId = runId
+  planEventSource = new EventSource(`/api/v1/runs/${encodeURIComponent(runId)}/events/stream`)
+  planEventSource.addEventListener('run_event', (event) => {
+    try {
+      const value = JSON.parse(event.data)
+      if (!planEvents.value.some((item) => item.id === value.id && item.type === value.type)) {
+        planEvents.value.push(value)
+      }
+      if (['run_completed', 'run_failed', 'run_cancelled', 'tool_approval_required'].includes(value.type)) {
+        refreshPlanDetail(selectedPlanId.value)
+      }
+    } catch {
+      // Keep the polling fallback when a diagnostic event is malformed.
+    }
+  })
+  planEventSource.onerror = () => {
+    closePlanEventStream()
+  }
+}
+
+function closePlanEventStream() {
+  if (planEventSource) planEventSource.close()
+  planEventSource = null
+  planEventRunId = null
 }
 
 async function approvePlanRun(approved) {
@@ -1336,7 +1376,10 @@ onMounted(() => {
   refreshPlans()
 })
 
-onUnmounted(() => clearTimeout(planPollTimer))
+onUnmounted(() => {
+  clearTimeout(planPollTimer)
+  closePlanEventStream()
+})
 </script>
 
 <template>
@@ -1888,6 +1931,12 @@ onUnmounted(() => clearTimeout(planPollTimer))
           <div v-for="step in planDetail.steps" :key="step.id" class="plan-step" :class="String(step.status).toLowerCase()">
             <div class="plan-step-index">{{ step.stepNo }}</div>
             <div class="plan-step-copy"><strong>{{ step.title }}</strong><span>{{ String(step.status).toLowerCase() }} · {{ step.attempts }}/{{ step.maxAttempts }}</span><p>{{ step.instruction }}</p><pre v-if="step.result">{{ step.result }}</pre></div>
+          </div>
+          <div v-if="planEvents.length" class="plan-event-log">
+            <div class="trace-block-label">LIVE EVENTS</div>
+            <div v-for="event in planEvents" :key="`${event.id}-${event.type}`" class="plan-event">
+              <span>{{ event.type }}</span><small>{{ event.payload || '' }}</small>
+            </div>
           </div>
         </div>
 

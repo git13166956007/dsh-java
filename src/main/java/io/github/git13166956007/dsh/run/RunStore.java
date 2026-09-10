@@ -9,5 +9,5 @@ public interface RunStore {
 
     void saveRun(RunData run) throws Exception;
 
-    void saveEvent(RunEventData event) throws Exception;
+    RunEventData saveEvent(RunEventData event) throws Exception;
 }

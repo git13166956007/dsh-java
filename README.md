@@ -106,7 +106,7 @@ Sub-agent Profile 管理接口为 `GET/POST/PATCH/DELETE /api/v1/sub-agents`。�
 
 记忆接口为 `GET /api/v1/memories`、`GET /api/v1/memories/search`、`POST /api/v1/memories` 和 `DELETE /api/v1/memories/{id}`。记忆按 `namespace + subjectKey` 隔离，当前聊天会以 `conversation + conversationId` 自动检索相关记忆并注入系统上下文；前端 Memory Tab 可以显式添加和删除记忆。
 
-运行追踪接口为 `GET /api/v1/runs`、`GET /api/v1/runs/{id}`、`GET /api/v1/runs/{id}/events` 和 `GET /api/v1/runs/{id}/tree`。聊天响应和流式 `done` 事件会返回 `runId`；计划执行会创建 `plan -> plan_step -> agent/sub_agent` 的父子运行树，可按 `planId` 查询。每个运行会记录模型响应、工具调用、工具结果、重试和终态，启用 MariaDB 时会持久化到 `dsh_run` 与 `dsh_run_event`。
+运行追踪接口为 `GET /api/v1/runs`、`GET /api/v1/runs/{id}`、`GET /api/v1/runs/{id}/events`、`GET /api/v1/runs/{id}/events/stream` 和 `GET /api/v1/runs/{id}/tree`。聊天响应和流式 `done` 事件会返回 `runId`；计划执行会创建 `plan -> plan_step -> agent/sub_agent` 的父子运行树，可按 `planId` 查询。每个运行会记录模型响应、工具调用、工具结果、重试和终态，启用 MariaDB 时会持久化到 `dsh_run` 与 `dsh_run_event`。事件流会先回放历史事件，再推送实时事件，前端 Plan Inspector 用它显示步骤进度。
 
 同一个 `conversationId` 会复用最近的历史消息；不传时服务会创建新的会话 ID。工具管理接口为 `GET /api/v1/tools` 和 `PATCH /api/v1/tools/{name}`，请求体示例为 `{"enabled":false}`。
 
@@ -122,13 +122,22 @@ export DSH_WORKSPACE_MAX_READ_BYTES=1000000
 export DSH_WORKSPACE_MAX_WRITE_BYTES=1000000
 ```
 
+如果需要让 Agent 执行本地命令，可额外启用受控的 `workspace_exec` 工具。它只执行 `DSH_WORKSPACE_PROCESS_COMMANDS` 中的程序名，直接使用 `ProcessBuilder` 传递参数，不经过 shell；调用默认需要人工审批，并受超时和输出大小限制。命令的文件系统权限仍由操作系统用户决定，因此只应在专用工作区和低权限账户下开启：
+
+```bash
+export DSH_WORKSPACE_PROCESS_ENABLED=true
+export DSH_WORKSPACE_PROCESS_COMMANDS=git,printf
+export DSH_WORKSPACE_PROCESS_MAX_TIMEOUT_SECONDS=120
+export DSH_WORKSPACE_PROCESS_MAX_OUTPUT_BYTES=1000000
+```
+
 工作区工具不允许通过 HTTP 直接绕过 Agent 审批执行；插件和 MCP 工具也继续复用统一的 `ToolRegistry`、白名单、审批和 Run Trace 边界。
 
 上下文窗口同时受 `DSH_MAX_HISTORY_MESSAGES` 和 `DSH_MAX_CONTEXT_TOKENS` 限制，按最新消息优先裁剪；长对话会在聊天前尝试生成滚动摘要，摘要独立保存于会话记录并在读取上下文时临时注入，不会改写原始消息。`POST /api/v1/conversations/{id}/compact` 可以手动触发压缩，`GET /api/v1/conversations/{id}/context` 可以查看当前消息数、估算 token 数和是否发生裁剪。摘要模型不可用时会回退到原有裁剪策略；token 数是运行时估算值，不依赖特定模型 tokenizer。
 
 前端右上角的 `Tools` 可以添加调试工具。启用 MariaDB 持久化后，自定义工具的名称、描述、JSON Schema、固定返回值、启用状态和审批策略会保存并在重启后恢复；真正的业务执行工具通过插件或 MCP 接入。
 
-MCP Server 管理已经接入官方 Java SDK `0.17.0`，支持 `stdio`、`sse` 和 `streamable_http`。HTTP endpoint 填写服务地址，敏感参数使用 Credential Reference 或加密 Header/Environment 保存，不要把 Key 放进 URL。配置后通过 `POST /api/v1/mcp/servers/{id}/connect` 建立会话，工具会自动同步进统一的 ToolRegistry；`refresh`、`disconnect` 分别用于刷新工具和释放连接。MCP 还提供资源列表/读取和 Prompt 列表/加载接口，前端 MCP 面板可直接调试。MCP 工具会以 `mcp_<server-id>_<tool-name>` 暴露，名称只使用模型兼容的字母、数字、下划线和连字符，避免不同 Server 同名冲突。
+MCP Server 管理已经接入官方 Java SDK `0.17.0`，支持 `stdio`、`sse` 和 `streamable_http`。HTTP endpoint 填写服务地址，敏感参数使用 Credential Reference 或加密 Header/Environment 保存，不要把 Key 放进 URL。配置后通过 `POST /api/v1/mcp/servers/{id}/connect` 建立会话，工具会自动同步进统一的 ToolRegistry；`refresh`、`disconnect` 分别用于刷新工具和释放连接。MCP 还提供资源列表/读取、Prompt 列表/加载和 `GET /api/v1/mcp/servers/{id}/health` 健康接口，前端 MCP 面板可直接调试。MCP 工具会以 `mcp_<server-id>_<tool-name>` 暴露，名称只使用模型兼容的字母、数字、下划线和连字符，避免不同 Server 同名冲突；Server 级审批策略会持久化并应用到同步工具。
 
 Skills 使用文件系统目录，默认扫描项目根目录 `skills/`，也可以通过 `DSH_SKILLS_DIR` 指定目录。每个 Skill 的入口文件是 `skills/<name>/SKILL.md`，支持简单 front matter：
 
@@ -160,7 +169,7 @@ Skills 管理接口为 `GET /api/v1/skills`、`PATCH /api/v1/skills/{id}` 和 `P
 
 后续实现顺序：
 
-1. 增加工具审批策略、工作区文件工具和 shell 工具。
+1. 增加工具审批策略、工作区文件工具和受控进程工具。
 2. 为 MCP 配置和 Skills 增加持久化、凭据引用及重连策略。
 3. 增加插件 JAR 版本、依赖排序和受控 reload。
 

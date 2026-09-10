@@ -79,7 +79,7 @@ public final class MariaDbRunStore implements RunStore {
     }
 
     @Override
-    public void saveEvent(RunEventData event) throws SQLException {
+    public RunEventData saveEvent(RunEventData event) throws SQLException {
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(
                      "INSERT INTO dsh_run_event (run_id, event_type, payload, created_at) VALUES (?, ?, ?, ?)",
@@ -89,7 +89,13 @@ public final class MariaDbRunStore implements RunStore {
             statement.setString(3, event.payload());
             statement.setTimestamp(4, Timestamp.from(event.createdAt()));
             statement.executeUpdate();
+            try (ResultSet keys = statement.getGeneratedKeys()) {
+                if (keys.next()) {
+                    return new RunEventData(keys.getLong(1), event.runId(), event.type(), event.payload(), event.createdAt());
+                }
+            }
         }
+        return event;
     }
 
     private void ensureSchema() {

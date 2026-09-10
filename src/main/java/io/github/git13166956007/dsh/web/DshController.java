@@ -541,6 +541,27 @@ public final class DshController {
         return runManager.events(id);
     }
 
+    @GetMapping(value = "/runs/{id}/events/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter runEventsStream(@PathVariable String id) throws Exception {
+        Run run = runManager.find(id);
+        if (run == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown run: " + id);
+
+        SseEmitter emitter = new SseEmitter(180_000L);
+        AutoCloseable subscription = runManager.subscribe(id, event -> send(emitter, "run_event", event));
+        Runnable cleanup = () -> {
+            try {
+                subscription.close();
+            } catch (Exception ignored) {
+            }
+        };
+        emitter.onCompletion(cleanup);
+        emitter.onTimeout(cleanup);
+        emitter.onError(ignored -> cleanup.run());
+        for (RunEvent event : runManager.events(id)) send(emitter, "run_event", event);
+        if (run.status().terminal()) emitter.complete();
+        return emitter;
+    }
+
     @GetMapping("/runs/{id}/tree")
     public java.util.List<Run> runTree(@PathVariable String id) throws Exception {
         if (runManager.find(id) == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown run: " + id);

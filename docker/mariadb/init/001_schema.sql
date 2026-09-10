@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS dsh_mcp_server (
     environment_json LONGTEXT NULL,
     credential_ref VARCHAR(255) NULL,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    approval_required BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -145,6 +146,18 @@ CREATE TABLE IF NOT EXISTS dsh_model_health (
     last_latency_ms BIGINT NULL,
     last_checked_at TIMESTAMP(3) NULL,
     last_success_at TIMESTAMP(3) NULL,
+    last_error TEXT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS dsh_mcp_health (
+    server_id VARCHAR(64) NOT NULL PRIMARY KEY,
+    status VARCHAR(16) NOT NULL DEFAULT 'UNKNOWN',
+    success_count BIGINT NOT NULL DEFAULT 0,
+    failure_count BIGINT NOT NULL DEFAULT 0,
+    last_latency_ms BIGINT NULL,
+    last_checked_at TIMESTAMP(3) NULL,
+    last_connected_at TIMESTAMP(3) NULL,
+    last_disconnected_at TIMESTAMP(3) NULL,
     last_error TEXT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
