@@ -36,6 +36,11 @@ public final class AgentLoop {
     }
 
     public AgentRunResult runDetailed(String prompt, String apiKey, List<ChatMessage> history) throws Exception {
+        return runDetailed(prompt, apiKey, history, null);
+    }
+
+    public AgentRunResult runDetailed(String prompt, String apiKey, List<ChatMessage> history,
+                                      String modelId) throws Exception {
         if (prompt == null || prompt.trim().isEmpty()) {
             throw new IllegalArgumentException("prompt must not be blank");
         }
@@ -47,7 +52,7 @@ public final class AgentLoop {
         messages.add(ChatMessage.user(prompt));
 
         for (int turn = 0; turn < maxTurns; turn++) {
-            ModelResponse response = model.complete(messages, tools.definitions(), apiKey);
+            ModelResponse response = model.complete(messages, tools.definitions(), apiKey, modelId);
             messages.add(ChatMessage.assistant(response.content(), response.toolCalls()));
             if (response.content() != null && !response.content().isEmpty()) {
                 trace.add(AgentTraceEvent.model(response.content()));
@@ -77,6 +82,11 @@ public final class AgentLoop {
 
     public AgentRunResult runStreaming(String prompt, String apiKey, List<ChatMessage> history,
                                        AgentStreamListener listener) throws Exception {
+        return runStreaming(prompt, apiKey, history, null, listener);
+    }
+
+    public AgentRunResult runStreaming(String prompt, String apiKey, List<ChatMessage> history,
+                                       String modelId, AgentStreamListener listener) throws Exception {
         if (prompt == null || prompt.trim().isEmpty()) {
             throw new IllegalArgumentException("prompt must not be blank");
         }
@@ -88,7 +98,7 @@ public final class AgentLoop {
         messages.add(ChatMessage.user(prompt));
 
         for (int turn = 0; turn < maxTurns; turn++) {
-            ModelResponse response = model.stream(messages, tools.definitions(), apiKey, listener::onText);
+            ModelResponse response = model.stream(messages, tools.definitions(), apiKey, modelId, listener::onText);
             messages.add(ChatMessage.assistant(response.content(), response.toolCalls()));
             if (response.content() != null && !response.content().isEmpty()) {
                 trace.add(AgentTraceEvent.model(response.content()));

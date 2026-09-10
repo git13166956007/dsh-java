@@ -14,6 +14,8 @@ import io.github.git13166956007.dsh.mcp.McpServerRegistry;
 import io.github.git13166956007.dsh.mcp.McpClientManager;
 import io.github.git13166956007.dsh.skill.SkillInfo;
 import io.github.git13166956007.dsh.skill.SkillRegistry;
+import io.github.git13166956007.dsh.model.ModelProfile;
+import io.github.git13166956007.dsh.model.ModelRegistry;
 import io.github.git13166956007.dsh.tool.ToolInfo;
 import io.github.git13166956007.dsh.tool.ToolRegistry;
 import io.github.git13166956007.dsh.core.DshRuntime;
@@ -44,10 +46,12 @@ public final class DshController {
     private final McpServerRegistry mcpServerRegistry;
     private final McpClientManager mcpClientManager;
     private final SkillRegistry skillRegistry;
+    private final ModelRegistry modelRegistry;
 
     public DshController(DshRuntime runtime, AgentLoop agentLoop, ContextManager contextManager,
                          ToolRegistry toolRegistry, McpServerRegistry mcpServerRegistry,
-                         McpClientManager mcpClientManager, SkillRegistry skillRegistry) {
+                         McpClientManager mcpClientManager, SkillRegistry skillRegistry,
+                         ModelRegistry modelRegistry) {
         this.runtime = runtime;
         this.agentLoop = agentLoop;
         this.contextManager = contextManager;
@@ -55,6 +59,7 @@ public final class DshController {
         this.mcpServerRegistry = mcpServerRegistry;
         this.mcpClientManager = mcpClientManager;
         this.skillRegistry = skillRegistry;
+        this.modelRegistry = modelRegistry;
     }
 
     @GetMapping("/health")
@@ -206,6 +211,49 @@ public final class DshController {
         }
     }
 
+    @GetMapping("/models")
+    public java.util.List<ModelProfile> models() {
+        return modelRegistry.list();
+    }
+
+    @PostMapping("/models")
+    public ModelProfile createModel(@RequestBody ModelRequest request) {
+        try {
+            return modelRegistry.create(request.name(), request.provider(), request.baseUrl(), request.model(),
+                    request.apiKey(), request.proxyHost(), request.proxyPort(), request.enabled(), request.active());
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
+        }
+    }
+
+    @PatchMapping("/models/{id}")
+    public ModelProfile updateModel(@PathVariable String id, @RequestBody ModelRequest request) {
+        try {
+            return modelRegistry.update(id, request.name(), request.provider(), request.baseUrl(), request.model(),
+                    request.apiKey(), request.proxyHost(), request.proxyPort(), request.enabled(), request.active());
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
+        }
+    }
+
+    @PostMapping("/models/{id}/activate")
+    public ModelProfile activateModel(@PathVariable String id) {
+        try {
+            return modelRegistry.activate(id);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
+        }
+    }
+
+    @DeleteMapping("/models/{id}")
+    public void deleteModel(@PathVariable String id) {
+        try {
+            if (!modelRegistry.delete(id)) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown model: " + id);
+        } catch (IllegalStateException exception) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, exception.getMessage(), exception);
+        }
+    }
+
     @PostMapping("/chat")
     public ChatResponse chat(@RequestBody ChatRequest request) throws Exception {
         if (request == null || request.message() == null || request.message().trim().isEmpty()) {
@@ -215,7 +263,7 @@ public final class DshController {
             String conversationId = contextManager.open(request.conversationId(), request.message());
             java.util.List<ChatMessage> history = contextManager.history(conversationId);
             contextManager.append(conversationId, ChatMessage.user(request.message()));
-            AgentRunResult result = agentLoop.runDetailed(request.message(), request.apiKey(), history);
+            AgentRunResult result = agentLoop.runDetailed(request.message(), request.apiKey(), history, request.modelId());
             contextManager.append(conversationId, ChatMessage.assistant(result.answer(), java.util.List.of()));
             return new ChatResponse(conversationId, result.answer(), result.trace(), result.turns());
         } catch (Exception exception) {
@@ -248,7 +296,8 @@ public final class DshController {
         java.util.List<ChatMessage> finalHistory = history;
         java.util.concurrent.CompletableFuture.runAsync(() -> {
             try {
-                AgentRunResult result = agentLoop.runStreaming(request.message(), request.apiKey(), finalHistory, new AgentStreamListener() {
+                AgentRunResult result = agentLoop.runStreaming(request.message(), request.apiKey(), finalHistory,
+                        request.modelId(), new AgentStreamListener() {
                     @Override
                     public void onText(String delta) {
                         send(emitter, "delta", delta);
@@ -299,13 +348,17 @@ public final class DshController {
                 .body(new ErrorResponse(exception.getMessage()));
     }
 
-    public record ChatRequest(String message, String apiKey, String conversationId) {
+    public record ChatRequest(String message, String apiKey, String conversationId, String modelId) {
     }
 
     public record ToolUpdateRequest(Boolean enabled) {
     }
 
     public record SkillUpdateRequest(Boolean enabled) {
+    }
+
+    public record ModelRequest(String name, String provider, String baseUrl, String model, String apiKey,
+                               String proxyHost, Integer proxyPort, Boolean enabled, Boolean active) {
     }
 
     public record ToolCreateRequest(String name, String description, tools.jackson.databind.JsonNode parameters,

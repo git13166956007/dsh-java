@@ -12,7 +12,11 @@ import io.github.git13166956007.dsh.core.DshRuntime;
 import io.github.git13166956007.dsh.mcp.McpServerRegistry;
 import io.github.git13166956007.dsh.mcp.McpClientManager;
 import io.github.git13166956007.dsh.skill.SkillRegistry;
-import io.github.git13166956007.dsh.provider.deepseek.DeepSeekChatModel;
+import io.github.git13166956007.dsh.model.InMemoryModelProfileStore;
+import io.github.git13166956007.dsh.model.MariaDbModelProfileStore;
+import io.github.git13166956007.dsh.model.ModelProfileStore;
+import io.github.git13166956007.dsh.model.ModelRegistry;
+import io.github.git13166956007.dsh.model.ModelRouter;
 import io.github.git13166956007.dsh.tool.ToolDefinition;
 import io.github.git13166956007.dsh.tool.ToolRegistry;
 import java.time.OffsetDateTime;
@@ -42,18 +46,29 @@ public class DshRuntimeConfiguration {
     }
 
     @Bean
-    public ChatModel chatModel(ObjectMapper objectMapper, Environment environment) {
-        return new DeepSeekChatModel(
-                objectMapper,
+    public ModelProfileStore modelProfileStore(Environment environment) {
+        boolean enabled = Boolean.parseBoolean(environment.getProperty("dsh.persistence.enabled", "false"));
+        if (!enabled) return new InMemoryModelProfileStore();
+        return new MariaDbModelProfileStore(
+                environment.getProperty("dsh.persistence.jdbc-url"),
+                environment.getProperty("dsh.persistence.username"),
+                environment.getProperty("dsh.persistence.password"));
+    }
+
+    @Bean
+    public ModelRegistry modelRegistry(ModelProfileStore store, Environment environment) {
+        return new ModelRegistry(store,
                 environment.getProperty("dsh.model.base-url", "https://api.deepseek.com"),
-                environment.getProperty("dsh.model.api-key",
-                        environment.getProperty("DEEPSEEK_API_KEY", "")),
-                environment.getProperty("dsh.model.name",
-                        environment.getProperty("DEEPSEEK_MODEL", "deepseek-v4-flash")),
-                environment.getProperty("dsh.model.proxy-host",
-                        environment.getProperty("DEEPSEEK_PROXY_HOST", "")),
-                Integer.parseInt(environment.getProperty("dsh.model.proxy-port",
-                        environment.getProperty("DEEPSEEK_PROXY_PORT", "0"))));
+                environment.getProperty("dsh.model.provider", "deepseek"),
+                environment.getProperty("dsh.model.name", "deepseek-v4-flash"),
+                environment.getProperty("dsh.model.api-key", environment.getProperty("DEEPSEEK_API_KEY", "")),
+                environment.getProperty("dsh.model.proxy-host", environment.getProperty("DEEPSEEK_PROXY_HOST", "")),
+                Integer.parseInt(environment.getProperty("dsh.model.proxy-port", environment.getProperty("DEEPSEEK_PROXY_PORT", "0"))));
+    }
+
+    @Bean
+    public ChatModel chatModel(ObjectMapper objectMapper, ModelRegistry modelRegistry) {
+        return new ModelRouter(modelRegistry, objectMapper);
     }
 
     @Bean

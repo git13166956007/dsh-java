@@ -22,6 +22,22 @@ const toolManagerOpen = ref(false)
 const capabilityTab = ref('tools')
 const mcpServers = ref([])
 const skills = ref([])
+const models = ref([])
+const selectedModelId = ref(null)
+const modelForm = ref({
+  id: null,
+  name: '',
+  provider: 'deepseek',
+  baseUrl: 'https://api.deepseek.com',
+  model: 'deepseek-v4-flash',
+  apiKey: '',
+  proxyHost: '',
+  proxyPort: '',
+  enabled: true,
+  active: false
+})
+const modelFormError = ref('')
+const modelSaving = ref(false)
 const mcpForm = ref({ name: '', transport: 'stdio', endpoint: '', command: '', arguments: '' })
 const mcpFormError = ref('')
 const mcpSaving = ref(false)
@@ -89,6 +105,20 @@ async function refreshSkills() {
   }
 }
 
+async function refreshModels() {
+  try {
+    const response = await fetch('/api/v1/models')
+    if (!response.ok) throw new Error('模型列表不可用')
+    models.value = await response.json()
+    if (!selectedModelId.value || !models.value.some((model) => model.id === selectedModelId.value)) {
+      selectedModelId.value = models.value.find((model) => model.active && model.enabled)?.id || models.value.find((model) => model.enabled)?.id || null
+    }
+  } catch {
+    models.value = []
+    selectedModelId.value = null
+  }
+}
+
 function openToolManager() {
   openCapabilities('tools')
 }
@@ -96,11 +126,13 @@ function openToolManager() {
 function openCapabilities(tab) {
   toolFormError.value = ''
   mcpFormError.value = ''
+  modelFormError.value = ''
   capabilityTab.value = tab
   toolManagerOpen.value = true
   refreshTools()
   refreshMcpServers()
   refreshSkills()
+  refreshModels()
 }
 
 function resetToolForm() {
@@ -238,6 +270,105 @@ async function toggleSkill(skill) {
   Object.assign(skill, await response.json())
 }
 
+function resetModelForm() {
+  modelForm.value = {
+    id: null,
+    name: '',
+    provider: 'deepseek',
+    baseUrl: 'https://api.deepseek.com',
+    model: 'deepseek-v4-flash',
+    apiKey: '',
+    proxyHost: '',
+    proxyPort: '',
+    enabled: true,
+    active: false
+  }
+  modelFormError.value = ''
+}
+
+function editModel(model) {
+  modelForm.value = {
+    id: model.id,
+    name: model.name,
+    provider: model.provider,
+    baseUrl: model.baseUrl,
+    model: model.model,
+    apiKey: '',
+    proxyHost: model.proxyHost || '',
+    proxyPort: model.proxyPort || '',
+    enabled: model.enabled,
+    active: model.active
+  }
+  modelFormError.value = ''
+}
+
+async function saveModel() {
+  modelFormError.value = ''
+  if (!modelForm.value.name.trim() || !modelForm.value.provider.trim() || !modelForm.value.baseUrl.trim() || !modelForm.value.model.trim()) {
+    modelFormError.value = '请填写名称、供应商、Base URL 和模型名'
+    return
+  }
+  modelSaving.value = true
+  try {
+    const editing = Boolean(modelForm.value.id)
+    const response = await fetch(editing ? `/api/v1/models/${encodeURIComponent(modelForm.value.id)}` : '/api/v1/models', {
+      method: editing ? 'PATCH' : 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: modelForm.value.name.trim(),
+        provider: modelForm.value.provider.trim(),
+        baseUrl: modelForm.value.baseUrl.trim(),
+        model: modelForm.value.model.trim(),
+        apiKey: modelForm.value.apiKey.trim() || null,
+        proxyHost: modelForm.value.proxyHost.trim() || null,
+        proxyPort: Number(modelForm.value.proxyPort) || 0,
+        enabled: modelForm.value.enabled,
+        active: modelForm.value.active
+      })
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload.message || payload.error || '模型保存失败')
+    if (editing) {
+      const index = models.value.findIndex((model) => model.id === payload.id)
+      if (index >= 0) models.value[index] = payload
+    } else {
+      models.value.push(payload)
+    }
+    if (payload.active && payload.enabled) selectedModelId.value = payload.id
+    resetModelForm()
+    await refreshModels()
+  } catch (requestError) {
+    modelFormError.value = requestError.message
+  } finally {
+    modelSaving.value = false
+  }
+}
+
+async function activateModel(model) {
+  const response = await fetch(`/api/v1/models/${encodeURIComponent(model.id)}/activate`, { method: 'POST' })
+  if (!response.ok) return
+  selectedModelId.value = model.id
+  await refreshModels()
+}
+
+async function toggleModel(model) {
+  const response = await fetch(`/api/v1/models/${encodeURIComponent(model.id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled: !model.enabled })
+  })
+  if (!response.ok) return
+  await refreshModels()
+}
+
+async function deleteModel(model) {
+  const response = await fetch(`/api/v1/models/${encodeURIComponent(model.id)}`, { method: 'DELETE' })
+  if (!response.ok) return
+  if (selectedModelId.value === model.id) selectedModelId.value = null
+  await refreshModels()
+  resetModelForm()
+}
+
 async function sendMessage() {
   if (!canSend.value) return
   const prompt = draft.value.trim()
@@ -257,7 +388,8 @@ async function sendMessage() {
       body: JSON.stringify({
         message: prompt,
         apiKey: apiKey.value.trim() || null,
-        conversationId: conversationId.value
+        conversationId: conversationId.value,
+        modelId: selectedModelId.value
       })
     })
     if (!response.ok) {
@@ -420,6 +552,7 @@ onMounted(() => {
   refreshTools()
   refreshMcpServers()
   refreshSkills()
+  refreshModels()
 })
 </script>
 
@@ -460,7 +593,7 @@ onMounted(() => {
 
       <div class="sidebar-footer">
         <span class="footer-label">MODEL</span>
-        <span class="model-name">deepseek-v4-flash</span>
+        <span class="model-name">{{ models.find((item) => item.id === selectedModelId)?.model || 'No model' }}</span>
         <span class="version">v0.1.0</span>
       </div>
     </aside>
@@ -484,6 +617,14 @@ onMounted(() => {
           <button class="tools-button" type="button" title="Manage skills" @click="openCapabilities('skills')">
             <span>Skills</span>
             <span class="tools-button-count">{{ skills.filter((item) => item.enabled).length }}</span>
+          </button>
+          <select v-model="selectedModelId" class="model-picker" title="Select model" :disabled="sending">
+            <option v-for="model in models.filter((item) => item.enabled)" :key="model.id" :value="model.id">{{ model.name }} · {{ model.model }}</option>
+            <option v-if="models.filter((item) => item.enabled).length === 0" :value="null">No model</option>
+          </select>
+          <button class="tools-button" type="button" title="Manage models" @click="openCapabilities('models')">
+            <span>Models</span>
+            <span class="tools-button-count">{{ models.length }}</span>
           </button>
           <label class="api-key-control">
             <span>DEBUG API KEY</span>
@@ -601,6 +742,7 @@ onMounted(() => {
         <button :class="{ active: capabilityTab === 'tools' }" type="button" @click="capabilityTab = 'tools'">Tools</button>
         <button :class="{ active: capabilityTab === 'mcp' }" type="button" @click="capabilityTab = 'mcp'">MCP Servers</button>
         <button :class="{ active: capabilityTab === 'skills' }" type="button" @click="capabilityTab = 'skills'">Skills</button>
+        <button :class="{ active: capabilityTab === 'models' }" type="button" @click="capabilityTab = 'models'">Models</button>
       </nav>
 
       <div v-if="capabilityTab === 'tools'" class="tool-manager-list">
@@ -708,6 +850,54 @@ onMounted(() => {
         </div>
         <p v-if="skills.length === 0" class="tool-manager-empty">No skills found. Add skills/&lt;name&gt;/SKILL.md and refresh.</p>
         <div class="tool-form-footer skill-footer"><button class="secondary-button" type="button" @click="refreshSkills">Refresh skills</button></div>
+      </div>
+
+      <div v-if="capabilityTab === 'models'" class="tool-manager-list">
+        <div v-for="model in models" :key="model.id" class="managed-tool model-item">
+          <div class="managed-tool-copy">
+            <div class="managed-tool-title">
+              <strong>{{ model.name }}</strong>
+              <span :class="['tool-source', model.active ? 'connected' : '']">{{ model.active ? 'DEFAULT' : model.provider }}</span>
+            </div>
+            <p>{{ model.model }} · {{ model.baseUrl }}<br />{{ model.apiKeyConfigured ? 'API key configured' : 'Uses request or environment API key' }}</p>
+          </div>
+          <div class="managed-tool-actions model-actions">
+            <button v-if="!model.active && model.enabled" class="secondary-button compact" type="button" @click="activateModel(model)">Default</button>
+            <button class="secondary-button compact" type="button" @click="editModel(model)">Edit</button>
+            <label class="tool-toggle" :title="model.enabled ? 'Disable model' : 'Enable model'">
+              <input type="checkbox" :checked="model.enabled" @change="toggleModel(model)" />
+              <span></span>
+            </label>
+            <button v-if="models.length > 1" class="delete-tool-button" type="button" title="Delete model" aria-label="Delete model" @click="deleteModel(model)">×</button>
+          </div>
+        </div>
+        <p v-if="models.length === 0" class="tool-manager-empty">No models configured.</p>
+
+        <form class="tool-create-form inline-form" @submit.prevent="saveModel">
+          <div class="tool-form-heading">
+            <div>
+              <div class="eyebrow">MODEL PROFILE</div>
+              <h3>{{ modelForm.id ? 'Edit model' : 'Add model' }}</h3>
+            </div>
+            <span class="tool-form-note">API-compatible</span>
+          </div>
+          <div class="tool-form-grid">
+            <label><span>Name</span><input v-model="modelForm.name" placeholder="DeepSeek Production" autocomplete="off" /></label>
+            <label><span>Provider</span><input v-model="modelForm.provider" placeholder="deepseek" autocomplete="off" /></label>
+          </div>
+          <label><span>Base URL</span><input v-model="modelForm.baseUrl" placeholder="https://api.deepseek.com" autocomplete="off" /></label>
+          <label><span>Model</span><input v-model="modelForm.model" placeholder="deepseek-v4-flash" autocomplete="off" /></label>
+          <label><span>API Key</span><input v-model="modelForm.apiKey" type="password" autocomplete="new-password" :placeholder="modelForm.id ? 'Leave blank to keep current key' : 'Optional; request key can override'" /></label>
+          <div class="tool-form-grid">
+            <label><span>Proxy Host</span><input v-model="modelForm.proxyHost" placeholder="127.0.0.1" autocomplete="off" /></label>
+            <label><span>Proxy Port</span><input v-model="modelForm.proxyPort" inputmode="numeric" placeholder="7897" autocomplete="off" /></label>
+          </div>
+          <p v-if="modelFormError" class="tool-form-error">{{ modelFormError }}</p>
+          <div class="tool-form-footer">
+            <button class="secondary-button" type="button" @click="resetModelForm">Reset</button>
+            <button class="send-button" type="submit" :disabled="modelSaving"><span>{{ modelSaving ? 'Saving' : 'Save model' }}</span><span class="send-arrow">↗</span></button>
+          </div>
+        </form>
       </div>
     </section>
   </div>

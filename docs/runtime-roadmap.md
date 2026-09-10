@@ -7,6 +7,7 @@
 | Tools | In-process `ToolRegistry`, local `time_now`, runtime custom debug tools, management API | Durable catalog, permissions, reload, approval policy and real executable adapters |
 | MCP | Java SDK client with stdio/SSE/Streamable HTTP, initialize/list-tools/call-tool, lifecycle API and ToolRegistry synchronization | Durable profiles, credentials, approval policy, reconnect backoff and resource/prompt management |
 | Skills | Filesystem `skills/<name>/SKILL.md`, front matter, enable/disable and system-prompt injection | Durable enablement state, package/version management and resource indexing |
+| Models | Model profiles, active model selection, OpenAI-compatible routing, MariaDB persistence and redacted API responses | Encrypted secret storage, provider-specific adapters, health checks, model capabilities and routing policies |
 | Context | Per-request `List<ChatMessage>` | Conversation IDs, persisted messages, token budget, truncation, summarization, system/context providers |
 | Memory | JSONL session store exists but is not in the Agent Loop | Explicit memory extraction, durable storage, retrieval policy, user/workspace namespaces, forgetting/update rules |
 | Security | API key can be supplied for debugging | Authentication, tool approval, secret references, execution sandbox and audit trail |

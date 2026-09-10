@@ -78,6 +78,14 @@ export DSH_PERSISTENCE_ENABLED=true
 ./gradlew bootRun
 ```
 
+模型配置也使用同一个持久化开关。启用后，模型 Profile 会保存到 `dsh_model_profile`，应用重启后仍然可用；列表接口只返回 `apiKeyConfigured`，不会回显 API Key：
+
+```bash
+export DSH_PERSISTENCE_ENABLED=true
+```
+
+模型管理接口为 `GET/POST/PATCH/DELETE /api/v1/models`，以及 `POST /api/v1/models/{id}/activate`。Profile 支持 `provider`、`baseUrl`、`model`、`proxyHost`、`proxyPort`、`enabled` 和 `active`。聊天请求可以传 `modelId` 选择模型；不传时使用当前 active 模型。页面中的 DEBUG API KEY 仍然只对当前请求生效，并优先于 Profile 中保存的 Key。
+
 同一个 `conversationId` 会复用最近的历史消息；不传时服务会创建新的会话 ID。工具管理接口为 `GET /api/v1/tools` 和 `PATCH /api/v1/tools/{name}`，请求体示例为 `{"enabled":false}`。
 
 前端右上角的 `Tools` 可以添加调试工具。自定义工具当前是运行时内存工具：填写名称、描述、JSON Schema 和固定返回值后，模型即可调用；应用重启后需要重新添加，真正的业务执行工具通过插件或 MCP 接入。

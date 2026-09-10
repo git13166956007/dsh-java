@@ -59,3 +59,19 @@ CREATE TABLE IF NOT EXISTS dsh_memory (
     INDEX idx_dsh_memory_subject (namespace, subject_key, updated_at),
     FULLTEXT INDEX ft_dsh_memory_content (content)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS dsh_model_profile (
+    id VARCHAR(64) NOT NULL PRIMARY KEY,
+    name VARCHAR(128) NOT NULL,
+    provider VARCHAR(64) NOT NULL,
+    base_url VARCHAR(1000) NOT NULL,
+    model_name VARCHAR(255) NOT NULL,
+    api_key LONGTEXT NULL,
+    proxy_host VARCHAR(255) NULL,
+    proxy_port INT NOT NULL DEFAULT 0,
+    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    active BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    INDEX idx_dsh_model_active (active, enabled)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

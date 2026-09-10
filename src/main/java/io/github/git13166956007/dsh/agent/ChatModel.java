@@ -11,8 +11,18 @@ public interface ChatModel {
         return complete(messages, tools);
     }
 
+    default ModelResponse complete(List<ChatMessage> messages, List<ToolDefinition> tools,
+                                   String apiKey, String modelId) throws Exception {
+        return complete(messages, tools, apiKey);
+    }
+
     default ModelResponse stream(List<ChatMessage> messages, List<ToolDefinition> tools,
                                  String apiKey, ModelStreamListener listener) throws Exception {
         return complete(messages, tools, apiKey);
+    }
+
+    default ModelResponse stream(List<ChatMessage> messages, List<ToolDefinition> tools,
+                                 String apiKey, String modelId, ModelStreamListener listener) throws Exception {
+        return stream(messages, tools, apiKey, listener);
     }
 }
