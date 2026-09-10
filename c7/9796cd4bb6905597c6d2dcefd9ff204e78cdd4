@@ -1,0 +1,24 @@
+README.md
+  h_eb697744b14c1b 95
+docs/runtime-roadmap.md
+  h_eb697744b14c1b 11-12,28
+src/main/java/io/github/git13166956007/dsh/agent/AgentLoop.java
+  h_eb697744b14c1b 173-178,272-277,315-326,379-384,481-485,488-489,496-506,716,723
+src/main/java/io/github/git13166956007/dsh/agent/PendingToolApproval.java
+  h_eb697744b14c1b 5-8
+src/main/java/io/github/git13166956007/dsh/agent/SubAgentApprovalRequiredException.java
+  h_eb697744b14c1b 1-14
+src/test/java/io/github/git13166956007/dsh/agent/AgentLoopTest.java
+  h_eb697744b14c1b 95-148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c79796cd4bb6905597c6d2dcefd9ff204e78cdd4",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
