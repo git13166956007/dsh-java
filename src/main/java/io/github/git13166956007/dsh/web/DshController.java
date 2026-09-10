@@ -874,10 +874,7 @@ public final class DshController {
             AgentRunResult result = run.planId() == null
                     ? agentLoop.resumeApproval(id, request.approved(), request.apiKey())
                     : planExecutor.resumeApproval(id, request.approved(), request.apiKey());
-            if (result.pendingApproval() == null && run.conversationId() != null) {
-                contextManager.append(run.conversationId(), ChatMessage.assistant(result.answer(), java.util.List.of(),
-                        result.reasoningContent()));
-            }
+            appendConversationMessages(run.conversationId(), result);
             subAgentSessionManager.onApprovalResult(result);
             subAgentRunner.releaseCompletedReservations();
             return new ChatResponse(run.conversationId(), result.answer(), result.trace(), result.turns(),
@@ -990,9 +987,8 @@ public final class DshController {
             AgentRunResult result = agentLoop.runDetailed(request.message(), request.apiKey(), history, request.modelId(),
                     request.agentId(), mode, "conversation", conversationId,
                     io.github.git13166956007.dsh.agent.AgentRunContext.chat(conversationId, request.agentId()));
+            appendConversationMessages(conversationId, result);
             if (result.pendingApproval() == null) {
-                contextManager.append(conversationId, ChatMessage.assistant(result.answer(), java.util.List.of(),
-                        result.reasoningContent()));
                 extractMemories(conversationId, request, result.answer());
             }
             return new ChatResponse(conversationId, result.answer(), result.trace(), result.turns(), result.runId(),
@@ -1059,11 +1055,10 @@ public final class DshController {
                         send(emitter, "tool_result", result);
                     }
                 });
+                appendConversationMessages(finalConversationId, result);
                 if (result.pendingApproval() != null) {
                     send(emitter, "approval_required", result.pendingApproval());
                 } else {
-                    contextManager.append(finalConversationId, ChatMessage.assistant(result.answer(), java.util.List.of(),
-                            result.reasoningContent()));
                     extractMemories(finalConversationId, request, result.answer());
                 }
                 send(emitter, "done", new StreamResponse(finalConversationId, result.answer(), result.trace(), result.turns(),
@@ -1082,6 +1077,13 @@ public final class DshController {
             emitter.send(SseEmitter.event().name(event).data(data));
         } catch (Exception ignored) {
             emitter.completeWithError(ignored);
+        }
+    }
+
+    private void appendConversationMessages(String conversationId, AgentRunResult result) throws Exception {
+        if (conversationId == null || result == null) return;
+        for (ChatMessage message : result.conversationMessages()) {
+            contextManager.append(conversationId, message);
         }
     }
 

@@ -84,6 +84,7 @@ public final class SubAgentSessionManager {
         if (run == null || run.kind() != RunKind.SUB_AGENT || run.conversationId() == null) return;
         String sessionId = sessionForConversation(run.conversationId());
         if (sessionId == null) return;
+        appendConversationMessages(run.conversationId(), result);
         if (result.pendingApproval() == null) {
             activeRuns.remove(sessionId, result.runId());
             touch(store.find(sessionId));
@@ -146,18 +147,20 @@ public final class SubAgentSessionManager {
             try { touch(store.find(sessionId)); } catch (Exception ignored) { }
             return;
         }
-        if (result.pendingApproval() != null) return;
         try {
             Run run = runs.find(runId);
-            if (run != null && run.conversationId() != null && result.answer() != null && !result.answer().isBlank()) {
-                contexts.append(run.conversationId(), ChatMessage.assistant(result.answer(), List.of(),
-                        result.reasoningContent()));
-            }
+            if (run != null && run.conversationId() != null) appendConversationMessages(run.conversationId(), result);
+            if (result.pendingApproval() != null) return;
             activeRuns.remove(sessionId, runId);
             touch(store.find(sessionId));
         } catch (Exception ignored) {
             // Run persistence remains authoritative if the conversation write fails.
         }
+    }
+
+    private void appendConversationMessages(String conversationId, AgentRunResult result) throws Exception {
+        if (conversationId == null || result == null) return;
+        for (ChatMessage message : result.conversationMessages()) contexts.append(conversationId, message);
     }
 
     private String sessionForConversation(String conversationId) throws Exception {

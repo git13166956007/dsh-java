@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.github.git13166956007.dsh.agent.ChatMessage;
 import io.github.git13166956007.dsh.agent.ChatModel;
 import io.github.git13166956007.dsh.agent.ModelResponse;
+import io.github.git13166956007.dsh.agent.ToolCall;
 import io.github.git13166956007.dsh.model.ModelTokenizer;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.List;
@@ -24,6 +25,24 @@ class InMemoryConversationStoreTest {
 
         assertEquals(List.of("two", "three"),
                 store.load(id, 2).stream().map(ChatMessage::content).toList());
+    }
+
+    @Test
+    void retainsAssistantToolCallsAndToolResultsAsConversationMessages() throws Exception {
+        InMemoryConversationStore store = new InMemoryConversationStore();
+        String id = store.open(null, "tool history");
+        ObjectMapper mapper = new ObjectMapper();
+        store.append(id, ChatMessage.assistant(null,
+                List.of(new ToolCall("call-1", "demo_echo", mapper.createObjectNode().put("value", "hello")))));
+        store.append(id, ChatMessage.tool("call-1", "echoed"));
+
+        List<ChatMessage> messages = store.load(id, 10);
+
+        assertEquals(2, messages.size());
+        assertEquals("demo_echo", messages.get(0).toolCalls().get(0).name());
+        assertEquals("hello", messages.get(0).toolCalls().get(0).arguments().path("value").asString());
+        assertEquals("call-1", messages.get(1).toolCallId());
+        assertEquals("echoed", messages.get(1).content());
     }
 
     @Test

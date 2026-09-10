@@ -197,7 +197,7 @@ public final class ModelRegistry {
         String id = UUID.randomUUID().toString();
         boolean nextEnabled = enabled == null || enabled;
         boolean nextActive = nextEnabled && (Boolean.TRUE.equals(active)
-                || profiles.values().stream().noneMatch(ModelProfileData::active));
+                || profiles.values().stream().noneMatch(profile -> profile.active() && profile.enabled()));
         ModelProfileData profile = new ModelProfileData(id, required(name, "name"), normalizeProvider(provider),
                 normalizeUrl(baseUrl), required(model, "model"), blankToNull(apiKey), blankToNull(proxyHost),
                 validProxyPort(proxyPort == null ? 0 : proxyPort), nextEnabled, nextActive,
@@ -212,6 +212,7 @@ public final class ModelRegistry {
         validateFallback(profile.id(), profile.fallbackModelId());
         if (nextActive) deactivateAll();
         save(profile);
+        ensureActive();
         return ModelProfile.from(profile);
     }
 

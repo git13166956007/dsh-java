@@ -83,8 +83,14 @@ class AgentLoopTest {
             }
         };
 
-        assertEquals("done", new AgentLoop(model, tools, 2).run("hello"));
+        AgentRunResult result = new AgentLoop(model, tools, 2).runDetailed("hello");
+        assertEquals("done", result.answer());
         assertEquals(1, executions.get());
+        assertEquals(3, result.conversationMessages().size());
+        assertEquals(ChatMessage.Role.ASSISTANT, result.conversationMessages().get(0).role());
+        assertEquals("demo_echo", result.conversationMessages().get(0).toolCalls().get(0).name());
+        assertEquals(ChatMessage.Role.TOOL, result.conversationMessages().get(1).role());
+        assertEquals(ChatMessage.Role.ASSISTANT, result.conversationMessages().get(2).role());
     }
 
     @Test
@@ -448,11 +454,16 @@ class AgentLoopTest {
         assertNotNull(pending.pendingApproval());
         assertEquals(RunStatus.WAITING_APPROVAL, runs.find(pending.runId()).status());
         assertEquals(0, executions.get());
+        assertEquals(1, pending.conversationMessages().size());
+        assertEquals("approval_echo", pending.conversationMessages().get(0).toolCalls().get(0).name());
 
         AgentRunResult result = loop.resumeApproval(pending.runId(), true);
         assertEquals("finished after approval", result.answer());
         assertEquals(1, executions.get());
         assertEquals(RunStatus.COMPLETED, runs.find(pending.runId()).status());
+        assertEquals(2, result.conversationMessages().size());
+        assertEquals(ChatMessage.Role.TOOL, result.conversationMessages().get(0).role());
+        assertEquals(ChatMessage.Role.ASSISTANT, result.conversationMessages().get(1).role());
     }
 
     @Test

@@ -235,4 +235,20 @@ class ModelRegistryTest {
         assertFalse(registry.find("disabled").active());
         assertThrows(IllegalStateException.class, () -> registry.resolve(null));
     }
+
+    @Test
+    void ignoresDisabledActiveRecordsWhenCreatingTheFirstRunnableModel() {
+        InMemoryModelProfileStore store = new InMemoryModelProfileStore();
+        store.save(new ModelProfileData("legacy", "Legacy", "deepseek", "https://api.deepseek.com",
+                "legacy-model", "", "", 0, false, true));
+
+        ModelRegistry registry = new ModelRegistry(store, "https://api.deepseek.com", "deepseek",
+                "deepseek-v4-flash", "", "", 0);
+        ModelProfile created = registry.create("Runnable", "deepseek", "https://api.deepseek.com",
+                "runnable-model", "", "", 0, true, false);
+
+        assertTrue(created.active());
+        assertEquals(created.id(), registry.resolve(null).id());
+        assertFalse(registry.find("legacy").active());
+    }
 }

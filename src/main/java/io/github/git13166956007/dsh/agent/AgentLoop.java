@@ -209,6 +209,7 @@ public final class AgentLoop implements AutoCloseable {
         if (runId != null) activeThreads.put(runId, Thread.currentThread());
         try {
             List<ChatMessage> messages = new ArrayList<ChatMessage>();
+            List<ChatMessage> conversationMessages = new ArrayList<ChatMessage>();
             List<AgentTraceEvent> trace = new ArrayList<AgentTraceEvent>();
             ExecutionBudget budget = new ExecutionBudget(options);
             messages.add(ChatMessage.system(systemPrompt(options, prompt, context)));
@@ -220,14 +221,17 @@ public final class AgentLoop implements AutoCloseable {
                 budget.check();
                 ModelResponse response = model.complete(messages, definitions, apiKey, options.modelId());
                 recordEvent(runId, "model_response", response.content());
-                messages.add(ChatMessage.assistant(response.content(), response.toolCalls(), response.reasoningContent()));
+                ChatMessage assistantMessage = ChatMessage.assistant(response.content(), response.toolCalls(),
+                        response.reasoningContent());
+                messages.add(assistantMessage);
+                conversationMessages.add(assistantMessage);
                 if (hasModelOutput(response)) {
                     trace.add(AgentTraceEvent.model(response.content(), response));
                 }
                 if (response.toolCalls().isEmpty()) {
                     String answer = response.content() == null ? "" : response.content();
                     finishRun(runId, answer);
-                    return new AgentRunResult(answer, trace, turn + 1, runId);
+                    return new AgentRunResult(answer, trace, turn + 1, runId, null, conversationMessages);
                 }
 
                 for (ToolCall call : response.toolCalls()) {
@@ -241,18 +245,20 @@ public final class AgentLoop implements AutoCloseable {
                                 exception.pendingResult().runId());
                         String approvalRunId = pauseForApproval(runId, messages, trace, turn + 1, options, apiKey,
                                 definitions, budget, approval);
-                        return new AgentRunResult("", trace, turn + 1, approvalRunId, approval);
+                        return new AgentRunResult("", trace, turn + 1, approvalRunId, approval, conversationMessages);
                     } catch (ToolApprovalRequiredException exception) {
                         PendingToolApproval approval = new PendingToolApproval(call.id(), call.name(), call.arguments());
                         String approvalRunId = pauseForApproval(runId, messages, trace, turn + 1, options, apiKey,
                                 definitions, budget, approval);
-                        return new AgentRunResult("", trace, turn + 1, approvalRunId, approval);
+                        return new AgentRunResult("", trace, turn + 1, approvalRunId, approval, conversationMessages);
                     } catch (Exception exception) {
                         result = "Tool execution failed: " + exception.getMessage();
                     }
                     recordEvent(runId, "tool_result", call.name() + " " + result);
                     trace.add(AgentTraceEvent.tool(call.name(), call.arguments(), result));
-                    messages.add(ChatMessage.tool(call.id(), result));
+                    ChatMessage toolMessage = ChatMessage.tool(call.id(), result);
+                    messages.add(toolMessage);
+                    conversationMessages.add(toolMessage);
                 }
             }
 
@@ -332,6 +338,7 @@ public final class AgentLoop implements AutoCloseable {
         if (runId != null) activeThreads.put(runId, Thread.currentThread());
         try {
             List<ChatMessage> messages = new ArrayList<ChatMessage>();
+            List<ChatMessage> conversationMessages = new ArrayList<ChatMessage>();
             List<AgentTraceEvent> trace = new ArrayList<AgentTraceEvent>();
             ExecutionBudget budget = new ExecutionBudget(options);
             messages.add(ChatMessage.system(systemPrompt(options, prompt, context)));
@@ -355,14 +362,17 @@ public final class AgentLoop implements AutoCloseable {
                     }
                 });
                 recordEvent(runId, "model_response", response.content());
-                messages.add(ChatMessage.assistant(response.content(), response.toolCalls(), response.reasoningContent()));
+                ChatMessage assistantMessage = ChatMessage.assistant(response.content(), response.toolCalls(),
+                        response.reasoningContent());
+                messages.add(assistantMessage);
+                conversationMessages.add(assistantMessage);
                 if (hasModelOutput(response)) {
                     trace.add(AgentTraceEvent.model(response.content(), response));
                 }
                 if (response.toolCalls().isEmpty()) {
                     String answer = response.content() == null ? "" : response.content();
                     finishRun(runId, answer);
-                    return new AgentRunResult(answer, trace, turn + 1, runId);
+                    return new AgentRunResult(answer, trace, turn + 1, runId, null, conversationMessages);
                 }
 
                 for (ToolCall call : response.toolCalls()) {
@@ -377,12 +387,12 @@ public final class AgentLoop implements AutoCloseable {
                                 exception.pendingResult().runId());
                         String approvalRunId = pauseForApproval(runId, messages, trace, turn + 1, options, apiKey,
                                 definitions, budget, approval);
-                        return new AgentRunResult("", trace, turn + 1, approvalRunId, approval);
+                        return new AgentRunResult("", trace, turn + 1, approvalRunId, approval, conversationMessages);
                     } catch (ToolApprovalRequiredException exception) {
                         PendingToolApproval approval = new PendingToolApproval(call.id(), call.name(), call.arguments());
                         String approvalRunId = pauseForApproval(runId, messages, trace, turn + 1, options, apiKey,
                                 definitions, budget, approval);
-                        return new AgentRunResult("", trace, turn + 1, approvalRunId, approval);
+                        return new AgentRunResult("", trace, turn + 1, approvalRunId, approval, conversationMessages);
                     } catch (Exception exception) {
                         result = "Tool execution failed: " + exception.getMessage();
                     }
@@ -390,7 +400,9 @@ public final class AgentLoop implements AutoCloseable {
                     recordEvent(runId, "tool_result", call.name() + " " + result);
                     trace.add(event);
                     listener.onToolResult(event);
-                    messages.add(ChatMessage.tool(call.id(), result));
+                    ChatMessage toolMessage = ChatMessage.tool(call.id(), result);
+                    messages.add(toolMessage);
+                    conversationMessages.add(toolMessage);
                 }
             }
 
@@ -455,8 +467,9 @@ public final class AgentLoop implements AutoCloseable {
             }
             recordEvent(runId, "tool_result", pending.approval.toolName() + " " + result);
             pending.trace.add(AgentTraceEvent.tool(pending.approval.toolName(), pending.approval.arguments(), result));
-            pending.messages.add(ChatMessage.tool(pending.approval.toolCallId(), result));
-            return continueDetailed(pending);
+            ChatMessage toolMessage = ChatMessage.tool(pending.approval.toolCallId(), result);
+            pending.messages.add(toolMessage);
+            return continueDetailed(pending, new ArrayList<ChatMessage>(List.of(toolMessage)));
         } catch (Exception exception) {
             failRun(runId, exception);
             throw exception;
@@ -492,20 +505,23 @@ public final class AgentLoop implements AutoCloseable {
         return cancelled;
     }
 
-    private AgentRunResult continueDetailed(PendingExecution pending) throws Exception {
+    private AgentRunResult continueDetailed(PendingExecution pending, List<ChatMessage> conversationMessages) throws Exception {
         for (int turn = pending.nextTurn; turn < pending.options.maxTurns(); turn++) {
             pending.budget.check();
             ModelResponse response = model.complete(pending.messages, pending.definitions, pending.apiKey,
                     pending.options.modelId());
             recordEvent(pending.runId, "model_response", response.content());
-            pending.messages.add(ChatMessage.assistant(response.content(), response.toolCalls(), response.reasoningContent()));
+            ChatMessage assistantMessage = ChatMessage.assistant(response.content(), response.toolCalls(),
+                    response.reasoningContent());
+            pending.messages.add(assistantMessage);
+            conversationMessages.add(assistantMessage);
             if (hasModelOutput(response)) {
                 pending.trace.add(AgentTraceEvent.model(response.content(), response));
             }
             if (response.toolCalls().isEmpty()) {
                 String answer = response.content() == null ? "" : response.content();
                 finishRun(pending.runId, answer);
-                return new AgentRunResult(answer, pending.trace, turn + 1, pending.runId);
+                return new AgentRunResult(answer, pending.trace, turn + 1, pending.runId, null, conversationMessages);
             }
             for (ToolCall call : response.toolCalls()) {
                 pending.budget.beforeToolCall();
@@ -518,18 +534,20 @@ public final class AgentLoop implements AutoCloseable {
                             exception.pendingResult().runId());
                     pauseForApproval(pending.runId, pending.messages, pending.trace, turn + 1, pending.options,
                             pending.apiKey, pending.definitions, pending.budget, approval);
-                    return new AgentRunResult("", pending.trace, turn + 1, pending.runId, approval);
+                    return new AgentRunResult("", pending.trace, turn + 1, pending.runId, approval, conversationMessages);
                 } catch (ToolApprovalRequiredException exception) {
                     PendingToolApproval approval = new PendingToolApproval(call.id(), call.name(), call.arguments());
                     pauseForApproval(pending.runId, pending.messages, pending.trace, turn + 1, pending.options,
                             pending.apiKey, pending.definitions, pending.budget, approval);
-                    return new AgentRunResult("", pending.trace, turn + 1, pending.runId, approval);
+                    return new AgentRunResult("", pending.trace, turn + 1, pending.runId, approval, conversationMessages);
                 } catch (Exception exception) {
                     result = "Tool execution failed: " + exception.getMessage();
                 }
                 recordEvent(pending.runId, "tool_result", call.name() + " " + result);
                 pending.trace.add(AgentTraceEvent.tool(call.name(), call.arguments(), result));
-                pending.messages.add(ChatMessage.tool(call.id(), result));
+                ChatMessage toolMessage = ChatMessage.tool(call.id(), result);
+                pending.messages.add(toolMessage);
+                conversationMessages.add(toolMessage);
             }
         }
         throw new IllegalStateException("agent exceeded max turns: " + pending.options.maxTurns());

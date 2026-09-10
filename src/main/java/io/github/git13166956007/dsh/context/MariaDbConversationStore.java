@@ -1,6 +1,7 @@
 package io.github.git13166956007.dsh.context;
 
 import io.github.git13166956007.dsh.agent.ChatMessage;
+import io.github.git13166956007.dsh.agent.ToolCall;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -10,16 +11,26 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 public final class MariaDbConversationStore implements ConversationStore {
     private final String jdbcUrl;
     private final String username;
     private final String password;
+    private final ObjectMapper objectMapper;
 
     public MariaDbConversationStore(String jdbcUrl, String username, String password) {
+        this(jdbcUrl, username, password, new ObjectMapper());
+    }
+
+    public MariaDbConversationStore(String jdbcUrl, String username, String password, ObjectMapper objectMapper) {
         this.jdbcUrl = jdbcUrl;
         this.username = username;
         this.password = password;
+        this.objectMapper = objectMapper == null ? new ObjectMapper() : objectMapper;
         ensureSchema();
     }
 
@@ -43,7 +54,7 @@ public final class MariaDbConversationStore implements ConversationStore {
         List<ChatMessage> messages = new ArrayList<ChatMessage>();
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(
-                     "SELECT role, content, reasoning_content, tool_call_id FROM dsh_message "
+                     "SELECT role, content, reasoning_content, tool_calls_json, tool_call_id FROM dsh_message "
                              + "WHERE conversation_id = ? ORDER BY turn_no DESC, id DESC LIMIT ?")) {
             statement.setString(1, conversationId);
             statement.setInt(2, limit);
@@ -52,7 +63,7 @@ public final class MariaDbConversationStore implements ConversationStore {
                     ChatMessage message = readMessage(
                             result.getString("role"), result.getString("content"),
                             result.getString("reasoning_content"),
-                            result.getString("tool_call_id"));
+                            result.getString("tool_calls_json"), result.getString("tool_call_id"));
                     if (message != null) messages.add(0, message);
                 }
             }
@@ -75,14 +86,15 @@ public final class MariaDbConversationStore implements ConversationStore {
                 }
                 try (PreparedStatement statement = connection.prepareStatement(
                         "INSERT INTO dsh_message "
-                                + "(conversation_id, turn_no, role, content, reasoning_content, tool_call_id) "
-                                + "VALUES (?, ?, ?, ?, ?, ?)", Statement.RETURN_GENERATED_KEYS)) {
+                                + "(conversation_id, turn_no, role, content, reasoning_content, tool_calls_json, tool_call_id) "
+                                + "VALUES (?, ?, ?, ?, ?, ?, ?)", Statement.RETURN_GENERATED_KEYS)) {
                     statement.setString(1, conversationId);
                     statement.setInt(2, turnNo);
                     statement.setString(3, message.role().value());
                     statement.setString(4, message.content());
                     statement.setString(5, message.reasoningContent());
-                    statement.setString(6, message.toolCallId());
+                    statement.setString(6, writeToolCalls(message.toolCalls()));
+                    statement.setString(7, message.toolCallId());
                     statement.executeUpdate();
                 }
                 connection.commit();
@@ -143,16 +155,59 @@ public final class MariaDbConversationStore implements ConversationStore {
                     "ALTER TABLE dsh_message ADD COLUMN IF NOT EXISTS reasoning_content LONGTEXT NULL")) {
                 alter.executeUpdate();
             }
+            try (PreparedStatement alter = connection.prepareStatement(
+                    "ALTER TABLE dsh_message ADD COLUMN IF NOT EXISTS tool_calls_json LONGTEXT NULL")) {
+                alter.executeUpdate();
+            }
         } catch (SQLException exception) {
             throw new IllegalStateException("failed to initialize conversation summary schema", exception);
         }
     }
 
-    private static ChatMessage readMessage(String role, String content, String reasoningContent, String toolCallId) {
+    private ChatMessage readMessage(String role, String content, String reasoningContent, String toolCallsJson,
+                                    String toolCallId) throws SQLException {
         if ("user".equals(role)) return ChatMessage.user(content == null ? "" : content);
-        if ("assistant".equals(role)) return ChatMessage.assistant(content, List.of(), reasoningContent);
+        if ("assistant".equals(role)) return ChatMessage.assistant(content, readToolCalls(toolCallsJson), reasoningContent);
         if ("tool".equals(role)) return ChatMessage.tool(toolCallId, content == null ? "" : content);
         return null;
+    }
+
+    private String writeToolCalls(List<ToolCall> calls) throws SQLException {
+        if (calls == null || calls.isEmpty()) return null;
+        try {
+            ArrayNode array = objectMapper.createArrayNode();
+            for (ToolCall call : calls) {
+                ObjectNode node = array.addObject();
+                if (call.id() == null) node.putNull("id"); else node.put("id", call.id());
+                if (call.name() == null) node.putNull("name"); else node.put("name", call.name());
+                node.set("arguments", call.arguments() == null ? objectMapper.createObjectNode() : call.arguments().deepCopy());
+            }
+            return objectMapper.writeValueAsString(array);
+        } catch (Exception exception) {
+            throw sqlException("failed to serialize tool calls", exception);
+        }
+    }
+
+    private List<ToolCall> readToolCalls(String value) throws SQLException {
+        if (value == null || value.isBlank()) return List.of();
+        try {
+            JsonNode array = objectMapper.readTree(value);
+            if (array == null || !array.isArray()) return List.of();
+            List<ToolCall> calls = new ArrayList<ToolCall>();
+            for (JsonNode node : array) {
+                calls.add(new ToolCall(node.path("id").asString(null), node.path("name").asString(null),
+                        node.path("arguments").deepCopy()));
+            }
+            return calls;
+        } catch (Exception exception) {
+            throw sqlException("failed to deserialize tool calls", exception);
+        }
+    }
+
+    private static SQLException sqlException(String message, Exception cause) {
+        SQLException exception = new SQLException(message);
+        exception.initCause(cause);
+        return exception;
     }
 
     private static String shorten(String title) {

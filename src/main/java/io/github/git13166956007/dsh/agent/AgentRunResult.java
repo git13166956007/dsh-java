@@ -5,17 +5,24 @@ import java.util.Collections;
 import java.util.List;
 
 public record AgentRunResult(String answer, List<AgentTraceEvent> trace, int turns, String runId,
-                             PendingToolApproval pendingApproval) {
+                             PendingToolApproval pendingApproval, List<ChatMessage> conversationMessages) {
     public AgentRunResult(String answer, List<AgentTraceEvent> trace, int turns) {
-        this(answer, trace, turns, null, null);
+        this(answer, trace, turns, null, null, List.of());
     }
 
     public AgentRunResult(String answer, List<AgentTraceEvent> trace, int turns, String runId) {
-        this(answer, trace, turns, runId, null);
+        this(answer, trace, turns, runId, null, List.of());
+    }
+
+    public AgentRunResult(String answer, List<AgentTraceEvent> trace, int turns, String runId,
+                          PendingToolApproval pendingApproval) {
+        this(answer, trace, turns, runId, pendingApproval, List.of());
     }
 
     public AgentRunResult {
         trace = Collections.unmodifiableList(new ArrayList<AgentTraceEvent>(trace));
+        conversationMessages = Collections.unmodifiableList(new ArrayList<ChatMessage>(
+                conversationMessages == null ? List.of() : conversationMessages));
     }
 
     /** Returns the latest model reasoning block so callers can persist the final assistant turn. */
