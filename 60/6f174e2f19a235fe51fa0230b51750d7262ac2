@@ -1,0 +1,16 @@
+src/main/java/io/github/git13166956007/dsh/provider/openai/OpenAiCompatibleChatModel.java
+  h_eb697744b14c1b 99,115,118,123-126,129-130,160-175,184-197
+src/test/java/io/github/git13166956007/dsh/model/ModelRouterTest.java
+  h_eb697744b14c1b 67-96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "606f174e2f19a235fe51fa0230b51750d7262ac2",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
