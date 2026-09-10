@@ -1,0 +1,40 @@
+README.md
+  h_eb697744b14c1b 87
+docker/mariadb/init/001_schema.sql
+  h_eb697744b14c1b 137-147
+docs/runtime-roadmap.md
+  h_eb697744b14c1b 10
+frontend/src/App.vue
+  h_eb697744b14c1b 178-187,958-959,961,967-975,1595,1607
+src/main/java/io/github/git13166956007/dsh/config/DshRuntimeConfiguration.java
+  h_eb697744b14c1b 43-45,106-117
+src/main/java/io/github/git13166956007/dsh/model/InMemoryModelHealthStore.java
+  h_eb697744b14c1b 1-23
+src/main/java/io/github/git13166956007/dsh/model/MariaDbModelHealthStore.java
+  h_eb697744b14c1b 1-110
+src/main/java/io/github/git13166956007/dsh/model/ModelHealth.java
+  h_eb697744b14c1b 1-22
+src/main/java/io/github/git13166956007/dsh/model/ModelHealthData.java
+  h_eb697744b14c1b 1-14
+src/main/java/io/github/git13166956007/dsh/model/ModelHealthStore.java
+  h_eb697744b14c1b 1-9
+src/main/java/io/github/git13166956007/dsh/model/ModelRegistry.java
+  h_eb697744b14c1b 4,16,21-25,27,186,205-239
+src/main/java/io/github/git13166956007/dsh/model/ModelRouter.java
+  h_eb697744b14c1b 32-40,48-57,59-61,69-72
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 34,349-357
+src/test/java/io/github/git13166956007/dsh/model/ModelRouterTest.java
+  h_eb697744b14c1b 47-49,85-98
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "413fd1a67a04cd5cdd7c14efbe970694f45e1704",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
