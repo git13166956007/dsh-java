@@ -3,6 +3,10 @@ package io.github.git13166956007.dsh.plan;
 import io.github.git13166956007.dsh.agent.AgentLoop;
 import io.github.git13166956007.dsh.agent.AgentMode;
 import io.github.git13166956007.dsh.agent.SubAgentRunner;
+import io.github.git13166956007.dsh.agent.AgentRunContext;
+import io.github.git13166956007.dsh.run.RunKind;
+import io.github.git13166956007.dsh.run.RunManager;
+import io.github.git13166956007.dsh.run.RunSpec;
 import java.util.List;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -19,18 +23,25 @@ public final class PlanExecutor implements AutoCloseable {
     private final PlanRegistry plans;
     private final AgentLoop agentLoop;
     private final SubAgentRunner subAgents;
+    private final RunManager runs;
     private final ExecutorService executor = Executors.newCachedThreadPool();
     private final Set<String> cancelled = ConcurrentHashMap.newKeySet();
 
     public PlanExecutor(PlanRegistry plans, AgentLoop agentLoop, SubAgentRunner subAgents) {
+        this(plans, agentLoop, subAgents, null);
+    }
+
+    public PlanExecutor(PlanRegistry plans, AgentLoop agentLoop, SubAgentRunner subAgents, RunManager runs) {
         this.plans = plans;
         this.agentLoop = agentLoop;
         this.subAgents = subAgents;
+        this.runs = runs;
     }
 
     public Plan execute(String id, String apiKey) {
         Plan plan = plans.start(id);
-        executor.submit(() -> run(plan.id(), apiKey));
+        String runId = startRun(plan);
+        executor.submit(() -> run(plan.id(), apiKey, runId));
         return plan;
     }
 
@@ -39,7 +50,7 @@ public final class PlanExecutor implements AutoCloseable {
         return plans.cancel(id);
     }
 
-    private void run(String id, String apiKey) {
+    private void run(String id, String apiKey, String runId) {
         Plan plan = plans.find(id);
         if (plan == null) return;
         try {
@@ -52,6 +63,7 @@ public final class PlanExecutor implements AutoCloseable {
                 if (cancelled.contains(id)) {
                     running.values().forEach(future -> future.cancel(true));
                     plans.cancel(id);
+                    cancelRun(runId);
                     return;
                 }
 
@@ -60,11 +72,12 @@ public final class PlanExecutor implements AutoCloseable {
                     if (running.size() >= current.maxConcurrency() || !pending.contains(step.id()) || !ready(step, current)) continue;
                     pending.remove(step.id());
                     plans.startStep(id, step.id());
-                    running.put(step.id(), completions.submit(() -> executeStep(id, step, apiKey)));
+                    running.put(step.id(), completions.submit(() -> executeStep(id, step, apiKey, runId)));
                 }
 
                 if (running.isEmpty()) {
                     plans.failStep(id, firstPendingStep(current, pending).id(), "dependency deadlock");
+                    failRun(runId, "dependency deadlock");
                     return;
                 }
 
@@ -73,39 +86,104 @@ public final class PlanExecutor implements AutoCloseable {
                 if (!outcome.success()) {
                     running.values().forEach(future -> future.cancel(true));
                     plans.failStep(id, outcome.stepId(), outcome.result());
+                    failRun(runId, outcome.result());
                     return;
                 }
+                event(runId, "plan_step_completed", outcome.stepId() + " " + outcome.result());
                 plans.completeStep(id, outcome.stepId(), outcome.result());
             }
-            if (!cancelled.contains(id)) plans.complete(id);
+            if (!cancelled.contains(id)) {
+                plans.complete(id);
+                completeRun(runId, "plan completed");
+            }
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             plans.cancel(id);
+            cancelRun(runId);
         } catch (Exception exception) {
             Plan current = plans.find(id);
             if (current != null && !current.status().terminal()) plans.cancel(id);
+            failRun(runId, exception.getMessage());
         } finally {
             cancelled.remove(id);
         }
     }
 
-    private StepOutcome executeStep(String planId, PlanStep step, String apiKey) {
+    private StepOutcome executeStep(String planId, PlanStep step, String apiKey, String parentRunId) {
+        String stepRunId = startStepRun(planId, step, parentRunId);
         while (true) {
             try {
                 Plan current = plans.find(planId);
                 String result = step.subAgentId() == null
                         ? agentLoop.runDetailed(step.instruction(), apiKey, List.of(), current.modelId(),
-                        current.agentId(), AgentMode.EXECUTION).answer()
-                        : subAgents.runForExecution(step.instruction(), apiKey, step.subAgentId()).answer();
+                        current.agentId(), AgentMode.EXECUTION, null, null,
+                        AgentRunContext.child(stepRunId, RunKind.AGENT, null, planId, step.id(), current.agentId())).answer()
+                        : subAgents.runForExecution(step.instruction(), apiKey, step.subAgentId(), stepRunId,
+                        planId, step.id()).answer();
+                completeRun(stepRunId, result);
                 return new StepOutcome(step.id(), true, result);
             } catch (Exception exception) {
                 PlanStep latest = plans.find(planId).steps().stream()
                         .filter(candidate -> candidate.id().equals(step.id())).findFirst().orElseThrow();
                 if (latest.attempts() >= latest.maxAttempts()) {
+                    failRun(stepRunId, exception.getMessage());
                     return new StepOutcome(step.id(), false, exception.getMessage());
                 }
+                event(stepRunId, "step_retry", exception.getMessage());
                 plans.startStep(planId, step.id());
             }
+        }
+    }
+
+    private String startRun(Plan plan) {
+        if (runs == null) return null;
+        try {
+            return runs.start(new RunSpec(null, RunKind.PLAN, null, plan.id(), null, plan.agentId(), plan.modelId()));
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to start plan run", exception);
+        }
+    }
+
+    private String startStepRun(String planId, PlanStep step, String parentRunId) {
+        if (runs == null) return null;
+        try {
+            runs.event(parentRunId, "plan_step_started", step.id());
+            return runs.start(new RunSpec(parentRunId, RunKind.PLAN_STEP, null, planId, step.id(),
+                    step.subAgentId(), null));
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to start plan step run", exception);
+        }
+    }
+
+    private void event(String runId, String type, String payload) {
+        if (runId == null) return;
+        try {
+            runs.event(runId, type, payload);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void completeRun(String runId, String output) {
+        if (runId == null) return;
+        try {
+            runs.complete(runId, output);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void failRun(String runId, String error) {
+        if (runId == null) return;
+        try {
+            runs.fail(runId, error);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void cancelRun(String runId) {
+        if (runId == null) return;
+        try {
+            runs.cancel(runId);
+        } catch (Exception ignored) {
         }
     }
 

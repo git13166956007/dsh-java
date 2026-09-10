@@ -19,6 +19,9 @@ import io.github.git13166956007.dsh.mcp.McpServerRegistry;
 import io.github.git13166956007.dsh.mcp.McpClientManager;
 import io.github.git13166956007.dsh.memory.MemoryManager;
 import io.github.git13166956007.dsh.memory.MemoryRecord;
+import io.github.git13166956007.dsh.run.Run;
+import io.github.git13166956007.dsh.run.RunEvent;
+import io.github.git13166956007.dsh.run.RunManager;
 import io.github.git13166956007.dsh.skill.SkillInfo;
 import io.github.git13166956007.dsh.skill.SkillRegistry;
 import io.github.git13166956007.dsh.model.ModelProfile;
@@ -65,6 +68,7 @@ public final class DshController {
     private final SubAgentProfileRegistry subAgentProfileRegistry;
     private final AdaptivePlanService adaptivePlanService;
     private final MemoryManager memoryManager;
+    private final RunManager runManager;
 
     public DshController(DshRuntime runtime, AgentLoop agentLoop, ContextManager contextManager,
                          ToolRegistry toolRegistry, McpServerRegistry mcpServerRegistry,
@@ -72,7 +76,7 @@ public final class DshController {
                          ModelRegistry modelRegistry, AgentProfileRegistry agentProfileRegistry,
                          PlanRegistry planRegistry, PlanExecutor planExecutor,
                          SubAgentProfileRegistry subAgentProfileRegistry, AdaptivePlanService adaptivePlanService,
-                         MemoryManager memoryManager) {
+                         MemoryManager memoryManager, RunManager runManager) {
         this.runtime = runtime;
         this.agentLoop = agentLoop;
         this.contextManager = contextManager;
@@ -87,6 +91,7 @@ public final class DshController {
         this.subAgentProfileRegistry = subAgentProfileRegistry;
         this.adaptivePlanService = adaptivePlanService;
         this.memoryManager = memoryManager;
+        this.runManager = runManager;
     }
 
     @GetMapping("/health")
@@ -385,6 +390,38 @@ public final class DshController {
         memoryManager.delete(id);
     }
 
+    @GetMapping("/runs")
+    public java.util.List<Run> runs(@RequestParam(required = false) String conversationId,
+                                    @RequestParam(required = false) String planId,
+                                    @RequestParam(required = false) String parentRunId) throws Exception {
+        return runManager.list().stream()
+                .filter(run -> conversationId == null || conversationId.equals(run.conversationId()))
+                .filter(run -> planId == null || planId.equals(run.planId()))
+                .filter(run -> parentRunId == null || parentRunId.equals(run.parentRunId()))
+                .toList();
+    }
+
+    @GetMapping("/runs/{id}")
+    public Run run(@PathVariable String id) throws Exception {
+        Run run = runManager.find(id);
+        if (run == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown run: " + id);
+        return run;
+    }
+
+    @GetMapping("/runs/{id}/events")
+    public java.util.List<RunEvent> runEvents(@PathVariable String id) throws Exception {
+        if (runManager.find(id) == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown run: " + id);
+        return runManager.events(id);
+    }
+
+    @GetMapping("/runs/{id}/tree")
+    public java.util.List<Run> runTree(@PathVariable String id) throws Exception {
+        if (runManager.find(id) == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown run: " + id);
+        java.util.List<Run> all = runManager.list();
+        java.util.Map<String, Run> byId = all.stream().collect(java.util.stream.Collectors.toMap(Run::id, run -> run));
+        return all.stream().filter(run -> isDescendant(run, id, byId)).toList();
+    }
+
     @GetMapping("/plans")
     public java.util.List<Plan> plans() {
         return planRegistry.list();
@@ -475,9 +512,10 @@ public final class DshController {
             java.util.List<ChatMessage> history = contextManager.history(conversationId);
             contextManager.append(conversationId, ChatMessage.user(request.message()));
             AgentRunResult result = agentLoop.runDetailed(request.message(), request.apiKey(), history, request.modelId(),
-                    request.agentId(), mode, "conversation", conversationId);
+                    request.agentId(), mode, "conversation", conversationId,
+                    io.github.git13166956007.dsh.agent.AgentRunContext.chat(conversationId, request.agentId()));
             contextManager.append(conversationId, ChatMessage.assistant(result.answer(), java.util.List.of()));
-            return new ChatResponse(conversationId, result.answer(), result.trace(), result.turns());
+            return new ChatResponse(conversationId, result.answer(), result.trace(), result.turns(), result.runId());
         } catch (Exception exception) {
             if (exception instanceof ModelQuotaException quotaException) {
                 throw new ResponseStatusException(HttpStatus.PAYMENT_REQUIRED,
@@ -511,6 +549,7 @@ public final class DshController {
             try {
                 AgentRunResult result = agentLoop.runStreaming(request.message(), request.apiKey(), finalHistory,
                         request.modelId(), request.agentId(), mode, "conversation", finalConversationId,
+                        io.github.git13166956007.dsh.agent.AgentRunContext.chat(finalConversationId, request.agentId()),
                         new AgentStreamListener() {
                     @Override
                     public void onText(String delta) {
@@ -532,7 +571,7 @@ public final class DshController {
                     }
                 });
                 contextManager.append(finalConversationId, ChatMessage.assistant(result.answer(), java.util.List.of()));
-                send(emitter, "done", new StreamResponse(finalConversationId, result.answer(), result.trace(), result.turns()));
+                send(emitter, "done", new StreamResponse(finalConversationId, result.answer(), result.trace(), result.turns(), result.runId()));
                 emitter.complete();
             } catch (Exception exception) {
                 send(emitter, "error", new ErrorResponse(exception.getMessage()));
@@ -556,6 +595,17 @@ public final class DshController {
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
         }
+    }
+
+    private static boolean isDescendant(Run run, String rootId, java.util.Map<String, Run> byId) {
+        java.util.Set<String> visited = new java.util.HashSet<String>();
+        String current = run.id();
+        while (current != null && visited.add(current)) {
+            if (rootId.equals(current)) return true;
+            Run candidate = byId.get(current);
+            current = candidate == null ? null : candidate.parentRunId();
+        }
+        return false;
     }
 
     @ExceptionHandler(ModelConfigurationException.class)
@@ -622,12 +672,12 @@ public final class DshController {
 
     public record ChatResponse(String conversationId, String message,
                                java.util.List<io.github.git13166956007.dsh.agent.AgentTraceEvent> trace,
-                                int turns) {
+                               int turns, String runId) {
     }
 
     public record StreamResponse(String conversationId, String answer,
                                  java.util.List<io.github.git13166956007.dsh.agent.AgentTraceEvent> trace,
-                                 int turns) {
+                                 int turns, String runId) {
     }
 
     public record ErrorResponse(String error) {

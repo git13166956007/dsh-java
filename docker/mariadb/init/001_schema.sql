@@ -60,6 +60,36 @@ CREATE TABLE IF NOT EXISTS dsh_memory (
     FULLTEXT INDEX ft_dsh_memory_content (content)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS dsh_run (
+    id CHAR(36) NOT NULL PRIMARY KEY,
+    parent_run_id CHAR(36) NULL,
+    kind VARCHAR(32) NOT NULL,
+    status VARCHAR(16) NOT NULL,
+    conversation_id CHAR(36) NULL,
+    plan_id VARCHAR(64) NULL,
+    step_id VARCHAR(64) NULL,
+    agent_id VARCHAR(64) NULL,
+    model_id VARCHAR(64) NULL,
+    started_at TIMESTAMP(3) NOT NULL,
+    completed_at TIMESTAMP(3) NULL,
+    error_text LONGTEXT NULL,
+    output_text LONGTEXT NULL,
+    INDEX idx_dsh_run_parent (parent_run_id),
+    INDEX idx_dsh_run_plan (plan_id),
+    INDEX idx_dsh_run_conversation (conversation_id),
+    INDEX idx_dsh_run_started (started_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS dsh_run_event (
+    event_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    run_id CHAR(36) NOT NULL,
+    event_type VARCHAR(64) NOT NULL,
+    payload LONGTEXT NULL,
+    created_at TIMESTAMP(3) NOT NULL,
+    CONSTRAINT fk_dsh_run_event_run FOREIGN KEY (run_id) REFERENCES dsh_run (id) ON DELETE CASCADE,
+    INDEX idx_dsh_run_event_run (run_id, event_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS dsh_model_profile (
     id VARCHAR(64) NOT NULL PRIMARY KEY,
     name VARCHAR(128) NOT NULL,

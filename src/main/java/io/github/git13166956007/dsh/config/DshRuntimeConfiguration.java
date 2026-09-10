@@ -24,6 +24,10 @@ import io.github.git13166956007.dsh.memory.InMemoryMemoryStore;
 import io.github.git13166956007.dsh.memory.MariaDbMemoryStore;
 import io.github.git13166956007.dsh.memory.MemoryManager;
 import io.github.git13166956007.dsh.memory.MemoryStore;
+import io.github.git13166956007.dsh.run.InMemoryRunStore;
+import io.github.git13166956007.dsh.run.MariaDbRunStore;
+import io.github.git13166956007.dsh.run.RunManager;
+import io.github.git13166956007.dsh.run.RunStore;
 import io.github.git13166956007.dsh.skill.SkillRegistry;
 import io.github.git13166956007.dsh.model.InMemoryModelProfileStore;
 import io.github.git13166956007.dsh.model.MariaDbModelProfileStore;
@@ -133,6 +137,21 @@ public class DshRuntimeConfiguration {
     }
 
     @Bean
+    public RunStore runStore(Environment environment) {
+        boolean enabled = Boolean.parseBoolean(environment.getProperty("dsh.persistence.enabled", "false"));
+        if (!enabled) return new InMemoryRunStore();
+        return new MariaDbRunStore(
+                environment.getProperty("dsh.persistence.jdbc-url"),
+                environment.getProperty("dsh.persistence.username"),
+                environment.getProperty("dsh.persistence.password"));
+    }
+
+    @Bean
+    public RunManager runManager(RunStore store) {
+        return new RunManager(store);
+    }
+
+    @Bean
     public ChatModel chatModel(ObjectMapper objectMapper, ModelRegistry modelRegistry) {
         return new ModelRouter(modelRegistry, objectMapper);
     }
@@ -146,8 +165,9 @@ public class DshRuntimeConfiguration {
     @Bean
     public AgentLoop agentLoop(ChatModel chatModel, ToolRegistry toolRegistry, SkillRegistry skillRegistry,
                                AgentProfileRegistry agentProfileRegistry, MemoryManager memoryManager,
+                               RunManager runManager,
                                Environment environment) {
-        return new AgentLoop(chatModel, toolRegistry, skillRegistry, agentProfileRegistry, memoryManager,
+        return new AgentLoop(chatModel, toolRegistry, skillRegistry, agentProfileRegistry, memoryManager, runManager,
                 Integer.parseInt(environment.getProperty("dsh.agent.max-turns", "8")));
     }
 
@@ -179,8 +199,9 @@ public class DshRuntimeConfiguration {
     }
 
     @Bean(destroyMethod = "close")
-    public PlanExecutor planExecutor(PlanRegistry planRegistry, AgentLoop agentLoop, SubAgentRunner subAgents) {
-        return new PlanExecutor(planRegistry, agentLoop, subAgents);
+    public PlanExecutor planExecutor(PlanRegistry planRegistry, AgentLoop agentLoop, SubAgentRunner subAgents,
+                                     RunManager runManager) {
+        return new PlanExecutor(planRegistry, agentLoop, subAgents, runManager);
     }
 
     @Bean
