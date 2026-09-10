@@ -1,0 +1,22 @@
+README.md
+  h_eb697744b14c1b 20-21
+src/main/java/io/github/git13166956007/dsh/config/DshRuntimeConfiguration.java
+  h_eb697744b14c1b 316-320
+src/main/java/io/github/git13166956007/dsh/mcp/McpClientManager.java
+  h_eb697744b14c1b 22-24,34-39,42-50,54-56,63,66,68,72,75,94,168,241-242,380-383,391-428
+src/main/resources/application.yml
+  h_eb697744b14c1b 31-35
+src/test/java/io/github/git13166956007/dsh/mcp/McpClientManagerTest.java
+  h_eb697744b14c1b 25-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "68e9b356c8abb67c1e38d426c12789a17ef3f4e7",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
