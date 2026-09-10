@@ -1,0 +1,42 @@
+.env.example
+  h_eb697744b14c1b 12
+README.md
+  h_eb697744b14c1b 91
+docs/runtime-roadmap.md
+  h_eb697744b14c1b 14
+frontend/src/App.vue
+  h_eb697744b14c1b 33,411-420,927,1789,2406,2409,2411
+frontend/src/style.css
+  h_eb697744b14c1b 133
+src/main/java/io/github/git13166956007/dsh/agent/AgentLoop.java
+  h_eb697744b14c1b 10-12,37,73-79,88,214,332,646,658-666
+src/main/java/io/github/git13166956007/dsh/config/DshRuntimeConfiguration.java
+  h_eb697744b14c1b 320-321,323-324,379-380
+src/main/java/io/github/git13166956007/dsh/context/ContextFragment.java
+  h_eb697744b14c1b 1-16
+src/main/java/io/github/git13166956007/dsh/context/ContextManager.java
+  h_eb697744b14c1b 9-11,13,19-20,27-30,33,37-86
+src/main/java/io/github/git13166956007/dsh/context/ContextProvider.java
+  h_eb697744b14c1b 1-10
+src/main/java/io/github/git13166956007/dsh/context/ContextRequest.java
+  h_eb697744b14c1b 1-8
+src/main/java/io/github/git13166956007/dsh/context/ContextSnapshot.java
+  h_eb697744b14c1b 1-23
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 24-25,692-706
+src/test/java/io/github/git13166956007/dsh/agent/AgentLoopTest.java
+  h_eb697744b14c1b 10-13,353-381
+src/test/java/io/github/git13166956007/dsh/context/InMemoryConversationStoreTest.java
+  h_eb697744b14c1b 12,104-150
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9249ac889c133f2d5a78de112bafcf0114d58467",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
