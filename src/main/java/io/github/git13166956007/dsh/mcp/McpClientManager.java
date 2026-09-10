@@ -17,6 +17,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -25,6 +27,7 @@ public final class McpClientManager implements AutoCloseable {
     private final ToolRegistry tools;
     private final ObjectMapper objectMapper;
     private final Map<String, ConnectedServer> connected = new ConcurrentHashMap<String, ConnectedServer>();
+    private final ExecutorService restoreExecutor = Executors.newCachedThreadPool();
 
     public McpClientManager(McpServerRegistry servers, ToolRegistry tools, ObjectMapper objectMapper) {
         this.servers = servers;
@@ -58,6 +61,86 @@ public final class McpClientManager implements AutoCloseable {
         McpServerInfo server = servers.find(id);
         registerTools(server, connection.client());
         return servers.setStatus(id, "CONNECTED");
+    }
+
+    public synchronized void restoreEnabled() {
+        for (McpServerInfo server : servers.list()) {
+            if (!server.enabled()) continue;
+            restoreExecutor.submit(() -> {
+                try {
+                    connect(server.id());
+                } catch (Exception ignored) {
+                    // A failed remote server must not prevent the host application from starting.
+                }
+            });
+        }
+    }
+
+    public synchronized List<McpResourceInfo> resources(String id) {
+        McpServerInfo server = requireServer(id);
+        McpSyncClient client = requireClient(id);
+        List<McpResourceInfo> result = new ArrayList<McpResourceInfo>();
+        String cursor = null;
+        do {
+            McpSchema.ListResourcesResult page = cursor == null ? client.listResources() : client.listResources(cursor);
+            if (page.resources() != null) {
+                for (McpSchema.Resource resource : page.resources()) {
+                    result.add(new McpResourceInfo(server.id(), resource.uri(), resource.name(), resource.title(),
+                            resource.description(), resource.mimeType(), resource.size()));
+                }
+            }
+            cursor = page.nextCursor();
+        } while (cursor != null && !cursor.isBlank());
+        return result;
+    }
+
+    public synchronized List<McpPromptInfo> prompts(String id) {
+        McpServerInfo server = requireServer(id);
+        McpSyncClient client = requireClient(id);
+        List<McpPromptInfo> result = new ArrayList<McpPromptInfo>();
+        String cursor = null;
+        do {
+            McpSchema.ListPromptsResult page = cursor == null ? client.listPrompts() : client.listPrompts(cursor);
+            if (page.prompts() != null) {
+                for (McpSchema.Prompt prompt : page.prompts()) {
+                    result.add(new McpPromptInfo(server.id(), prompt.name(), prompt.title(), prompt.description(),
+                            prompt.arguments() == null ? List.of() : prompt.arguments().stream()
+                                    .map(argument -> argument.name()).toList()));
+                }
+            }
+            cursor = page.nextCursor();
+        } while (cursor != null && !cursor.isBlank());
+        return result;
+    }
+
+    public synchronized List<McpResourceContent> readResource(String id, String uri) {
+        requireServer(id);
+        McpSchema.ReadResourceResult result = requireClient(id).readResource(new McpSchema.ReadResourceRequest(uri));
+        List<McpResourceContent> content = new ArrayList<McpResourceContent>();
+        if (result.contents() != null) {
+            for (McpSchema.ResourceContents item : result.contents()) {
+                if (item instanceof McpSchema.TextResourceContents text) {
+                    content.add(new McpResourceContent(text.uri(), text.mimeType(), text.text(), null));
+                } else if (item instanceof McpSchema.BlobResourceContents blob) {
+                    content.add(new McpResourceContent(blob.uri(), blob.mimeType(), null, blob.blob()));
+                }
+            }
+        }
+        return content;
+    }
+
+    public synchronized McpPromptResult getPrompt(String id, String name, Map<String, Object> arguments) {
+        requireServer(id);
+        McpSchema.GetPromptResult result = requireClient(id).getPrompt(new McpSchema.GetPromptRequest(name,
+                arguments == null ? Map.of() : arguments));
+        List<McpPromptMessage> messages = new ArrayList<McpPromptMessage>();
+        if (result.messages() != null) {
+            for (McpSchema.PromptMessage message : result.messages()) {
+                String text = message.content() instanceof McpSchema.TextContent value ? value.text() : null;
+                messages.add(new McpPromptMessage(message.role() == null ? null : message.role().name().toLowerCase(), text));
+            }
+        }
+        return new McpPromptResult(result.description(), messages);
     }
 
     public synchronized McpServerInfo disconnect(String id) {
@@ -140,6 +223,16 @@ public final class McpClientManager implements AutoCloseable {
     }
 
     private McpSyncClient clientFor(String id) {
+        return requireClient(id);
+    }
+
+    private McpServerInfo requireServer(String id) {
+        McpServerInfo server = servers.find(id);
+        if (server == null) throw new IllegalArgumentException("unknown MCP server: " + id);
+        return server;
+    }
+
+    private McpSyncClient requireClient(String id) {
         ConnectedServer connection = connected.get(id);
         if (connection == null) throw new IllegalStateException("MCP server is not connected: " + id);
         return connection.client();
@@ -262,6 +355,7 @@ public final class McpClientManager implements AutoCloseable {
 
     @Override
     public synchronized void close() {
+        restoreExecutor.shutdownNow();
         for (String id : new ArrayList<String>(connected.keySet())) {
             try { disconnect(id); } catch (Exception ignored) { }
         }

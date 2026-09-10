@@ -33,7 +33,7 @@ public final class MariaDbModelProfileStore implements ModelProfileStore {
              PreparedStatement statement = connection.prepareStatement(
                      "SELECT id, name, provider, base_url, model_name, api_key, proxy_host, proxy_port, enabled, active, "
                              + "supports_tools, supports_streaming, supports_vision, context_window, temperature, top_p, "
-                             + "max_tokens, frequency_penalty, presence_penalty, timeout_seconds "
+                             + "max_tokens, frequency_penalty, presence_penalty, timeout_seconds, request_options_json "
                              + "FROM dsh_model_profile ORDER BY created_at, id");
              ResultSet rows = statement.executeQuery()) {
             while (rows.next()) {
@@ -43,7 +43,8 @@ public final class MariaDbModelProfileStore implements ModelProfileStore {
                         rows.getBoolean("enabled"), rows.getBoolean("active"), rows.getBoolean("supports_tools"),
                         rows.getBoolean("supports_streaming"), rows.getBoolean("supports_vision"), rows.getInt("context_window"),
                         getDouble(rows, "temperature"), getDouble(rows, "top_p"), getInteger(rows, "max_tokens"),
-                        getDouble(rows, "frequency_penalty"), getDouble(rows, "presence_penalty"), rows.getInt("timeout_seconds")));
+                        getDouble(rows, "frequency_penalty"), getDouble(rows, "presence_penalty"), rows.getInt("timeout_seconds"),
+                        rows.getString("request_options_json")));
             }
         }
         return result;
@@ -56,8 +57,8 @@ public final class MariaDbModelProfileStore implements ModelProfileStore {
                      "INSERT INTO dsh_model_profile "
                              + "(id, name, provider, base_url, model_name, api_key, proxy_host, proxy_port, enabled, active, "
                              + "supports_tools, supports_streaming, supports_vision, context_window, temperature, top_p, "
-                             + "max_tokens, frequency_penalty, presence_penalty, timeout_seconds) "
-                             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                             + "max_tokens, frequency_penalty, presence_penalty, timeout_seconds, request_options_json) "
+                             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                              + "ON DUPLICATE KEY UPDATE name=VALUES(name), provider=VALUES(provider), "
                              + "base_url=VALUES(base_url), model_name=VALUES(model_name), api_key=VALUES(api_key), "
                              + "proxy_host=VALUES(proxy_host), proxy_port=VALUES(proxy_port), "
@@ -65,7 +66,8 @@ public final class MariaDbModelProfileStore implements ModelProfileStore {
                              + "supports_streaming=VALUES(supports_streaming), supports_vision=VALUES(supports_vision), "
                              + "context_window=VALUES(context_window), temperature=VALUES(temperature), top_p=VALUES(top_p), "
                              + "max_tokens=VALUES(max_tokens), frequency_penalty=VALUES(frequency_penalty), "
-                             + "presence_penalty=VALUES(presence_penalty), timeout_seconds=VALUES(timeout_seconds)")) {
+                             + "presence_penalty=VALUES(presence_penalty), timeout_seconds=VALUES(timeout_seconds), "
+                             + "request_options_json=VALUES(request_options_json)")) {
             statement.setString(1, profile.id());
             statement.setString(2, profile.name());
             statement.setString(3, profile.provider());
@@ -91,6 +93,7 @@ public final class MariaDbModelProfileStore implements ModelProfileStore {
             if (profile.presencePenalty() == null) statement.setNull(19, java.sql.Types.DOUBLE);
             else statement.setDouble(19, profile.presencePenalty());
             statement.setInt(20, profile.timeoutSeconds());
+            statement.setString(21, profile.requestOptionsJson());
             statement.executeUpdate();
         }
     }
@@ -117,6 +120,7 @@ public final class MariaDbModelProfileStore implements ModelProfileStore {
                              + "supports_vision BOOLEAN NOT NULL DEFAULT FALSE, context_window INT NOT NULL DEFAULT 0, "
                              + "temperature DOUBLE NULL, top_p DOUBLE NULL, max_tokens INT NULL, "
                              + "frequency_penalty DOUBLE NULL, presence_penalty DOUBLE NULL, timeout_seconds INT NOT NULL DEFAULT 120, "
+                             + "request_options_json LONGTEXT NULL, "
                              + "created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), "
                              + "updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3), "
                              + "INDEX idx_dsh_model_active (active, enabled)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4")) {
@@ -143,6 +147,7 @@ public final class MariaDbModelProfileStore implements ModelProfileStore {
             addColumn(connection, "frequency_penalty DOUBLE NULL");
             addColumn(connection, "presence_penalty DOUBLE NULL");
             addColumn(connection, "timeout_seconds INT NOT NULL DEFAULT 120");
+            addColumn(connection, "request_options_json LONGTEXT NULL");
         } catch (SQLException exception) {
             throw new IllegalStateException("failed to initialize model profile schema", exception);
         }

@@ -41,6 +41,7 @@ public final class OpenAiCompatibleChatModel implements ChatModel {
     private final Double frequencyPenalty;
     private final Double presencePenalty;
     private final int timeoutSeconds;
+    private final String requestOptionsJson;
 
     public OpenAiCompatibleChatModel(ObjectMapper objectMapper, String provider, String baseUrl,
                                      String apiKey, String model, String proxyHost, int proxyPort) {
@@ -52,6 +53,15 @@ public final class OpenAiCompatibleChatModel implements ChatModel {
                                      String apiKey, String model, String proxyHost, int proxyPort,
                                      Double temperature, Double topP, Integer maxTokens,
                                      Double frequencyPenalty, Double presencePenalty, int timeoutSeconds) {
+        this(objectMapper, provider, baseUrl, apiKey, model, proxyHost, proxyPort, temperature, topP, maxTokens,
+                frequencyPenalty, presencePenalty, timeoutSeconds, null);
+    }
+
+    public OpenAiCompatibleChatModel(ObjectMapper objectMapper, String provider, String baseUrl,
+                                     String apiKey, String model, String proxyHost, int proxyPort,
+                                     Double temperature, Double topP, Integer maxTokens,
+                                     Double frequencyPenalty, Double presencePenalty, int timeoutSeconds,
+                                     String requestOptionsJson) {
         this.objectMapper = objectMapper;
         this.provider = provider == null || provider.isBlank() ? "openai_compatible" : provider;
         this.apiKey = apiKey;
@@ -62,6 +72,7 @@ public final class OpenAiCompatibleChatModel implements ChatModel {
         this.frequencyPenalty = frequencyPenalty;
         this.presencePenalty = presencePenalty;
         this.timeoutSeconds = timeoutSeconds;
+        this.requestOptionsJson = requestOptionsJson;
         this.endpoint = URI.create(trimTrailingSlash(baseUrl) + "/chat/completions");
         HttpClient.Builder client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15));
         if (proxyHost != null && !proxyHost.trim().isEmpty() && proxyPort > 0) {
@@ -162,6 +173,7 @@ public final class OpenAiCompatibleChatModel implements ChatModel {
 
     private ObjectNode requestJson(List<ChatMessage> messages, List<ToolDefinition> tools, boolean stream) {
         ObjectNode request = objectMapper.createObjectNode();
+        applyRequestOptions(request);
         request.put("model", model);
         request.put("stream", stream);
         if (temperature != null) request.put("temperature", temperature);
@@ -175,6 +187,18 @@ public final class OpenAiCompatibleChatModel implements ChatModel {
             request.put("tool_choice", "auto");
         }
         return request;
+    }
+
+    private void applyRequestOptions(ObjectNode request) {
+        if (requestOptionsJson == null || requestOptionsJson.isBlank()) return;
+        try {
+            JsonNode options = objectMapper.readTree(requestOptionsJson);
+            if (options != null && options.isObject()) {
+                options.properties().forEach(entry -> request.set(entry.getKey(), entry.getValue()));
+            }
+        } catch (Exception exception) {
+            throw new ModelConfigurationException(provider + " requestOptionsJson is invalid");
+        }
     }
 
     private HttpRequest buildRequest(ObjectNode request, String effectiveApiKey) throws Exception {

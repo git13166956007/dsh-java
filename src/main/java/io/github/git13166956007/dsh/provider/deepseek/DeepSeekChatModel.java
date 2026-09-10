@@ -26,8 +26,18 @@ public final class DeepSeekChatModel implements ChatModel {
                              String model, String proxyHost, int proxyPort,
                              Double temperature, Double topP, Integer maxTokens,
                              Double frequencyPenalty, Double presencePenalty, int timeoutSeconds) {
+        this(objectMapper, baseUrl, apiKey, model, proxyHost, proxyPort, temperature, topP, maxTokens,
+                frequencyPenalty, presencePenalty, timeoutSeconds, null);
+    }
+
+    public DeepSeekChatModel(ObjectMapper objectMapper, String baseUrl, String apiKey,
+                             String model, String proxyHost, int proxyPort,
+                             Double temperature, Double topP, Integer maxTokens,
+                             Double frequencyPenalty, Double presencePenalty, int timeoutSeconds,
+                             String requestOptionsJson) {
         this.delegate = new OpenAiCompatibleChatModel(objectMapper, "DeepSeek", baseUrl, apiKey, model,
-                proxyHost, proxyPort, temperature, topP, maxTokens, frequencyPenalty, presencePenalty, timeoutSeconds);
+                proxyHost, proxyPort, temperature, topP, maxTokens, frequencyPenalty, presencePenalty, timeoutSeconds,
+                requestOptionsJson);
     }
 
     @Override

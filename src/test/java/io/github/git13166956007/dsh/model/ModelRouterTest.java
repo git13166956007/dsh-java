@@ -37,7 +37,8 @@ class ModelRouterTest {
             ModelProfile profile = registry.create("Compatible", "openai_compatible",
                     "http://127.0.0.1:" + server.getAddress().getPort() + "/v1", "test-model",
                     "stored-key", "", 0, true, false, true, true, false, 32768,
-                    0.4, 0.85, 512, 0.1, 0.2, 7);
+                    0.4, 0.85, 512, 0.1, 0.2, 7,
+                    "{\"reasoning_effort\":\"high\",\"response_format\":{\"type\":\"text\"}}");
 
             ModelResponse result = new ModelRouter(registry, new ObjectMapper()).complete(
                     List.of(ChatMessage.user("ping")), List.of(), "request-key", profile.id());
@@ -50,6 +51,8 @@ class ModelRouterTest {
             org.junit.jupiter.api.Assertions.assertTrue(requestBody.get().contains("\"max_tokens\":512"));
             org.junit.jupiter.api.Assertions.assertTrue(requestBody.get().contains("\"frequency_penalty\":0.1"));
             org.junit.jupiter.api.Assertions.assertTrue(requestBody.get().contains("\"presence_penalty\":0.2"));
+            org.junit.jupiter.api.Assertions.assertTrue(requestBody.get().contains("\"reasoning_effort\":\"high\""));
+            org.junit.jupiter.api.Assertions.assertTrue(requestBody.get().contains("\"response_format\":{\"type\":\"text\"}"));
         } finally {
             server.stop(0);
         }
@@ -64,5 +67,16 @@ class ModelRouterTest {
 
         assertThrows(IllegalArgumentException.class, () -> new ModelRouter(registry, new ObjectMapper())
                 .complete(List.of(ChatMessage.user("ping")), List.of(), null, profile.id()));
+    }
+
+    @Test
+    void rejectsRequestOptionsThatOverrideChatProtocolFields() {
+        ModelRegistry registry = new ModelRegistry(new InMemoryModelProfileStore(),
+                "https://api.deepseek.com", "deepseek", "fallback", "key", "", 0);
+
+        assertThrows(IllegalArgumentException.class, () -> registry.create("Invalid", "deepseek",
+                "https://api.deepseek.com", "test-model", "key", "", 0, true, false,
+                true, true, false, 32768, null, null, null, null, null, 120,
+                "{\"messages\":[]}"));
     }
 }

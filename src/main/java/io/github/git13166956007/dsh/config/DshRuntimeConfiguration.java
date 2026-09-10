@@ -279,6 +279,8 @@ public class DshRuntimeConfiguration {
     @Bean(destroyMethod = "close")
     public McpClientManager mcpClientManager(McpServerRegistry mcpServerRegistry, ToolRegistry toolRegistry,
                                              ObjectMapper objectMapper) {
-        return new McpClientManager(mcpServerRegistry, toolRegistry, objectMapper);
+        McpClientManager manager = new McpClientManager(mcpServerRegistry, toolRegistry, objectMapper);
+        manager.restoreEnabled();
+        return manager;
     }
 }

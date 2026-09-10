@@ -97,7 +97,8 @@ const modelForm = ref({
   maxTokens: '',
   frequencyPenalty: '',
   presencePenalty: '',
-  timeoutSeconds: 120
+  timeoutSeconds: 120,
+  requestOptionsJson: ''
 })
 const modelFormError = ref('')
 const modelSaving = ref(false)
@@ -764,6 +765,46 @@ async function mcpAction(server, action) {
   await refreshTools()
 }
 
+async function inspectMcp(server, kind) {
+  mcpFormError.value = ''
+  try {
+    const response = await fetch(`/api/v1/mcp/servers/${encodeURIComponent(server.id)}/${kind}`)
+    const payload = await response.json().catch(() => [])
+    if (!response.ok) throw new Error(payload.message || payload.error || `MCP ${kind} 查询失败`)
+    server[kind] = payload
+  } catch (requestError) {
+    mcpFormError.value = requestError.message
+  }
+}
+
+async function readMcpResource(server, resource) {
+  mcpFormError.value = ''
+  try {
+    const response = await fetch(`/api/v1/mcp/servers/${encodeURIComponent(server.id)}/resources/read?uri=${encodeURIComponent(resource.uri)}`)
+    const payload = await response.json().catch(() => [])
+    if (!response.ok) throw new Error(payload.message || payload.error || 'MCP resource read failed')
+    resource.content = payload
+  } catch (requestError) {
+    mcpFormError.value = requestError.message
+  }
+}
+
+async function getMcpPrompt(server, prompt) {
+  mcpFormError.value = ''
+  try {
+    const response = await fetch(`/api/v1/mcp/servers/${encodeURIComponent(server.id)}/prompts/${encodeURIComponent(prompt.name)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload.message || payload.error || 'MCP prompt load failed')
+    prompt.result = payload
+  } catch (requestError) {
+    mcpFormError.value = requestError.message
+  }
+}
+
 async function deleteMcpServer(server) {
   const response = await fetch(`/api/v1/mcp/servers/${server.id}`, { method: 'DELETE' })
   if (response.ok) {
@@ -803,7 +844,8 @@ function resetModelForm() {
     maxTokens: '',
     frequencyPenalty: '',
     presencePenalty: '',
-    timeoutSeconds: 120
+    timeoutSeconds: 120,
+    requestOptionsJson: ''
   }
   modelFormError.value = ''
 }
@@ -829,7 +871,8 @@ function editModel(model) {
     maxTokens: model.maxTokens ?? '',
     frequencyPenalty: model.frequencyPenalty ?? '',
     presencePenalty: model.presencePenalty ?? '',
-    timeoutSeconds: model.timeoutSeconds || 120
+    timeoutSeconds: model.timeoutSeconds || 120,
+    requestOptionsJson: model.requestOptionsJson || ''
   }
   modelFormError.value = ''
 }
@@ -865,7 +908,8 @@ async function saveModel() {
         maxTokens: modelForm.value.maxTokens === '' ? null : Number(modelForm.value.maxTokens),
         frequencyPenalty: modelForm.value.frequencyPenalty === '' ? null : Number(modelForm.value.frequencyPenalty),
         presencePenalty: modelForm.value.presencePenalty === '' ? null : Number(modelForm.value.presencePenalty),
-        timeoutSeconds: Number(modelForm.value.timeoutSeconds) || 120
+        timeoutSeconds: Number(modelForm.value.timeoutSeconds) || 120,
+        requestOptionsJson: modelForm.value.requestOptionsJson.trim() || null
       })
     })
     const payload = await response.json().catch(() => ({}))
@@ -1463,7 +1507,25 @@ onUnmounted(() => clearTimeout(planPollTimer))
             <button v-if="server.status === 'CONNECTED'" class="secondary-button compact" type="button" @click="mcpAction(server, 'disconnect')">断开</button>
             <button v-else class="secondary-button compact" type="button" @click="mcpAction(server, 'connect')">连接</button>
             <button v-if="server.status === 'CONNECTED'" class="secondary-button compact" type="button" title="Refresh MCP tools" @click="mcpAction(server, 'refresh')">刷新</button>
+            <button v-if="server.status === 'CONNECTED'" class="secondary-button compact" type="button" @click="inspectMcp(server, 'resources')">Resources</button>
+            <button v-if="server.status === 'CONNECTED'" class="secondary-button compact" type="button" @click="inspectMcp(server, 'prompts')">Prompts</button>
             <button class="delete-tool-button" type="button" title="Delete MCP server" aria-label="Delete MCP server" @click="deleteMcpServer(server)">×</button>
+          </div>
+          <div v-if="server.resources" class="mcp-inspector">
+            <div v-for="resource in server.resources" :key="resource.uri" class="mcp-inspector-item">
+              <span><strong>{{ resource.name || resource.uri }}</strong><small>{{ resource.mimeType || 'resource' }}</small></span>
+              <button class="secondary-button compact" type="button" @click="readMcpResource(server, resource)">Read</button>
+              <pre v-if="resource.content">{{ resource.content }}</pre>
+            </div>
+            <p v-if="server.resources.length === 0" class="tool-manager-empty">No MCP resources.</p>
+          </div>
+          <div v-if="server.prompts" class="mcp-inspector">
+            <div v-for="prompt in server.prompts" :key="prompt.name" class="mcp-inspector-item">
+              <span><strong>{{ prompt.title || prompt.name }}</strong><small>{{ prompt.argumentNames.join(', ') || 'no arguments' }}</small></span>
+              <button class="secondary-button compact" type="button" @click="getMcpPrompt(server, prompt)">Load</button>
+              <pre v-if="prompt.result">{{ prompt.result }}</pre>
+            </div>
+            <p v-if="server.prompts.length === 0" class="tool-manager-empty">No MCP prompts.</p>
           </div>
         </div>
         <p v-if="mcpServers.length === 0" class="tool-manager-empty">No MCP servers configured.</p>
@@ -1562,6 +1624,7 @@ onUnmounted(() => clearTimeout(planPollTimer))
             <label><span>Frequency penalty</span><input v-model="modelForm.frequencyPenalty" type="number" min="-2" max="2" step="0.01" placeholder="Provider default" /></label>
             <label><span>Presence penalty</span><input v-model="modelForm.presencePenalty" type="number" min="-2" max="2" step="0.01" placeholder="Provider default" /></label>
           </div>
+          <label><span>Provider request options JSON</span><textarea v-model="modelForm.requestOptionsJson" rows="4" spellcheck="false" placeholder='{"reasoning_effort":"high","response_format":{"type":"text"}}'></textarea></label>
           <p v-if="modelFormError" class="tool-form-error">{{ modelFormError }}</p>
           <div class="tool-form-footer">
             <button class="secondary-button" type="button" @click="resetModelForm">Reset</button>

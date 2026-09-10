@@ -145,6 +145,13 @@ h2 { font-size: 17px; }
 .plan-form-step { margin-top: 15px; padding: 12px; border: 1px solid #29383a; background: #12191b; }
 .plan-form-step-header { display: flex; align-items: center; justify-content: space-between; color: #81908d; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .1em; }
 .model-actions { flex-wrap: wrap; justify-content: flex-end; }
+.mcp-inspector { width: 100%; margin-top: 10px; padding-top: 10px; border-top: 1px solid #273235; }
+.mcp-inspector-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 10px; align-items: start; padding: 8px 0; }
+.mcp-inspector-item span { min-width: 0; }
+.mcp-inspector-item strong, .mcp-inspector-item small { display: block; overflow-wrap: anywhere; }
+.mcp-inspector-item strong { color: #cbd9d4; font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.mcp-inspector-item small { margin-top: 4px; color: #718083; font-size: 10px; }
+.mcp-inspector-item pre { grid-column: 1 / -1; max-height: 180px; margin-top: 2px; }
 .managed-tool-actions { display: flex; align-items: center; gap: 11px; padding-top: 1px; }
 .tool-toggle { position: relative; width: 33px; height: 19px; flex: 0 0 auto; }
 .tool-toggle input { position: absolute; opacity: 0; pointer-events: none; }

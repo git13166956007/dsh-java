@@ -19,6 +19,10 @@ import io.github.git13166956007.dsh.context.ContextWindow;
 import io.github.git13166956007.dsh.mcp.McpServerInfo;
 import io.github.git13166956007.dsh.mcp.McpServerRegistry;
 import io.github.git13166956007.dsh.mcp.McpClientManager;
+import io.github.git13166956007.dsh.mcp.McpPromptInfo;
+import io.github.git13166956007.dsh.mcp.McpPromptResult;
+import io.github.git13166956007.dsh.mcp.McpResourceContent;
+import io.github.git13166956007.dsh.mcp.McpResourceInfo;
 import io.github.git13166956007.dsh.memory.MemoryManager;
 import io.github.git13166956007.dsh.memory.MemoryRecord;
 import io.github.git13166956007.dsh.run.Run;
@@ -191,6 +195,27 @@ public final class DshController {
         mcpClientManager.remove(id);
     }
 
+    @GetMapping("/mcp/servers/{id}/resources")
+    public java.util.List<McpResourceInfo> mcpResources(@PathVariable String id) {
+        return mcpClientManager.resources(id);
+    }
+
+    @GetMapping("/mcp/servers/{id}/resources/read")
+    public java.util.List<McpResourceContent> readMcpResource(@PathVariable String id, @RequestParam String uri) {
+        return mcpClientManager.readResource(id, uri);
+    }
+
+    @GetMapping("/mcp/servers/{id}/prompts")
+    public java.util.List<McpPromptInfo> mcpPrompts(@PathVariable String id) {
+        return mcpClientManager.prompts(id);
+    }
+
+    @PostMapping("/mcp/servers/{id}/prompts/{name}")
+    public McpPromptResult getMcpPrompt(@PathVariable String id, @PathVariable String name,
+                                        @RequestBody(required = false) java.util.Map<String, Object> arguments) {
+        return mcpClientManager.getPrompt(id, name, arguments);
+    }
+
     @PostMapping("/mcp/servers/{id}/connect")
     public McpServerInfo connectMcpServer(@PathVariable String id) {
         try {
@@ -262,7 +287,7 @@ public final class DshController {
                     request.apiKey(), request.proxyHost(), request.proxyPort(), request.enabled(), request.active(),
                     request.supportsTools(), request.supportsStreaming(), request.supportsVision(), request.contextWindow(),
                     request.temperature(), request.topP(), request.maxTokens(), request.frequencyPenalty(),
-                    request.presencePenalty(), request.timeoutSeconds());
+                    request.presencePenalty(), request.timeoutSeconds(), request.requestOptionsJson());
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
         }
@@ -275,7 +300,7 @@ public final class DshController {
                     request.apiKey(), request.proxyHost(), request.proxyPort(), request.enabled(), request.active(),
                     request.supportsTools(), request.supportsStreaming(), request.supportsVision(), request.contextWindow(),
                     request.temperature(), request.topP(), request.maxTokens(), request.frequencyPenalty(),
-                    request.presencePenalty(), request.timeoutSeconds());
+                    request.presencePenalty(), request.timeoutSeconds(), request.requestOptionsJson());
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(
                     exception.getMessage() != null && exception.getMessage().startsWith("unknown model:")
@@ -731,7 +756,8 @@ public final class DshController {
                                String proxyHost, Integer proxyPort, Boolean enabled, Boolean active,
                                Boolean supportsTools, Boolean supportsStreaming, Boolean supportsVision,
                                Integer contextWindow, Double temperature, Double topP, Integer maxTokens,
-                               Double frequencyPenalty, Double presencePenalty, Integer timeoutSeconds) {
+                               Double frequencyPenalty, Double presencePenalty, Integer timeoutSeconds,
+                               String requestOptionsJson) {
     }
 
     public record ModelTestRequest(String apiKey, String prompt) {

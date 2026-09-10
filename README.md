@@ -84,7 +84,7 @@ export DSH_PERSISTENCE_ENABLED=true
 export DSH_PERSISTENCE_ENABLED=true
 ```
 
-模型管理接口为 `GET/POST/PATCH/DELETE /api/v1/models`，以及 `POST /api/v1/models/{id}/activate` 和 `POST /api/v1/models/{id}/test`。Profile 持久化 `provider`、`baseUrl`、`model`、`proxyHost`、`proxyPort`、`enabled`、`active`、工具调用/流式/Vision 能力、`contextWindow`、`temperature`、`topP`、`maxTokens`、频率惩罚、存在惩罚和请求超时。聊天请求可以传 `modelId` 选择模型；不传时使用当前 active 模型。页面中的 DEBUG API KEY 仍然只对当前请求生效，并优先于 Profile 中保存的 Key。
+模型管理接口为 `GET/POST/PATCH/DELETE /api/v1/models`，以及 `POST /api/v1/models/{id}/activate` 和 `POST /api/v1/models/{id}/test`。Profile 持久化 `provider`、`baseUrl`、`model`、`proxyHost`、`proxyPort`、`enabled`、`active`、工具调用/流式/Vision 能力、`contextWindow`、`temperature`、`topP`、`maxTokens`、频率惩罚、存在惩罚、请求超时和 Provider 扩展参数 `requestOptionsJson`。扩展参数必须是 JSON 对象，不能覆盖 `model`、`messages`、`stream`、`tools` 或 `tool_choice`；可用于配置 `reasoning_effort`、`response_format`、`stop` 等 Provider-specific 字段。聊天请求可以传 `modelId` 选择模型；不传时使用当前 active 模型。页面中的 DEBUG API KEY 仍然只对当前请求生效，并优先于 Profile 中保存的 Key。
 
 启用 MariaDB 时建议同时设置 `DSH_SECRET_KEY`。模型 API Key 会使用 AES-GCM 封装后保存，接口仍只返回 `apiKeyConfigured`；历史明文记录可以兼容读取，设置主密钥后更新一次模型即可转为加密存储。主密钥不会写入配置文件或 Git。
 
@@ -104,13 +104,13 @@ Sub-agent Profile 管理接口为 `GET/POST/PATCH/DELETE /api/v1/sub-agents`。�
 
 同一个 `conversationId` 会复用最近的历史消息；不传时服务会创建新的会话 ID。工具管理接口为 `GET /api/v1/tools` 和 `PATCH /api/v1/tools/{name}`，请求体示例为 `{"enabled":false}`。
 
-自定义调试工具在启用 MariaDB 持久化时会保存名称、描述、JSON Schema、固定返回值和启用状态，重启后自动恢复；内置工具和已连接 MCP 工具仍由运行时负责注册。MCP Server 配置同样会保存，重启后恢复为 `DISCONNECTED`，需要显式调用 `POST /api/v1/mcp/servers/{id}/connect` 才建立远程连接。
+自定义调试工具在启用 MariaDB 持久化时会保存名称、描述、JSON Schema、固定返回值和启用状态，重启后自动恢复；内置工具和已连接 MCP 工具仍由运行时负责注册。MCP Server 配置同样会保存，启用的 Server 会在应用启动后异步尝试恢复连接，失败不会阻塞应用启动；仍可显式调用 `POST /api/v1/mcp/servers/{id}/connect` 重试。
 
 上下文窗口同时受 `DSH_MAX_HISTORY_MESSAGES` 和 `DSH_MAX_CONTEXT_TOKENS` 限制，按最新消息优先裁剪；`GET /api/v1/conversations/{id}/context` 可以查看当前消息数、估算 token 数和是否发生裁剪。token 数是运行时估算值，不依赖特定模型 tokenizer。
 
 前端右上角的 `Tools` 可以添加调试工具。启用 MariaDB 持久化后，自定义工具的名称、描述、JSON Schema、固定返回值、启用状态和审批策略会保存并在重启后恢复；真正的业务执行工具通过插件或 MCP 接入。
 
-MCP Server 管理已经接入官方 Java SDK `0.17.0`，支持 `stdio`、`sse` 和 `streamable_http`。HTTP endpoint 填写服务地址，敏感参数使用 Credential Reference 或加密 Header/Environment 保存，不要把 Key 放进 URL。配置后通过 `POST /api/v1/mcp/servers/{id}/connect` 建立会话，工具会自动同步进统一的 ToolRegistry；`refresh`、`disconnect` 分别用于刷新工具和释放连接。MCP 工具会以 `mcp_<server-id>_<tool-name>` 暴露，名称只使用模型兼容的字母、数字、下划线和连字符，避免不同 Server 同名冲突。
+MCP Server 管理已经接入官方 Java SDK `0.17.0`，支持 `stdio`、`sse` 和 `streamable_http`。HTTP endpoint 填写服务地址，敏感参数使用 Credential Reference 或加密 Header/Environment 保存，不要把 Key 放进 URL。配置后通过 `POST /api/v1/mcp/servers/{id}/connect` 建立会话，工具会自动同步进统一的 ToolRegistry；`refresh`、`disconnect` 分别用于刷新工具和释放连接。MCP 还提供资源列表/读取和 Prompt 列表/加载接口，前端 MCP 面板可直接调试。MCP 工具会以 `mcp_<server-id>_<tool-name>` 暴露，名称只使用模型兼容的字母、数字、下划线和连字符，避免不同 Server 同名冲突。
 
 Skills 使用文件系统目录，默认扫描项目根目录 `skills/`，也可以通过 `DSH_SKILLS_DIR` 指定目录。每个 Skill 的入口文件是 `skills/<name>/SKILL.md`，支持简单 front matter：
 

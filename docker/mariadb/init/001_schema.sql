@@ -128,6 +128,7 @@ CREATE TABLE IF NOT EXISTS dsh_model_profile (
     frequency_penalty DOUBLE NULL,
     presence_penalty DOUBLE NULL,
     timeout_seconds INT NOT NULL DEFAULT 120,
+    request_options_json LONGTEXT NULL,
     created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     INDEX idx_dsh_model_active (active, enabled)

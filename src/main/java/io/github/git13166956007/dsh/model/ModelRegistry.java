@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 public final class ModelRegistry {
     private final ModelProfileStore store;
@@ -21,7 +23,7 @@ public final class ModelRegistry {
                 ModelProfileData fallback = new ModelProfileData("default", "Default model",
                         normalizeProvider(provider), normalizeUrl(baseUrl), required(model, "model"),
                         blankToNull(apiKey), blankToNull(proxyHost), validProxyPort(proxyPort), true, true,
-                        true, true, false, 0, null, null, null, null, null, 120);
+                        true, true, false, 0, null, null, null, null, null, 120, null);
                 profiles.put(fallback.id(), fallback);
                 store.save(fallback);
             } else if (profiles.values().stream().noneMatch(ModelProfileData::active)) {
@@ -46,7 +48,7 @@ public final class ModelRegistry {
                                              String apiKey, String proxyHost, Integer proxyPort,
                                              Boolean enabled, Boolean active) {
         return create(name, provider, baseUrl, model, apiKey, proxyHost, proxyPort, enabled, active,
-                true, true, false, 0, null, null, null, null, null, 120);
+                true, true, false, 0, null, null, null, null, null, 120, null);
     }
 
     public synchronized ModelProfile create(String name, String provider, String baseUrl, String model,
@@ -54,7 +56,7 @@ public final class ModelRegistry {
                                              Boolean enabled, Boolean active, Boolean supportsTools,
                                              Boolean supportsStreaming, Boolean supportsVision, Integer contextWindow) {
         return create(name, provider, baseUrl, model, apiKey, proxyHost, proxyPort, enabled, active,
-                supportsTools, supportsStreaming, supportsVision, contextWindow, null, null, null, null, null, 120);
+                supportsTools, supportsStreaming, supportsVision, contextWindow, null, null, null, null, null, 120, null);
     }
 
     public synchronized ModelProfile create(String name, String provider, String baseUrl, String model,
@@ -63,6 +65,18 @@ public final class ModelRegistry {
                                              Boolean supportsStreaming, Boolean supportsVision, Integer contextWindow,
                                              Double temperature, Double topP, Integer maxTokens,
                                              Double frequencyPenalty, Double presencePenalty, Integer timeoutSeconds) {
+        return create(name, provider, baseUrl, model, apiKey, proxyHost, proxyPort, enabled, active,
+                supportsTools, supportsStreaming, supportsVision, contextWindow, temperature, topP, maxTokens,
+                frequencyPenalty, presencePenalty, timeoutSeconds, null);
+    }
+
+    public synchronized ModelProfile create(String name, String provider, String baseUrl, String model,
+                                             String apiKey, String proxyHost, Integer proxyPort,
+                                             Boolean enabled, Boolean active, Boolean supportsTools,
+                                             Boolean supportsStreaming, Boolean supportsVision, Integer contextWindow,
+                                             Double temperature, Double topP, Integer maxTokens,
+                                             Double frequencyPenalty, Double presencePenalty, Integer timeoutSeconds,
+                                             String requestOptionsJson) {
         String id = UUID.randomUUID().toString();
         boolean nextEnabled = enabled == null || enabled;
         boolean nextActive = nextEnabled && (Boolean.TRUE.equals(active)
@@ -75,7 +89,8 @@ public final class ModelRegistry {
                 Boolean.TRUE.equals(supportsVision), validContextWindow(contextWindow == null ? 0 : contextWindow),
                 validTemperature(temperature), validTopP(topP), validMaxTokens(maxTokens),
                 validPenalty(frequencyPenalty, "frequencyPenalty"), validPenalty(presencePenalty, "presencePenalty"),
-                validTimeoutSeconds(timeoutSeconds == null ? 120 : timeoutSeconds));
+                validTimeoutSeconds(timeoutSeconds == null ? 120 : timeoutSeconds),
+                normalizeRequestOptions(requestOptionsJson));
         save(profile);
         return ModelProfile.from(profile);
     }
@@ -84,7 +99,7 @@ public final class ModelRegistry {
                                              String apiKey, String proxyHost, Integer proxyPort,
                                              Boolean enabled, Boolean active) {
         return update(id, name, provider, baseUrl, model, apiKey, proxyHost, proxyPort, enabled, active,
-                null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null, null);
     }
 
     public synchronized ModelProfile update(String id, String name, String provider, String baseUrl, String model,
@@ -92,7 +107,7 @@ public final class ModelRegistry {
                                              Boolean enabled, Boolean active, Boolean supportsTools,
                                              Boolean supportsStreaming, Boolean supportsVision, Integer contextWindow) {
         return update(id, name, provider, baseUrl, model, apiKey, proxyHost, proxyPort, enabled, active,
-                supportsTools, supportsStreaming, supportsVision, contextWindow, null, null, null, null, null, null);
+                supportsTools, supportsStreaming, supportsVision, contextWindow, null, null, null, null, null, null, null);
     }
 
     public synchronized ModelProfile update(String id, String name, String provider, String baseUrl, String model,
@@ -101,6 +116,18 @@ public final class ModelRegistry {
                                              Boolean supportsStreaming, Boolean supportsVision, Integer contextWindow,
                                              Double temperature, Double topP, Integer maxTokens,
                                              Double frequencyPenalty, Double presencePenalty, Integer timeoutSeconds) {
+        return update(id, name, provider, baseUrl, model, apiKey, proxyHost, proxyPort, enabled, active,
+                supportsTools, supportsStreaming, supportsVision, contextWindow, temperature, topP, maxTokens,
+                frequencyPenalty, presencePenalty, timeoutSeconds, null);
+    }
+
+    public synchronized ModelProfile update(String id, String name, String provider, String baseUrl, String model,
+                                             String apiKey, String proxyHost, Integer proxyPort,
+                                             Boolean enabled, Boolean active, Boolean supportsTools,
+                                             Boolean supportsStreaming, Boolean supportsVision, Integer contextWindow,
+                                             Double temperature, Double topP, Integer maxTokens,
+                                             Double frequencyPenalty, Double presencePenalty, Integer timeoutSeconds,
+                                             String requestOptionsJson) {
         ModelProfileData current = require(id);
         boolean nextActive = active == null ? current.active() : active;
         boolean nextEnabled = enabled == null ? current.enabled() : enabled;
@@ -123,7 +150,8 @@ public final class ModelRegistry {
                 maxTokens == null ? current.maxTokens() : validMaxTokens(maxTokens),
                 frequencyPenalty == null ? current.frequencyPenalty() : validPenalty(frequencyPenalty, "frequencyPenalty"),
                 presencePenalty == null ? current.presencePenalty() : validPenalty(presencePenalty, "presencePenalty"),
-                timeoutSeconds == null ? current.timeoutSeconds() : validTimeoutSeconds(timeoutSeconds));
+                timeoutSeconds == null ? current.timeoutSeconds() : validTimeoutSeconds(timeoutSeconds),
+                requestOptionsJson == null ? current.requestOptionsJson() : normalizeRequestOptions(requestOptionsJson));
         save(updated);
         ensureActive();
         return ModelProfile.from(profiles.get(id));
@@ -137,7 +165,7 @@ public final class ModelRegistry {
                 target.model(), target.apiKey(), target.proxyHost(), target.proxyPort(), true, true,
                 target.supportsTools(), target.supportsStreaming(), target.supportsVision(), target.contextWindow(),
                 target.temperature(), target.topP(), target.maxTokens(), target.frequencyPenalty(),
-                target.presencePenalty(), target.timeoutSeconds());
+                target.presencePenalty(), target.timeoutSeconds(), target.requestOptionsJson());
         save(active);
         return ModelProfile.from(active);
     }
@@ -179,7 +207,7 @@ public final class ModelRegistry {
                         profile.model(), profile.apiKey(), profile.proxyHost(), profile.proxyPort(), profile.enabled(), false,
                         profile.supportsTools(), profile.supportsStreaming(), profile.supportsVision(), profile.contextWindow(),
                         profile.temperature(), profile.topP(), profile.maxTokens(), profile.frequencyPenalty(),
-                        profile.presencePenalty(), profile.timeoutSeconds()));
+                        profile.presencePenalty(), profile.timeoutSeconds(), profile.requestOptionsJson()));
             }
         }
     }
@@ -271,5 +299,26 @@ public final class ModelRegistry {
 
     private static String blankToNull(String value) {
         return value == null || value.trim().isEmpty() ? null : value.trim();
+    }
+
+    private static String normalizeRequestOptions(String value) {
+        String normalized = blankToNull(value);
+        if (normalized == null) return null;
+        try {
+            JsonNode node = new ObjectMapper().readTree(normalized);
+            if (node == null || !node.isObject()) {
+                throw new IllegalArgumentException("requestOptionsJson must be a JSON object");
+            }
+            for (String reserved : List.of("model", "messages", "stream", "tools", "tool_choice")) {
+                if (node.has(reserved)) {
+                    throw new IllegalArgumentException("requestOptionsJson must not define " + reserved);
+                }
+            }
+            return node.toString();
+        } catch (IllegalArgumentException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IllegalArgumentException("requestOptionsJson must be valid JSON", exception);
+        }
     }
 }
