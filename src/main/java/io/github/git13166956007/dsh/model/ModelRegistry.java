@@ -20,7 +20,8 @@ public final class ModelRegistry {
             if (profiles.isEmpty()) {
                 ModelProfileData fallback = new ModelProfileData("default", "Default model",
                         normalizeProvider(provider), normalizeUrl(baseUrl), required(model, "model"),
-                        blankToNull(apiKey), blankToNull(proxyHost), validProxyPort(proxyPort), true, true);
+                        blankToNull(apiKey), blankToNull(proxyHost), validProxyPort(proxyPort), true, true,
+                        true, true, false, 0, null, null, null, null, null, 120);
                 profiles.put(fallback.id(), fallback);
                 store.save(fallback);
             } else if (profiles.values().stream().noneMatch(ModelProfileData::active)) {
@@ -45,13 +46,23 @@ public final class ModelRegistry {
                                              String apiKey, String proxyHost, Integer proxyPort,
                                              Boolean enabled, Boolean active) {
         return create(name, provider, baseUrl, model, apiKey, proxyHost, proxyPort, enabled, active,
-                true, true, false, 0);
+                true, true, false, 0, null, null, null, null, null, 120);
     }
 
     public synchronized ModelProfile create(String name, String provider, String baseUrl, String model,
                                              String apiKey, String proxyHost, Integer proxyPort,
                                              Boolean enabled, Boolean active, Boolean supportsTools,
                                              Boolean supportsStreaming, Boolean supportsVision, Integer contextWindow) {
+        return create(name, provider, baseUrl, model, apiKey, proxyHost, proxyPort, enabled, active,
+                supportsTools, supportsStreaming, supportsVision, contextWindow, null, null, null, null, null, 120);
+    }
+
+    public synchronized ModelProfile create(String name, String provider, String baseUrl, String model,
+                                             String apiKey, String proxyHost, Integer proxyPort,
+                                             Boolean enabled, Boolean active, Boolean supportsTools,
+                                             Boolean supportsStreaming, Boolean supportsVision, Integer contextWindow,
+                                             Double temperature, Double topP, Integer maxTokens,
+                                             Double frequencyPenalty, Double presencePenalty, Integer timeoutSeconds) {
         String id = UUID.randomUUID().toString();
         boolean nextEnabled = enabled == null || enabled;
         boolean nextActive = nextEnabled && (Boolean.TRUE.equals(active)
@@ -61,7 +72,10 @@ public final class ModelRegistry {
                 normalizeUrl(baseUrl), required(model, "model"), blankToNull(apiKey), blankToNull(proxyHost),
                 validProxyPort(proxyPort == null ? 0 : proxyPort), nextEnabled, nextActive,
                 supportsTools == null || supportsTools, supportsStreaming == null || supportsStreaming,
-                Boolean.TRUE.equals(supportsVision), validContextWindow(contextWindow == null ? 0 : contextWindow));
+                Boolean.TRUE.equals(supportsVision), validContextWindow(contextWindow == null ? 0 : contextWindow),
+                validTemperature(temperature), validTopP(topP), validMaxTokens(maxTokens),
+                validPenalty(frequencyPenalty, "frequencyPenalty"), validPenalty(presencePenalty, "presencePenalty"),
+                validTimeoutSeconds(timeoutSeconds == null ? 120 : timeoutSeconds));
         save(profile);
         return ModelProfile.from(profile);
     }
@@ -77,6 +91,16 @@ public final class ModelRegistry {
                                              String apiKey, String proxyHost, Integer proxyPort,
                                              Boolean enabled, Boolean active, Boolean supportsTools,
                                              Boolean supportsStreaming, Boolean supportsVision, Integer contextWindow) {
+        return update(id, name, provider, baseUrl, model, apiKey, proxyHost, proxyPort, enabled, active,
+                supportsTools, supportsStreaming, supportsVision, contextWindow, null, null, null, null, null, null);
+    }
+
+    public synchronized ModelProfile update(String id, String name, String provider, String baseUrl, String model,
+                                             String apiKey, String proxyHost, Integer proxyPort,
+                                             Boolean enabled, Boolean active, Boolean supportsTools,
+                                             Boolean supportsStreaming, Boolean supportsVision, Integer contextWindow,
+                                             Double temperature, Double topP, Integer maxTokens,
+                                             Double frequencyPenalty, Double presencePenalty, Integer timeoutSeconds) {
         ModelProfileData current = require(id);
         boolean nextActive = active == null ? current.active() : active;
         boolean nextEnabled = enabled == null ? current.enabled() : enabled;
@@ -93,7 +117,13 @@ public final class ModelRegistry {
                 supportsTools == null ? current.supportsTools() : supportsTools,
                 supportsStreaming == null ? current.supportsStreaming() : supportsStreaming,
                 supportsVision == null ? current.supportsVision() : supportsVision,
-                contextWindow == null ? current.contextWindow() : validContextWindow(contextWindow));
+                contextWindow == null ? current.contextWindow() : validContextWindow(contextWindow),
+                temperature == null ? current.temperature() : validTemperature(temperature),
+                topP == null ? current.topP() : validTopP(topP),
+                maxTokens == null ? current.maxTokens() : validMaxTokens(maxTokens),
+                frequencyPenalty == null ? current.frequencyPenalty() : validPenalty(frequencyPenalty, "frequencyPenalty"),
+                presencePenalty == null ? current.presencePenalty() : validPenalty(presencePenalty, "presencePenalty"),
+                timeoutSeconds == null ? current.timeoutSeconds() : validTimeoutSeconds(timeoutSeconds));
         save(updated);
         ensureActive();
         return ModelProfile.from(profiles.get(id));
@@ -105,7 +135,9 @@ public final class ModelRegistry {
         deactivateAll();
         ModelProfileData active = new ModelProfileData(target.id(), target.name(), target.provider(), target.baseUrl(),
                 target.model(), target.apiKey(), target.proxyHost(), target.proxyPort(), true, true,
-                target.supportsTools(), target.supportsStreaming(), target.supportsVision(), target.contextWindow());
+                target.supportsTools(), target.supportsStreaming(), target.supportsVision(), target.contextWindow(),
+                target.temperature(), target.topP(), target.maxTokens(), target.frequencyPenalty(),
+                target.presencePenalty(), target.timeoutSeconds());
         save(active);
         return ModelProfile.from(active);
     }
@@ -145,7 +177,9 @@ public final class ModelRegistry {
             if (profile.active()) {
                 save(new ModelProfileData(profile.id(), profile.name(), profile.provider(), profile.baseUrl(),
                         profile.model(), profile.apiKey(), profile.proxyHost(), profile.proxyPort(), profile.enabled(), false,
-                        profile.supportsTools(), profile.supportsStreaming(), profile.supportsVision(), profile.contextWindow()));
+                        profile.supportsTools(), profile.supportsStreaming(), profile.supportsVision(), profile.contextWindow(),
+                        profile.temperature(), profile.topP(), profile.maxTokens(), profile.frequencyPenalty(),
+                        profile.presencePenalty(), profile.timeoutSeconds()));
             }
         }
     }
@@ -191,6 +225,41 @@ public final class ModelRegistry {
 
     private static int validContextWindow(int value) {
         if (value < 0 || value > 2_000_000) throw new IllegalArgumentException("contextWindow must be between 0 and 2000000");
+        return value;
+    }
+
+    private static Double validTemperature(Double value) {
+        if (value == null) return null;
+        if (value.isNaN() || value.isInfinite() || value < 0 || value > 2) {
+            throw new IllegalArgumentException("temperature must be between 0 and 2");
+        }
+        return value;
+    }
+
+    private static Double validTopP(Double value) {
+        if (value == null) return null;
+        if (value.isNaN() || value.isInfinite() || value <= 0 || value > 1) {
+            throw new IllegalArgumentException("topP must be greater than 0 and at most 1");
+        }
+        return value;
+    }
+
+    private static Integer validMaxTokens(Integer value) {
+        if (value == null) return null;
+        if (value < 1 || value > 2_000_000) throw new IllegalArgumentException("maxTokens must be between 1 and 2000000");
+        return value;
+    }
+
+    private static Double validPenalty(Double value, String field) {
+        if (value == null) return null;
+        if (value.isNaN() || value.isInfinite() || value < -2 || value > 2) {
+            throw new IllegalArgumentException(field + " must be between -2 and 2");
+        }
+        return value;
+    }
+
+    private static int validTimeoutSeconds(int value) {
+        if (value < 1 || value > 3600) throw new IllegalArgumentException("timeoutSeconds must be between 1 and 3600");
         return value;
     }
 

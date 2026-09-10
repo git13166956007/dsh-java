@@ -91,7 +91,13 @@ const modelForm = ref({
   supportsTools: true,
   supportsStreaming: true,
   supportsVision: false,
-  contextWindow: 0
+  contextWindow: 0,
+  temperature: '',
+  topP: '',
+  maxTokens: '',
+  frequencyPenalty: '',
+  presencePenalty: '',
+  timeoutSeconds: 120
 })
 const modelFormError = ref('')
 const modelSaving = ref(false)
@@ -791,7 +797,13 @@ function resetModelForm() {
     supportsTools: true,
     supportsStreaming: true,
     supportsVision: false,
-    contextWindow: 0
+    contextWindow: 0,
+    temperature: '',
+    topP: '',
+    maxTokens: '',
+    frequencyPenalty: '',
+    presencePenalty: '',
+    timeoutSeconds: 120
   }
   modelFormError.value = ''
 }
@@ -811,7 +823,13 @@ function editModel(model) {
     supportsTools: model.supportsTools !== false,
     supportsStreaming: model.supportsStreaming !== false,
     supportsVision: model.supportsVision === true,
-    contextWindow: model.contextWindow || 0
+    contextWindow: model.contextWindow || 0,
+    temperature: model.temperature ?? '',
+    topP: model.topP ?? '',
+    maxTokens: model.maxTokens ?? '',
+    frequencyPenalty: model.frequencyPenalty ?? '',
+    presencePenalty: model.presencePenalty ?? '',
+    timeoutSeconds: model.timeoutSeconds || 120
   }
   modelFormError.value = ''
 }
@@ -841,7 +859,13 @@ async function saveModel() {
         supportsTools: modelForm.value.supportsTools,
         supportsStreaming: modelForm.value.supportsStreaming,
         supportsVision: modelForm.value.supportsVision,
-        contextWindow: Number(modelForm.value.contextWindow) || 0
+        contextWindow: Number(modelForm.value.contextWindow) || 0,
+        temperature: modelForm.value.temperature === '' ? null : Number(modelForm.value.temperature),
+        topP: modelForm.value.topP === '' ? null : Number(modelForm.value.topP),
+        maxTokens: modelForm.value.maxTokens === '' ? null : Number(modelForm.value.maxTokens),
+        frequencyPenalty: modelForm.value.frequencyPenalty === '' ? null : Number(modelForm.value.frequencyPenalty),
+        presencePenalty: modelForm.value.presencePenalty === '' ? null : Number(modelForm.value.presencePenalty),
+        timeoutSeconds: Number(modelForm.value.timeoutSeconds) || 120
       })
     })
     const payload = await response.json().catch(() => ({}))
@@ -1487,7 +1511,7 @@ onUnmounted(() => clearTimeout(planPollTimer))
               <strong>{{ model.name }}</strong>
               <span :class="['tool-source', model.active ? 'connected' : '']">{{ model.active ? 'DEFAULT' : model.provider }}</span>
             </div>
-            <p>{{ model.model }} · {{ model.baseUrl }}<br />{{ model.apiKeyConfigured ? 'API key configured' : 'Uses request or environment API key' }} · {{ model.supportsTools ? 'tools' : 'no tools' }} · {{ model.supportsStreaming ? 'streaming' : 'non-streaming' }}</p>
+            <p>{{ model.model }} · {{ model.baseUrl }}<br />{{ model.apiKeyConfigured ? 'API key configured' : 'Uses request or environment API key' }} · {{ model.supportsTools ? 'tools' : 'no tools' }} · {{ model.supportsStreaming ? 'streaming' : 'non-streaming' }} · {{ model.contextWindow ? `${model.contextWindow} context` : 'context unknown' }}</p>
           </div>
           <div class="managed-tool-actions model-actions">
             <button v-if="!model.active && model.enabled" class="secondary-button compact" type="button" @click="activateModel(model)">Default</button>
@@ -1527,6 +1551,16 @@ onUnmounted(() => clearTimeout(planPollTimer))
             <label class="plan-approval-toggle"><input v-model="modelForm.supportsStreaming" type="checkbox" /> Streaming</label>
             <label class="plan-approval-toggle"><input v-model="modelForm.supportsVision" type="checkbox" /> Vision</label>
             <label><span>Context window</span><input v-model="modelForm.contextWindow" type="number" min="0" max="2000000" placeholder="0 = unknown" /></label>
+          </div>
+          <div class="tool-form-grid model-capabilities">
+            <label><span>Temperature</span><input v-model="modelForm.temperature" type="number" min="0" max="2" step="0.01" placeholder="Provider default" /></label>
+            <label><span>Top P</span><input v-model="modelForm.topP" type="number" min="0.01" max="1" step="0.01" placeholder="Provider default" /></label>
+            <label><span>Max output tokens</span><input v-model="modelForm.maxTokens" type="number" min="1" max="2000000" placeholder="Provider default" /></label>
+            <label><span>Request timeout (s)</span><input v-model="modelForm.timeoutSeconds" type="number" min="1" max="3600" /></label>
+          </div>
+          <div class="tool-form-grid model-capabilities">
+            <label><span>Frequency penalty</span><input v-model="modelForm.frequencyPenalty" type="number" min="-2" max="2" step="0.01" placeholder="Provider default" /></label>
+            <label><span>Presence penalty</span><input v-model="modelForm.presencePenalty" type="number" min="-2" max="2" step="0.01" placeholder="Provider default" /></label>
           </div>
           <p v-if="modelFormError" class="tool-form-error">{{ modelFormError }}</p>
           <div class="tool-form-footer">

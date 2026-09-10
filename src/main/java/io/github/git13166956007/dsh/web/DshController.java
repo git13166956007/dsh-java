@@ -260,7 +260,9 @@ public final class DshController {
         try {
             return modelRegistry.create(request.name(), request.provider(), request.baseUrl(), request.model(),
                     request.apiKey(), request.proxyHost(), request.proxyPort(), request.enabled(), request.active(),
-                    request.supportsTools(), request.supportsStreaming(), request.supportsVision(), request.contextWindow());
+                    request.supportsTools(), request.supportsStreaming(), request.supportsVision(), request.contextWindow(),
+                    request.temperature(), request.topP(), request.maxTokens(), request.frequencyPenalty(),
+                    request.presencePenalty(), request.timeoutSeconds());
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
         }
@@ -271,7 +273,9 @@ public final class DshController {
         try {
             return modelRegistry.update(id, request.name(), request.provider(), request.baseUrl(), request.model(),
                     request.apiKey(), request.proxyHost(), request.proxyPort(), request.enabled(), request.active(),
-                    request.supportsTools(), request.supportsStreaming(), request.supportsVision(), request.contextWindow());
+                    request.supportsTools(), request.supportsStreaming(), request.supportsVision(), request.contextWindow(),
+                    request.temperature(), request.topP(), request.maxTokens(), request.frequencyPenalty(),
+                    request.presencePenalty(), request.timeoutSeconds());
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
         }
@@ -723,7 +727,8 @@ public final class DshController {
     public record ModelRequest(String name, String provider, String baseUrl, String model, String apiKey,
                                String proxyHost, Integer proxyPort, Boolean enabled, Boolean active,
                                Boolean supportsTools, Boolean supportsStreaming, Boolean supportsVision,
-                               Integer contextWindow) {
+                               Integer contextWindow, Double temperature, Double topP, Integer maxTokens,
+                               Double frequencyPenalty, Double presencePenalty, Integer timeoutSeconds) {
     }
 
     public record ModelTestRequest(String apiKey, String prompt) {

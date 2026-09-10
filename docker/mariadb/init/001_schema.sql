@@ -122,6 +122,12 @@ CREATE TABLE IF NOT EXISTS dsh_model_profile (
     supports_streaming BOOLEAN NOT NULL DEFAULT TRUE,
     supports_vision BOOLEAN NOT NULL DEFAULT FALSE,
     context_window INT NOT NULL DEFAULT 0,
+    temperature DOUBLE NULL,
+    top_p DOUBLE NULL,
+    max_tokens INT NULL,
+    frequency_penalty DOUBLE NULL,
+    presence_penalty DOUBLE NULL,
+    timeout_seconds INT NOT NULL DEFAULT 120,
     created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     INDEX idx_dsh_model_active (active, enabled)

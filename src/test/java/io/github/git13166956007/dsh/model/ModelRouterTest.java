@@ -36,7 +36,8 @@ class ModelRouterTest {
                     "fallback-key", "", 0);
             ModelProfile profile = registry.create("Compatible", "openai_compatible",
                     "http://127.0.0.1:" + server.getAddress().getPort() + "/v1", "test-model",
-                    "stored-key", "", 0, true, false);
+                    "stored-key", "", 0, true, false, true, true, false, 32768,
+                    0.4, 0.85, 512, 0.1, 0.2, 7);
 
             ModelResponse result = new ModelRouter(registry, new ObjectMapper()).complete(
                     List.of(ChatMessage.user("ping")), List.of(), "request-key", profile.id());
@@ -44,6 +45,11 @@ class ModelRouterTest {
             assertEquals("pong", result.content());
             assertEquals("Bearer request-key", authorization.get());
             org.junit.jupiter.api.Assertions.assertTrue(requestBody.get().contains("\"model\":\"test-model\""));
+            org.junit.jupiter.api.Assertions.assertTrue(requestBody.get().contains("\"temperature\":0.4"));
+            org.junit.jupiter.api.Assertions.assertTrue(requestBody.get().contains("\"top_p\":0.85"));
+            org.junit.jupiter.api.Assertions.assertTrue(requestBody.get().contains("\"max_tokens\":512"));
+            org.junit.jupiter.api.Assertions.assertTrue(requestBody.get().contains("\"frequency_penalty\":0.1"));
+            org.junit.jupiter.api.Assertions.assertTrue(requestBody.get().contains("\"presence_penalty\":0.2"));
         } finally {
             server.stop(0);
         }

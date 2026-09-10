@@ -32,7 +32,8 @@ public final class MariaDbModelProfileStore implements ModelProfileStore {
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(
                      "SELECT id, name, provider, base_url, model_name, api_key, proxy_host, proxy_port, enabled, active, "
-                             + "supports_tools, supports_streaming, supports_vision, context_window "
+                             + "supports_tools, supports_streaming, supports_vision, context_window, temperature, top_p, "
+                             + "max_tokens, frequency_penalty, presence_penalty, timeout_seconds "
                              + "FROM dsh_model_profile ORDER BY created_at, id");
              ResultSet rows = statement.executeQuery()) {
             while (rows.next()) {
@@ -40,7 +41,9 @@ public final class MariaDbModelProfileStore implements ModelProfileStore {
                         rows.getString("provider"), rows.getString("base_url"), rows.getString("model_name"),
                         secrets.decrypt(rows.getString("api_key")), rows.getString("proxy_host"), rows.getInt("proxy_port"),
                         rows.getBoolean("enabled"), rows.getBoolean("active"), rows.getBoolean("supports_tools"),
-                        rows.getBoolean("supports_streaming"), rows.getBoolean("supports_vision"), rows.getInt("context_window")));
+                        rows.getBoolean("supports_streaming"), rows.getBoolean("supports_vision"), rows.getInt("context_window"),
+                        getDouble(rows, "temperature"), getDouble(rows, "top_p"), getInteger(rows, "max_tokens"),
+                        getDouble(rows, "frequency_penalty"), getDouble(rows, "presence_penalty"), rows.getInt("timeout_seconds")));
             }
         }
         return result;
@@ -52,14 +55,17 @@ public final class MariaDbModelProfileStore implements ModelProfileStore {
              PreparedStatement statement = connection.prepareStatement(
                      "INSERT INTO dsh_model_profile "
                              + "(id, name, provider, base_url, model_name, api_key, proxy_host, proxy_port, enabled, active, "
-                             + "supports_tools, supports_streaming, supports_vision, context_window) "
-                             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                             + "supports_tools, supports_streaming, supports_vision, context_window, temperature, top_p, "
+                             + "max_tokens, frequency_penalty, presence_penalty, timeout_seconds) "
+                             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                              + "ON DUPLICATE KEY UPDATE name=VALUES(name), provider=VALUES(provider), "
                              + "base_url=VALUES(base_url), model_name=VALUES(model_name), api_key=VALUES(api_key), "
                              + "proxy_host=VALUES(proxy_host), proxy_port=VALUES(proxy_port), "
                              + "enabled=VALUES(enabled), active=VALUES(active), supports_tools=VALUES(supports_tools), "
                              + "supports_streaming=VALUES(supports_streaming), supports_vision=VALUES(supports_vision), "
-                             + "context_window=VALUES(context_window)")) {
+                             + "context_window=VALUES(context_window), temperature=VALUES(temperature), top_p=VALUES(top_p), "
+                             + "max_tokens=VALUES(max_tokens), frequency_penalty=VALUES(frequency_penalty), "
+                             + "presence_penalty=VALUES(presence_penalty), timeout_seconds=VALUES(timeout_seconds)")) {
             statement.setString(1, profile.id());
             statement.setString(2, profile.name());
             statement.setString(3, profile.provider());
@@ -74,6 +80,17 @@ public final class MariaDbModelProfileStore implements ModelProfileStore {
             statement.setBoolean(12, profile.supportsStreaming());
             statement.setBoolean(13, profile.supportsVision());
             statement.setInt(14, profile.contextWindow());
+            if (profile.temperature() == null) statement.setNull(15, java.sql.Types.DOUBLE);
+            else statement.setDouble(15, profile.temperature());
+            if (profile.topP() == null) statement.setNull(16, java.sql.Types.DOUBLE);
+            else statement.setDouble(16, profile.topP());
+            if (profile.maxTokens() == null) statement.setNull(17, java.sql.Types.INTEGER);
+            else statement.setInt(17, profile.maxTokens());
+            if (profile.frequencyPenalty() == null) statement.setNull(18, java.sql.Types.DOUBLE);
+            else statement.setDouble(18, profile.frequencyPenalty());
+            if (profile.presencePenalty() == null) statement.setNull(19, java.sql.Types.DOUBLE);
+            else statement.setDouble(19, profile.presencePenalty());
+            statement.setInt(20, profile.timeoutSeconds());
             statement.executeUpdate();
         }
     }
@@ -98,6 +115,8 @@ public final class MariaDbModelProfileStore implements ModelProfileStore {
                              + "enabled BOOLEAN NOT NULL DEFAULT TRUE, active BOOLEAN NOT NULL DEFAULT FALSE, "
                              + "supports_tools BOOLEAN NOT NULL DEFAULT TRUE, supports_streaming BOOLEAN NOT NULL DEFAULT TRUE, "
                              + "supports_vision BOOLEAN NOT NULL DEFAULT FALSE, context_window INT NOT NULL DEFAULT 0, "
+                             + "temperature DOUBLE NULL, top_p DOUBLE NULL, max_tokens INT NULL, "
+                             + "frequency_penalty DOUBLE NULL, presence_penalty DOUBLE NULL, timeout_seconds INT NOT NULL DEFAULT 120, "
                              + "created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), "
                              + "updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3), "
                              + "INDEX idx_dsh_model_active (active, enabled)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4")) {
@@ -118,6 +137,12 @@ public final class MariaDbModelProfileStore implements ModelProfileStore {
                     "ALTER TABLE dsh_model_profile ADD COLUMN IF NOT EXISTS context_window INT NOT NULL DEFAULT 0")) {
                 alter.executeUpdate();
             }
+            addColumn(connection, "temperature DOUBLE NULL");
+            addColumn(connection, "top_p DOUBLE NULL");
+            addColumn(connection, "max_tokens INT NULL");
+            addColumn(connection, "frequency_penalty DOUBLE NULL");
+            addColumn(connection, "presence_penalty DOUBLE NULL");
+            addColumn(connection, "timeout_seconds INT NOT NULL DEFAULT 120");
         } catch (SQLException exception) {
             throw new IllegalStateException("failed to initialize model profile schema", exception);
         }
@@ -125,5 +150,24 @@ public final class MariaDbModelProfileStore implements ModelProfileStore {
 
     private Connection connection() throws SQLException {
         return DriverManager.getConnection(jdbcUrl, username, password);
+    }
+
+    private static Double getDouble(ResultSet rows, String column) throws SQLException {
+        double value = rows.getDouble(column);
+        return rows.wasNull() ? null : value;
+    }
+
+    private static Integer getInteger(ResultSet rows, String column) throws SQLException {
+        int value = rows.getInt(column);
+        return rows.wasNull() ? null : value;
+    }
+
+    private static void addColumn(Connection connection, String definition) throws SQLException {
+        String column = definition.substring(0, definition.indexOf(' '));
+        try (PreparedStatement alter = connection.prepareStatement(
+                "ALTER TABLE dsh_model_profile ADD COLUMN IF NOT EXISTS " + column + " "
+                        + definition.substring(column.length() + 1))) {
+            alter.executeUpdate();
+        }
     }
 }

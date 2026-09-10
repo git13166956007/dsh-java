@@ -53,11 +53,13 @@ public final class ModelRouter implements ChatModel {
         String provider = profile.provider().toLowerCase(Locale.ROOT);
         if ("deepseek".equals(provider)) {
             return new DeepSeekChatModel(objectMapper, profile.baseUrl(), profile.apiKey(), profile.model(),
-                    profile.proxyHost(), profile.proxyPort());
+                    profile.proxyHost(), profile.proxyPort(), profile.temperature(), profile.topP(), profile.maxTokens(),
+                    profile.frequencyPenalty(), profile.presencePenalty(), profile.timeoutSeconds());
         }
         if ("openai".equals(provider) || "openai_compatible".equals(provider)) {
             return new OpenAiCompatibleChatModel(objectMapper, provider, profile.baseUrl(), profile.apiKey(),
-                    profile.model(), profile.proxyHost(), profile.proxyPort());
+                    profile.model(), profile.proxyHost(), profile.proxyPort(), profile.temperature(), profile.topP(),
+                    profile.maxTokens(), profile.frequencyPenalty(), profile.presencePenalty(), profile.timeoutSeconds());
         }
         throw new IllegalArgumentException("unsupported model provider: " + profile.provider()
                 + "; use deepseek, openai, or openai_compatible");
