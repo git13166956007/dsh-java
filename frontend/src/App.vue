@@ -35,6 +35,9 @@ const subAgentForm = ref({
   modelId: '',
   systemPrompt: '',
   maxTurns: 8,
+  maxToolCalls: 64,
+  timeoutSeconds: 300,
+  maxDepth: 4,
   allowedToolNames: '',
   skillIds: '',
   enabled: true
@@ -252,6 +255,9 @@ function resetSubAgentForm() {
     modelId: '',
     systemPrompt: '',
     maxTurns: 8,
+    maxToolCalls: 64,
+    timeoutSeconds: 300,
+    maxDepth: 4,
     allowedToolNames: '',
     skillIds: '',
     enabled: true
@@ -267,6 +273,9 @@ function editSubAgent(profile) {
     modelId: profile.modelId || '',
     systemPrompt: profile.systemPrompt || '',
     maxTurns: profile.maxTurns || 8,
+    maxToolCalls: profile.maxToolCalls ?? 64,
+    timeoutSeconds: profile.timeoutSeconds ?? 300,
+    maxDepth: profile.maxDepth ?? 4,
     allowedToolNames: (profile.allowedToolNames || []).join(', '),
     skillIds: (profile.skillIds || []).join(', '),
     enabled: profile.enabled
@@ -292,6 +301,9 @@ async function saveSubAgent() {
         modelId: subAgentForm.value.modelId.trim() || null,
         systemPrompt: subAgentForm.value.systemPrompt,
         maxTurns: Number(subAgentForm.value.maxTurns) || 8,
+        maxToolCalls: Number(subAgentForm.value.maxToolCalls) || 0,
+        timeoutSeconds: Number(subAgentForm.value.timeoutSeconds) || 0,
+        maxDepth: Number(subAgentForm.value.maxDepth) || 0,
         allowedToolNames: subAgentForm.value.allowedToolNames.split(',').map((value) => value.trim()).filter(Boolean),
         skillIds: subAgentForm.value.skillIds.split(',').map((value) => value.trim()).filter(Boolean),
         enabled: subAgentForm.value.enabled
@@ -1531,7 +1543,7 @@ onUnmounted(() => clearTimeout(planPollTimer))
         <div v-for="profile in subAgents" :key="profile.id" class="managed-tool model-item">
           <div class="managed-tool-copy">
             <div class="managed-tool-title"><strong>{{ profile.name }}</strong><span class="tool-source">{{ String(profile.mode).toLowerCase() }}</span></div>
-            <p>{{ profile.maxTurns }} turns · {{ profile.allowedToolNames.length }} tools · {{ profile.skillIds.length }} skills</p>
+            <p>{{ profile.maxTurns }} turns · {{ profile.maxToolCalls }} tool calls · {{ profile.timeoutSeconds }}s · depth {{ profile.maxDepth }}</p>
           </div>
           <div class="managed-tool-actions model-actions">
             <button class="secondary-button compact" type="button" @click="editSubAgent(profile)">Edit</button>
@@ -1550,7 +1562,8 @@ onUnmounted(() => clearTimeout(planPollTimer))
           <label><span>Model profile ID</span><input v-model="subAgentForm.modelId" placeholder="Optional" autocomplete="off" /></label>
           <label><span>Instructions</span><textarea v-model="subAgentForm.systemPrompt" rows="3" placeholder="Instructions for this worker"></textarea></label>
           <div class="tool-form-grid"><label><span>Allowed tools</span><input v-model="subAgentForm.allowedToolNames" placeholder="time_now, search" autocomplete="off" /></label><label><span>Allowed skills</span><input v-model="subAgentForm.skillIds" placeholder="skill_id" autocomplete="off" /></label></div>
-          <label><span>Max turns</span><input v-model="subAgentForm.maxTurns" type="number" min="1" max="64" inputmode="numeric" /></label>
+          <div class="tool-form-grid"><label><span>Max turns</span><input v-model="subAgentForm.maxTurns" type="number" min="1" max="64" inputmode="numeric" /></label><label><span>Max tool calls</span><input v-model="subAgentForm.maxToolCalls" type="number" min="0" max="10000" inputmode="numeric" /></label></div>
+          <div class="tool-form-grid"><label><span>Timeout seconds</span><input v-model="subAgentForm.timeoutSeconds" type="number" min="0" max="86400" inputmode="numeric" /></label><label><span>Max delegation depth</span><input v-model="subAgentForm.maxDepth" type="number" min="0" max="32" inputmode="numeric" /></label></div>
           <p v-if="subAgentFormError" class="tool-form-error">{{ subAgentFormError }}</p>
           <div class="tool-form-footer"><button class="secondary-button" type="button" @click="resetSubAgentForm">Reset</button><button class="send-button" type="submit" :disabled="subAgentSaving"><span>{{ subAgentSaving ? 'Saving' : 'Save sub-agent' }}</span><span class="send-arrow">↗</span></button></div>
         </form>

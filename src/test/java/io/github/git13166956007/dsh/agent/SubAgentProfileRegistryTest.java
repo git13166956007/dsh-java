@@ -21,6 +21,20 @@ class SubAgentProfileRegistryTest {
     }
 
     @Test
+    void persistsExecutionBudgets() {
+        InMemorySubAgentProfileStore store = new InMemorySubAgentProfileStore();
+        SubAgentProfileRegistry registry = new SubAgentProfileRegistry(store, 8);
+        SubAgentProfile created = registry.create("Bounded worker", AgentMode.EXECUTION, null, "", 5,
+                List.of(), List.of(), true, 12, 45, 3);
+
+        SubAgentProfileRegistry restored = new SubAgentProfileRegistry(store, 8);
+        SubAgentProfile profile = restored.find(created.id());
+        assertEquals(12, profile.maxToolCalls());
+        assertEquals(45, profile.timeoutSeconds());
+        assertEquals(3, profile.maxDepth());
+    }
+
+    @Test
     void rejectsInvalidCapabilityNames() {
         SubAgentProfileRegistry registry = new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 8);
 

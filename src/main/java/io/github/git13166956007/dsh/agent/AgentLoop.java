@@ -100,7 +100,8 @@ public final class AgentLoop {
         if (executionOptions == null) throw new IllegalArgumentException("executionOptions must not be null");
         return runResolved(prompt, apiKey, history, new RunOptions(executionOptions.modelId(), executionOptions.mode(),
                 executionOptions.maxTurns(), executionOptions.systemPrompt(), executionOptions.allowedToolNames(),
-                executionOptions.skillIds(), null, null, null), AgentRunContext.standalone());
+                executionOptions.skillIds(), executionOptions.maxToolCalls(), executionOptions.timeoutSeconds(),
+                executionOptions.maxDepth(), null, null, null), AgentRunContext.standalone());
     }
 
     public AgentRunResult runDetailed(String prompt, String apiKey, List<ChatMessage> history,
@@ -108,7 +109,8 @@ public final class AgentLoop {
         if (executionOptions == null) throw new IllegalArgumentException("executionOptions must not be null");
         return runResolved(prompt, apiKey, history, new RunOptions(executionOptions.modelId(), executionOptions.mode(),
                 executionOptions.maxTurns(), executionOptions.systemPrompt(), executionOptions.allowedToolNames(),
-                executionOptions.skillIds(), null, null, context.agentId()), context);
+                executionOptions.skillIds(), executionOptions.maxToolCalls(), executionOptions.timeoutSeconds(),
+                executionOptions.maxDepth(), null, null, context.agentId()), context);
     }
 
     private AgentRunResult runResolved(String prompt, String apiKey, List<ChatMessage> history,
@@ -121,6 +123,7 @@ public final class AgentLoop {
         try {
             List<ChatMessage> messages = new ArrayList<ChatMessage>();
             List<AgentTraceEvent> trace = new ArrayList<AgentTraceEvent>();
+            ExecutionBudget budget = new ExecutionBudget(options);
             messages.add(ChatMessage.system(systemPrompt(options, prompt)));
             messages.addAll(history);
             messages.add(ChatMessage.user(prompt));
@@ -128,6 +131,7 @@ public final class AgentLoop {
                     ? tools.definitions(options.allowedToolNames()) : List.of();
 
             for (int turn = 0; turn < options.maxTurns(); turn++) {
+                budget.check();
                 ModelResponse response = model.complete(messages, definitions, apiKey, options.modelId());
                 recordEvent(runId, "model_response", response.content());
                 messages.add(ChatMessage.assistant(response.content(), response.toolCalls()));
@@ -141,6 +145,7 @@ public final class AgentLoop {
                 }
 
                 for (ToolCall call : response.toolCalls()) {
+                    budget.beforeToolCall();
                     recordEvent(runId, "tool_call", call.name() + " " + call.arguments());
                     String result;
                     try {
@@ -148,7 +153,7 @@ public final class AgentLoop {
                     } catch (ToolApprovalRequiredException exception) {
                         PendingToolApproval approval = new PendingToolApproval(call.id(), call.name(), call.arguments());
                         String approvalRunId = pauseForApproval(runId, messages, trace, turn + 1, options, apiKey,
-                                definitions, approval);
+                                definitions, budget, approval);
                         return new AgentRunResult("", trace, turn + 1, approvalRunId, approval);
                     } catch (Exception exception) {
                         result = "Tool execution failed: " + exception.getMessage();
@@ -208,6 +213,7 @@ public final class AgentLoop {
         try {
             List<ChatMessage> messages = new ArrayList<ChatMessage>();
             List<AgentTraceEvent> trace = new ArrayList<AgentTraceEvent>();
+            ExecutionBudget budget = new ExecutionBudget(options);
             messages.add(ChatMessage.system(systemPrompt(options, prompt)));
             messages.addAll(history);
             messages.add(ChatMessage.user(prompt));
@@ -215,6 +221,7 @@ public final class AgentLoop {
                     ? tools.definitions(options.allowedToolNames()) : List.of();
 
             for (int turn = 0; turn < options.maxTurns(); turn++) {
+                budget.check();
                 ModelResponse response = model.stream(messages, definitions, apiKey, options.modelId(), delta -> {
                     recordEventUnchecked(runId, "model_delta", delta);
                     listener.onText(delta);
@@ -231,6 +238,7 @@ public final class AgentLoop {
                 }
 
                 for (ToolCall call : response.toolCalls()) {
+                    budget.beforeToolCall();
                     recordEvent(runId, "tool_call", call.name() + " " + call.arguments());
                     listener.onToolCall(call);
                     String result;
@@ -239,7 +247,7 @@ public final class AgentLoop {
                     } catch (ToolApprovalRequiredException exception) {
                         PendingToolApproval approval = new PendingToolApproval(call.id(), call.name(), call.arguments());
                         String approvalRunId = pauseForApproval(runId, messages, trace, turn + 1, options, apiKey,
-                                definitions, approval);
+                                definitions, budget, approval);
                         return new AgentRunResult("", trace, turn + 1, approvalRunId, approval);
                     } catch (Exception exception) {
                         result = "Tool execution failed: " + exception.getMessage();
@@ -274,6 +282,7 @@ public final class AgentLoop {
             if (!approved) {
                 result = "Tool execution denied by user: " + pending.approval.toolName();
             } else {
+                pending.budget.check();
                 try {
                     result = tools.executeApproved(pending.approval.toolName(), pending.approval.arguments(),
                             pending.options.allowedToolNames());
@@ -293,6 +302,7 @@ public final class AgentLoop {
 
     private AgentRunResult continueDetailed(PendingExecution pending) throws Exception {
         for (int turn = pending.nextTurn; turn < pending.options.maxTurns(); turn++) {
+            pending.budget.check();
             ModelResponse response = model.complete(pending.messages, pending.definitions, pending.apiKey,
                     pending.options.modelId());
             recordEvent(pending.runId, "model_response", response.content());
@@ -306,6 +316,7 @@ public final class AgentLoop {
                 return new AgentRunResult(answer, pending.trace, turn + 1, pending.runId);
             }
             for (ToolCall call : response.toolCalls()) {
+                pending.budget.beforeToolCall();
                 recordEvent(pending.runId, "tool_call", call.name() + " " + call.arguments());
                 String result;
                 try {
@@ -313,7 +324,7 @@ public final class AgentLoop {
                 } catch (ToolApprovalRequiredException exception) {
                     PendingToolApproval approval = new PendingToolApproval(call.id(), call.name(), call.arguments());
                     pauseForApproval(pending.runId, pending.messages, pending.trace, turn + 1, pending.options,
-                            pending.apiKey, pending.definitions, approval);
+                            pending.apiKey, pending.definitions, pending.budget, approval);
                     return new AgentRunResult("", pending.trace, turn + 1, pending.runId, approval);
                 } catch (Exception exception) {
                     result = "Tool execution failed: " + exception.getMessage();
@@ -329,10 +340,10 @@ public final class AgentLoop {
     private String pauseForApproval(String runId, List<ChatMessage> messages, List<AgentTraceEvent> trace,
                                     int nextTurn, RunOptions options, String apiKey,
                                     List<io.github.git13166956007.dsh.tool.ToolDefinition> definitions,
-                                    PendingToolApproval approval) throws Exception {
+                                    ExecutionBudget budget, PendingToolApproval approval) throws Exception {
         String actualRunId = runId == null ? UUID.randomUUID().toString() : runId;
         pendingApprovals.put(actualRunId, new PendingExecution(actualRunId, messages, trace, nextTurn, options, apiKey,
-                definitions, approval));
+                definitions, budget, approval));
         if (runs != null) {
             runs.waitForApproval(actualRunId, approval.toolName() + " " + approval.arguments());
         }
@@ -347,12 +358,12 @@ public final class AgentLoop {
                                String memoryNamespace, String memorySubjectKey) {
         if (profiles == null) {
             return new RunOptions(blankToNull(modelId), modeOverride == null ? AgentMode.CHAT : modeOverride,
-                    maxTurns, "", null, null, memoryNamespace, memorySubjectKey, agentId);
+                    maxTurns, "", null, null, 64, 300, 4, memoryNamespace, memorySubjectKey, agentId);
         }
         AgentProfileData profile = profiles.resolve(agentId);
         return new RunOptions(blankToNull(modelId) == null ? profile.modelId() : blankToNull(modelId),
                 modeOverride == null ? profile.mode() : modeOverride, profile.maxTurns(), profile.systemPrompt(), null, null,
-                memoryNamespace, memorySubjectKey, agentId);
+                64, 300, 4, memoryNamespace, memorySubjectKey, agentId);
     }
 
     private String systemPrompt(RunOptions options, String query) throws Exception {
@@ -380,6 +391,12 @@ public final class AgentLoop {
     private String beginRun(RunOptions options, AgentRunContext context) throws Exception {
         if (runs == null) return null;
         AgentRunContext actual = context == null ? AgentRunContext.standalone() : context;
+        if (actual.kind() == io.github.git13166956007.dsh.run.RunKind.SUB_AGENT) {
+            int depth = runs.subAgentDepth(actual.parentRunId()) + 1;
+            if (depth > options.maxDepth()) {
+                throw new AgentBudgetExceededException("maximum sub-agent depth exceeded: " + options.maxDepth());
+            }
+        }
         return runs.start(new RunSpec(actual.parentRunId(), actual.kind(), actual.conversationId(), actual.planId(),
                 actual.stepId(), actual.agentId() == null ? options.agentId() : actual.agentId(), options.modelId()));
     }
@@ -411,6 +428,7 @@ public final class AgentLoop {
 
         private record RunOptions(String modelId, AgentMode mode, int maxTurns, String systemPrompt,
                               java.util.Set<String> allowedToolNames, java.util.Set<String> skillIds,
+                              int maxToolCalls, int timeoutSeconds, int maxDepth,
                               String memoryNamespace, String memorySubjectKey, String agentId) {
     }
 
@@ -422,12 +440,13 @@ public final class AgentLoop {
         private final RunOptions options;
         private final String apiKey;
         private final List<io.github.git13166956007.dsh.tool.ToolDefinition> definitions;
+        private final ExecutionBudget budget;
         private final PendingToolApproval approval;
 
         private PendingExecution(String runId, List<ChatMessage> messages, List<AgentTraceEvent> trace, int nextTurn,
                                  RunOptions options, String apiKey,
                                  List<io.github.git13166956007.dsh.tool.ToolDefinition> definitions,
-                                 PendingToolApproval approval) {
+                                 ExecutionBudget budget, PendingToolApproval approval) {
             this.runId = runId;
             this.messages = messages;
             this.trace = trace;
@@ -435,7 +454,34 @@ public final class AgentLoop {
             this.options = options;
             this.apiKey = apiKey;
             this.definitions = definitions;
+            this.budget = budget;
             this.approval = approval;
+        }
+    }
+
+    private static final class ExecutionBudget {
+        private final int maxToolCalls;
+        private final long deadlineNanos;
+        private int toolCalls;
+
+        private ExecutionBudget(RunOptions options) {
+            this.maxToolCalls = options.maxToolCalls();
+            this.deadlineNanos = options.timeoutSeconds() == 0 ? Long.MAX_VALUE
+                    : System.nanoTime() + options.timeoutSeconds() * 1_000_000_000L;
+        }
+
+        private void check() {
+            if (System.nanoTime() > deadlineNanos) {
+                throw new AgentBudgetExceededException("agent timeout exceeded");
+            }
+        }
+
+        private void beforeToolCall() {
+            check();
+            if (toolCalls >= maxToolCalls) {
+                throw new AgentBudgetExceededException("maximum tool calls exceeded: " + maxToolCalls);
+            }
+            toolCalls++;
         }
     }
 }

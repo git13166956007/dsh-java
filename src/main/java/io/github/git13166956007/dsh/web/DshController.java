@@ -362,7 +362,8 @@ public final class DshController {
     public SubAgentProfile createSubAgent(@RequestBody SubAgentProfileRequest request) {
         try {
             return subAgentProfileRegistry.create(request.name(), AgentMode.parse(request.mode()), request.modelId(),
-                    request.systemPrompt(), request.maxTurns(), request.allowedToolNames(), request.skillIds(), request.enabled());
+                    request.systemPrompt(), request.maxTurns(), request.allowedToolNames(), request.skillIds(), request.enabled(),
+                    request.maxToolCalls(), request.timeoutSeconds(), request.maxDepth());
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
         }
@@ -373,7 +374,7 @@ public final class DshController {
         try {
             return subAgentProfileRegistry.update(id, request.name(), request.mode() == null ? null : AgentMode.parse(request.mode()),
                     request.modelId(), request.systemPrompt(), request.maxTurns(), request.allowedToolNames(),
-                    request.skillIds(), request.enabled());
+                    request.skillIds(), request.enabled(), request.maxToolCalls(), request.timeoutSeconds(), request.maxDepth());
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
         }
@@ -714,7 +715,8 @@ public final class DshController {
 
     public record SubAgentProfileRequest(String name, String mode, String modelId, String systemPrompt,
                                          Integer maxTurns, java.util.List<String> allowedToolNames,
-                                         java.util.List<String> skillIds, Boolean enabled) {
+                                         java.util.List<String> skillIds, Boolean enabled, Integer maxToolCalls,
+                                         Integer timeoutSeconds, Integer maxDepth) {
     }
 
     public record PlanRequest(String title, String goal, String agentId, String modelId,

@@ -229,4 +229,42 @@ class AgentLoopTest {
                         "run_completed"),
                 runs.events(result.runId()).stream().map(io.github.git13166956007.dsh.run.RunEvent::type).toList());
     }
+
+    @Test
+    void enforcesToolCallBudget() throws Exception {
+        ToolRegistry tools = new ToolRegistry();
+        tools.register(new ToolDefinition("budget_tool", "Budget tool.",
+                JsonNodeFactory.instance.objectNode().put("type", "object")), arguments -> "ok");
+        ChatModel model = new ChatModel() {
+            @Override
+            public ModelResponse complete(List<ChatMessage> messages, List<ToolDefinition> definitions) {
+                return new ModelResponse(null, List.of(new ToolCall("budget-1", "budget_tool",
+                        JsonNodeFactory.instance.objectNode())), "tool_calls");
+            }
+        };
+        AgentExecutionOptions options = new AgentExecutionOptions(null, AgentMode.EXECUTION, "", 2,
+                null, null, 0, 300, 4);
+        assertThrows(AgentBudgetExceededException.class,
+                () -> new AgentLoop(model, tools, 2).runDetailed("loop", null, List.of(), options));
+    }
+
+    @Test
+    void enforcesSubAgentDepth() throws Exception {
+        ToolRegistry tools = new ToolRegistry();
+        ChatModel model = new ChatModel() {
+            @Override
+            public ModelResponse complete(List<ChatMessage> messages, List<ToolDefinition> definitions) {
+                return new ModelResponse("done", List.of(), "stop");
+            }
+        };
+        RunManager runs = new RunManager(new InMemoryRunStore());
+        String parent = runs.start(new io.github.git13166956007.dsh.run.RunSpec(null,
+                io.github.git13166956007.dsh.run.RunKind.SUB_AGENT, null, null, null, "parent", null));
+        AgentExecutionOptions options = new AgentExecutionOptions(null, AgentMode.EXECUTION, "", 2,
+                null, null, 4, 300, 1);
+        assertThrows(AgentBudgetExceededException.class, () -> new AgentLoop(model, tools, null, null, null, runs, 2)
+                .runDetailed("nested", null, List.of(), options,
+                        AgentRunContext.child(parent, io.github.git13166956007.dsh.run.RunKind.SUB_AGENT,
+                                null, null, null, "child")));
+    }
 }

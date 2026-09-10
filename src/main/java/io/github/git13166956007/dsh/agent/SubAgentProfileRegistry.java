@@ -38,10 +38,20 @@ public final class SubAgentProfileRegistry {
     public synchronized SubAgentProfile create(String name, AgentMode mode, String modelId, String systemPrompt,
                                                 Integer maxTurns, List<String> allowedToolNames, List<String> skillIds,
                                                 Boolean enabled) {
+        return create(name, mode, modelId, systemPrompt, maxTurns, allowedToolNames, skillIds, enabled, 64, 300, 4);
+    }
+
+    public synchronized SubAgentProfile create(String name, AgentMode mode, String modelId, String systemPrompt,
+                                                Integer maxTurns, List<String> allowedToolNames, List<String> skillIds,
+                                                Boolean enabled, Integer maxToolCalls, Integer timeoutSeconds,
+                                                Integer maxDepth) {
         SubAgentProfileData profile = new SubAgentProfileData(UUID.randomUUID().toString(), required(name, "name"),
                 mode == null ? AgentMode.CHAT : mode, blankToNull(modelId), systemPrompt == null ? "" : systemPrompt.trim(),
                 validMaxTurns(maxTurns == null ? defaultMaxTurns : maxTurns), normalizeList(allowedToolNames, "tool"),
-                normalizeList(skillIds, "skill"), enabled == null || enabled);
+                normalizeList(skillIds, "skill"), enabled == null || enabled,
+                validMaxToolCalls(maxToolCalls == null ? 64 : maxToolCalls),
+                validTimeoutSeconds(timeoutSeconds == null ? 300 : timeoutSeconds),
+                validMaxDepth(maxDepth == null ? 4 : maxDepth));
         save(profile);
         return SubAgentProfile.from(profile);
     }
@@ -49,6 +59,14 @@ public final class SubAgentProfileRegistry {
     public synchronized SubAgentProfile update(String id, String name, AgentMode mode, String modelId,
                                                 String systemPrompt, Integer maxTurns, List<String> allowedToolNames,
                                                 List<String> skillIds, Boolean enabled) {
+        return update(id, name, mode, modelId, systemPrompt, maxTurns, allowedToolNames, skillIds, enabled,
+                null, null, null);
+    }
+
+    public synchronized SubAgentProfile update(String id, String name, AgentMode mode, String modelId,
+                                                String systemPrompt, Integer maxTurns, List<String> allowedToolNames,
+                                                List<String> skillIds, Boolean enabled, Integer maxToolCalls,
+                                                Integer timeoutSeconds, Integer maxDepth) {
         SubAgentProfileData current = resolveExisting(id);
         SubAgentProfileData updated = new SubAgentProfileData(id, name == null ? current.name() : required(name, "name"),
                 mode == null ? current.mode() : mode, modelId == null ? current.modelId() : blankToNull(modelId),
@@ -56,7 +74,10 @@ public final class SubAgentProfileRegistry {
                 maxTurns == null ? current.maxTurns() : validMaxTurns(maxTurns),
                 allowedToolNames == null ? current.allowedToolNames() : normalizeList(allowedToolNames, "tool"),
                 skillIds == null ? current.skillIds() : normalizeList(skillIds, "skill"),
-                enabled == null ? current.enabled() : enabled);
+                enabled == null ? current.enabled() : enabled,
+                maxToolCalls == null ? current.maxToolCalls() : validMaxToolCalls(maxToolCalls),
+                timeoutSeconds == null ? current.timeoutSeconds() : validTimeoutSeconds(timeoutSeconds),
+                maxDepth == null ? current.maxDepth() : validMaxDepth(maxDepth));
         save(updated);
         return SubAgentProfile.from(updated);
     }
@@ -99,6 +120,21 @@ public final class SubAgentProfileRegistry {
 
     private static int validMaxTurns(int value) {
         if (value < 1 || value > 64) throw new IllegalArgumentException("maxTurns must be between 1 and 64");
+        return value;
+    }
+
+    private static int validMaxToolCalls(int value) {
+        if (value < 0 || value > 10000) throw new IllegalArgumentException("maxToolCalls must be between 0 and 10000");
+        return value;
+    }
+
+    private static int validTimeoutSeconds(int value) {
+        if (value < 0 || value > 86400) throw new IllegalArgumentException("timeoutSeconds must be between 0 and 86400");
+        return value;
+    }
+
+    private static int validMaxDepth(int value) {
+        if (value < 0 || value > 32) throw new IllegalArgumentException("maxDepth must be between 0 and 32");
         return value;
     }
 

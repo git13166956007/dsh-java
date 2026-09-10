@@ -142,6 +142,9 @@ CREATE TABLE IF NOT EXISTS dsh_sub_agent_profile (
     allowed_tools TEXT NULL,
     skill_ids TEXT NULL,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    max_tool_calls INT NOT NULL DEFAULT 64,
+    timeout_seconds INT NOT NULL DEFAULT 300,
+    max_depth INT NOT NULL DEFAULT 4,
     created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     INDEX idx_dsh_sub_agent_enabled (enabled)

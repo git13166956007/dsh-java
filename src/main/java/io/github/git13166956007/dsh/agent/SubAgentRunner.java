@@ -35,7 +35,7 @@ public final class SubAgentRunner {
         SubAgentProfileData profile = profiles.resolve(profileId);
         AgentExecutionOptions options = new AgentExecutionOptions(profile.modelId(), modeOverride == null ? profile.mode() : modeOverride,
                 profile.systemPrompt(), profile.maxTurns(), Set.copyOf(profile.allowedToolNames()),
-                Set.copyOf(profile.skillIds()));
+                Set.copyOf(profile.skillIds()), profile.maxToolCalls(), profile.timeoutSeconds(), profile.maxDepth());
         AgentRunContext context = parentRunId == null ? AgentRunContext.standalone()
                 : AgentRunContext.child(parentRunId, RunKind.SUB_AGENT, null, planId, stepId, profileId);
         return agentLoop.runDetailed(prompt, apiKey, List.of(), options, context);

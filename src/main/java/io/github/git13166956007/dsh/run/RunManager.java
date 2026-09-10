@@ -3,6 +3,8 @@ package io.github.git13166956007.dsh.run;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.HashSet;
+import java.util.Set;
 
 public final class RunManager {
     private final RunStore store;
@@ -60,6 +62,26 @@ public final class RunManager {
 
     public List<RunEvent> events(String runId) throws Exception {
         return store.listEvents(runId).stream().map(RunEvent::from).toList();
+    }
+
+    public int subAgentDepth(String parentRunId) throws Exception {
+        int depth = 0;
+        String current = parentRunId;
+        Set<String> visited = new HashSet<String>();
+        List<RunData> all = store.listRuns();
+        while (current != null && visited.add(current)) {
+            RunData run = null;
+            for (RunData candidate : all) {
+                if (candidate.id().equals(current)) {
+                    run = candidate;
+                    break;
+                }
+            }
+            if (run == null) break;
+            if (run.kind() == RunKind.SUB_AGENT) depth++;
+            current = run.parentRunId();
+        }
+        return depth;
     }
 
     private void update(String id, RunStatus status, String error, String output) throws Exception {

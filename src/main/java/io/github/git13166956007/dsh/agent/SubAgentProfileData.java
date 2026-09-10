@@ -11,5 +11,12 @@ public record SubAgentProfileData(
         int maxTurns,
         List<String> allowedToolNames,
         List<String> skillIds,
-        boolean enabled) {
+        boolean enabled,
+        int maxToolCalls,
+        int timeoutSeconds,
+        int maxDepth) {
+    public SubAgentProfileData(String id, String name, AgentMode mode, String modelId, String systemPrompt,
+                               int maxTurns, List<String> allowedToolNames, List<String> skillIds, boolean enabled) {
+        this(id, name, mode, modelId, systemPrompt, maxTurns, allowedToolNames, skillIds, enabled, 64, 300, 4);
+    }
 }

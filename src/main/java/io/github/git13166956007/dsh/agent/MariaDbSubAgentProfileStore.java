@@ -26,13 +26,15 @@ public final class MariaDbSubAgentProfileStore implements SubAgentProfileStore {
         List<SubAgentProfileData> result = new ArrayList<SubAgentProfileData>();
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(
-                     "SELECT id, name, mode, model_id, system_prompt, max_turns, allowed_tools, skill_ids, enabled "
+                     "SELECT id, name, mode, model_id, system_prompt, max_turns, allowed_tools, skill_ids, enabled, "
+                             + "max_tool_calls, timeout_seconds, max_depth "
                              + "FROM dsh_sub_agent_profile ORDER BY created_at, id");
              ResultSet rows = statement.executeQuery()) {
             while (rows.next()) result.add(new SubAgentProfileData(rows.getString("id"), rows.getString("name"),
                     AgentMode.parse(rows.getString("mode")), rows.getString("model_id"), rows.getString("system_prompt"),
                     rows.getInt("max_turns"), split(rows.getString("allowed_tools")), split(rows.getString("skill_ids")),
-                    rows.getBoolean("enabled")));
+                    rows.getBoolean("enabled"), rows.getInt("max_tool_calls"), rows.getInt("timeout_seconds"),
+                    rows.getInt("max_depth")));
         }
         return result;
     }
@@ -42,11 +44,13 @@ public final class MariaDbSubAgentProfileStore implements SubAgentProfileStore {
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(
                      "INSERT INTO dsh_sub_agent_profile "
-                             + "(id, name, mode, model_id, system_prompt, max_turns, allowed_tools, skill_ids, enabled) "
-                             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=VALUES(name), "
+                             + "(id, name, mode, model_id, system_prompt, max_turns, allowed_tools, skill_ids, enabled, "
+                             + "max_tool_calls, timeout_seconds, max_depth) "
+                             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=VALUES(name), "
                              + "mode=VALUES(mode), model_id=VALUES(model_id), system_prompt=VALUES(system_prompt), "
                              + "max_turns=VALUES(max_turns), allowed_tools=VALUES(allowed_tools), skill_ids=VALUES(skill_ids), "
-                             + "enabled=VALUES(enabled)")) {
+                             + "enabled=VALUES(enabled), max_tool_calls=VALUES(max_tool_calls), "
+                             + "timeout_seconds=VALUES(timeout_seconds), max_depth=VALUES(max_depth)")) {
             statement.setString(1, profile.id());
             statement.setString(2, profile.name());
             statement.setString(3, profile.mode().value());
@@ -56,6 +60,9 @@ public final class MariaDbSubAgentProfileStore implements SubAgentProfileStore {
             statement.setString(7, join(profile.allowedToolNames()));
             statement.setString(8, join(profile.skillIds()));
             statement.setBoolean(9, profile.enabled());
+            statement.setInt(10, profile.maxToolCalls());
+            statement.setInt(11, profile.timeoutSeconds());
+            statement.setInt(12, profile.maxDepth());
             statement.executeUpdate();
         }
     }
@@ -76,10 +83,24 @@ public final class MariaDbSubAgentProfileStore implements SubAgentProfileStore {
                              + "id VARCHAR(64) NOT NULL PRIMARY KEY, name VARCHAR(128) NOT NULL, mode VARCHAR(32) NOT NULL, "
                              + "model_id VARCHAR(64) NULL, system_prompt TEXT NULL, max_turns INT NOT NULL DEFAULT 8, "
                              + "allowed_tools TEXT NULL, skill_ids TEXT NULL, enabled BOOLEAN NOT NULL DEFAULT TRUE, "
+                             + "max_tool_calls INT NOT NULL DEFAULT 64, timeout_seconds INT NOT NULL DEFAULT 300, "
+                             + "max_depth INT NOT NULL DEFAULT 4, "
                              + "created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), "
                              + "updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3), "
                              + "INDEX idx_dsh_sub_agent_enabled (enabled)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4")) {
             statement.executeUpdate();
+            try (PreparedStatement alter = connection.prepareStatement(
+                    "ALTER TABLE dsh_sub_agent_profile ADD COLUMN IF NOT EXISTS max_tool_calls INT NOT NULL DEFAULT 64")) {
+                alter.executeUpdate();
+            }
+            try (PreparedStatement alter = connection.prepareStatement(
+                    "ALTER TABLE dsh_sub_agent_profile ADD COLUMN IF NOT EXISTS timeout_seconds INT NOT NULL DEFAULT 300")) {
+                alter.executeUpdate();
+            }
+            try (PreparedStatement alter = connection.prepareStatement(
+                    "ALTER TABLE dsh_sub_agent_profile ADD COLUMN IF NOT EXISTS max_depth INT NOT NULL DEFAULT 4")) {
+                alter.executeUpdate();
+            }
         } catch (SQLException exception) {
             throw new IllegalStateException("failed to initialize sub-agent profile schema", exception);
         }
