@@ -1,0 +1,44 @@
+README.md
+  h_eb697744b14c1b 93
+docker/mariadb/init/001_schema.sql
+  h_eb697744b14c1b 115,128
+docs/runtime-roadmap.md
+  h_eb697744b14c1b 13
+frontend/src/App.vue
+  h_eb697744b14c1b 65-66,70,307-308,314,339,344-345,379-380,1426,1432,1443-1444
+src/main/java/io/github/git13166956007/dsh/plan/AdaptivePlanService.java
+  h_eb697744b14c1b 33-37,61-62
+src/main/java/io/github/git13166956007/dsh/plan/MariaDbPlanStore.java
+  h_eb697744b14c1b 30,43,57-58,60-61,68-71,80-81,83,90-96,116,124,133-144,153,160,171-180
+src/main/java/io/github/git13166956007/dsh/plan/Plan.java
+  h_eb697744b14c1b 15,26
+src/main/java/io/github/git13166956007/dsh/plan/PlanData.java
+  h_eb697744b14c1b 12
+src/main/java/io/github/git13166956007/dsh/plan/PlanExecutor.java
+  h_eb697744b14c1b 7-9,12-13,16,46-51,53,57-61,63-68,70-78,81-86,92-128
+src/main/java/io/github/git13166956007/dsh/plan/PlanRegistry.java
+  h_eb697744b14c1b 39-46,51,59,61,87,98,109,127,188,223-236,238-242
+src/main/java/io/github/git13166956007/dsh/plan/PlanStep.java
+  h_eb697744b14c1b 3-6,11,19,22-25
+src/main/java/io/github/git13166956007/dsh/plan/PlanStepData.java
+  h_eb697744b14c1b 3-4,10
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 372,375-376,389,560,563-564,571
+src/test/java/io/github/git13166956007/dsh/plan/AdaptivePlanServiceTest.java
+  h_eb697744b14c1b 35
+src/test/java/io/github/git13166956007/dsh/plan/PlanExecutorTest.java
+  h_eb697744b14c1b 1-53
+src/test/java/io/github/git13166956007/dsh/plan/PlanRegistryTest.java
+  h_eb697744b14c1b 49-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d9bc4fa7d6c8a1e493d22b15b9dfb6af138cddf5",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
