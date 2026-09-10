@@ -1,0 +1,41 @@
+src/main/java/io/github/git13166956007/dsh/tool/ToolRegistry.java
+  s_a5a7ed9d9775a6::t_59a5e99078c434 21-23,27-42,46,53
+src/main/java/io/github/git13166956007/dsh/context/MariaDbConversationStore.java
+  s_a5a7ed9d9775a6::t_59a5e99078c434 55-56,64-89
+  s_a5a7ed9d9775a6::t_2949c3ceeed35b 1-54,57-63,90-109
+src/main/java/io/github/git13166956007/dsh/tool/ToolInfo.java
+  s_a5a7ed9d9775a6::t_59a5e99078c434 1-6
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  s_a5a7ed9d9775a6::t_59a5e99078c434 8,10-14,21,23-24,37-39,41-42,45-47,59-106,112-121,130-139,141-142,145,165-166
+frontend/src/App.vue
+  s_a5a7ed9d9775a6::t_59a5e99078c434 10,62-66,83,155
+src/main/java/io/github/git13166956007/dsh/config/DshRuntimeConfiguration.java
+  s_a5a7ed9d9775a6::t_59a5e99078c434 7-10,12,61-75
+  s_a5a7ed9d9775a6::t_8514e0228ff94f 76-78
+build.gradle
+  s_a5a7ed9d9775a6::t_20797f119132d4 23
+src/main/java/io/github/git13166956007/dsh/agent/AgentLoop.java
+  s_a5a7ed9d9775a6::t_6603dceec044c9 32-35,43,72-76,84
+src/main/java/io/github/git13166956007/dsh/context/ConversationStore.java
+  s_a5a7ed9d9775a6::t_9107d547af0b38 1-12
+src/main/java/io/github/git13166956007/dsh/context/InMemoryConversationStore.java
+  s_a5a7ed9d9775a6::t_85a99484af5fc2 1-35
+src/main/resources/application.yml
+  s_a5a7ed9d9775a6::t_2d262ddefb01cc 15-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9e0b29c3dc978fd051b1172a15a7e2bc829aa8f8",
+  "prompts": {},
+  "sessions": {
+    "s_a5a7ed9d9775a6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "871ae448-8f9b-416c-8d7d-9b7fec0caecc",
+        "model": "glm-5.3"
+      },
+      "human_author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
