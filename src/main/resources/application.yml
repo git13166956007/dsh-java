@@ -10,3 +10,5 @@ dsh:
     base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
     api-key: ${DEEPSEEK_API_KEY:}
     name: ${DEEPSEEK_MODEL:deepseek-flash}
+    proxy-host: ${DEEPSEEK_PROXY_HOST:}
+    proxy-port: ${DEEPSEEK_PROXY_PORT:0}

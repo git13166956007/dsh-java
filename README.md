@@ -27,6 +27,9 @@ Java 版 DeepSeek Harness 的最小运行时内核。
 
 ```bash
 export DEEPSEEK_API_KEY=your-api-key
+# 如果本机通过代理访问外网：
+export DEEPSEEK_PROXY_HOST=127.0.0.1
+export DEEPSEEK_PROXY_PORT=7897
 ./gradlew bootRun
 ```
 

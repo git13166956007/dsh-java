@@ -10,6 +10,8 @@ import io.github.git13166956007.dsh.agent.ModelResponse;
 import io.github.git13166956007.dsh.agent.ToolCall;
 import io.github.git13166956007.dsh.tool.ToolDefinition;
 import java.net.URI;
+import java.net.InetSocketAddress;
+import java.net.ProxySelector;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -25,11 +27,20 @@ public final class DeepSeekChatModel implements ChatModel {
     private final URI endpoint;
 
     public DeepSeekChatModel(ObjectMapper objectMapper, String baseUrl, String apiKey, String model) {
+        this(objectMapper, baseUrl, apiKey, model, "", 0);
+    }
+
+    public DeepSeekChatModel(ObjectMapper objectMapper, String baseUrl, String apiKey,
+                             String model, String proxyHost, int proxyPort) {
         this.objectMapper = objectMapper;
         this.apiKey = apiKey;
         this.model = model;
         this.endpoint = URI.create(trimTrailingSlash(baseUrl) + "/chat/completions");
-        this.httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build();
+        HttpClient.Builder client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15));
+        if (proxyHost != null && !proxyHost.trim().isEmpty() && proxyPort > 0) {
+            client.proxy(ProxySelector.of(new InetSocketAddress(proxyHost, proxyPort)));
+        }
+        this.httpClient = client.build();
     }
 
     @Override
