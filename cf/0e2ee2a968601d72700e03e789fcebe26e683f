@@ -1,0 +1,40 @@
+README.md
+  h_eb697744b14c1b 103,107,142,148
+docs/runtime-roadmap.md
+  h_eb697744b14c1b 9,12-13,15
+frontend/src/App.vue
+  h_eb697744b14c1b 1734-1735
+src/main/java/io/github/git13166956007/dsh/config/DshRuntimeConfiguration.java
+  h_eb697744b14c1b 235-236
+src/main/java/io/github/git13166956007/dsh/memory/MemoryManager.java
+  h_eb697744b14c1b 4-9,13,16-19,21,59-98
+src/main/java/io/github/git13166956007/dsh/plan/AdaptivePlanService.java
+  h_eb697744b14c1b 62,76,84-86,124-138
+src/main/java/io/github/git13166956007/dsh/skill/SkillInfo.java
+  h_eb697744b14c1b 3-13
+src/main/java/io/github/git13166956007/dsh/skill/SkillLoader.java
+  h_eb697744b14c1b 7,9,30,34-43
+src/main/java/io/github/git13166956007/dsh/skill/SkillRegistry.java
+  h_eb697744b14c1b 61,106-107
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 86-87,114-115,753,818,875-884
+src/main/resources/application.yml
+  h_eb697744b14c1b 27-30
+src/test/java/io/github/git13166956007/dsh/memory/MemoryManagerTest.java
+  h_eb697744b14c1b 6-8,22-36
+src/test/java/io/github/git13166956007/dsh/plan/AdaptivePlanServiceTest.java
+  h_eb697744b14c1b 64-78
+src/test/java/io/github/git13166956007/dsh/skill/SkillLoaderTest.java
+  h_eb697744b14c1b 16-17,23,26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "cf0e2ee2a968601d72700e03e789fcebe26e683f",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
