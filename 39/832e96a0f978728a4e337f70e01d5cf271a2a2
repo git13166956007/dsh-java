@@ -1,0 +1,34 @@
+README.md
+  h_eb697744b14c1b 87
+docker/mariadb/init/001_schema.sql
+  h_eb697744b14c1b 121
+frontend/src/App.vue
+  h_eb697744b14c1b 101-102,858-859,886-887,924,1599,1629
+src/main/java/io/github/git13166956007/dsh/model/MariaDbModelProfileStore.java
+  h_eb697744b14c1b 35,47,59,61,65,81-97,120,153
+src/main/java/io/github/git13166956007/dsh/model/ModelProfile.java
+  h_eb697744b14c1b 24-25,29,37-38
+src/main/java/io/github/git13166956007/dsh/model/ModelProfileData.java
+  h_eb697744b14c1b 24-36,40
+src/main/java/io/github/git13166956007/dsh/model/ModelRegistry.java
+  h_eb697744b14c1b 34,41,89-100,113-115,175-177,213-217,231,237-240,263-279,329,349-374
+src/main/java/io/github/git13166956007/dsh/model/ModelRouter.java
+  h_eb697744b14c1b 13,32-43,45,51-67,70-74,77
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 292,323-324,769
+src/test/java/io/github/git13166956007/dsh/model/ModelRegistryTest.java
+  h_eb697744b14c1b 6,88-115
+src/test/java/io/github/git13166956007/dsh/model/ModelRouterTest.java
+  h_eb697744b14c1b 99-135
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "39832e96a0f978728a4e337f70e01d5cf271a2a2",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
