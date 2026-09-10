@@ -121,6 +121,27 @@ h2 { font-size: 17px; }
 .tool-source.connected { border-color: #6ca695; color: #9ce3ca; }
 .model-item { align-items: center; }
 .model-item .managed-tool-copy p { line-height: 1.65; }
+.plan-item { align-items: center; }
+.plan-item.selected { border-left: 2px solid #8fd7bf; padding-left: 11px; }
+.plan-select { min-width: 0; flex: 1; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; }
+.plan-select .managed-tool-title, .plan-select .managed-tool-copy { display: block; }
+.plan-goal, .plan-meta { display: block; margin-top: 6px; color: #85918f; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.plan-meta { color: #667477; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase; }
+.plan-detail { margin: 17px 23px 23px; padding: 18px 0 0; border-top: 1px solid #293236; }
+.plan-detail-goal { margin: 0 0 15px; color: #aebbb7; font-size: 12px; line-height: 1.6; }
+.plan-step { display: flex; gap: 10px; padding: 11px 0; border-top: 1px solid #273235; }
+.plan-step-index { flex: 0 0 22px; width: 22px; height: 22px; display: grid; place-items: center; border: 1px solid #46575a; color: #bdc9c5; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.plan-step.completed .plan-step-index { border-color: #6ca695; color: #9ce3ca; }
+.plan-step.failed .plan-step-index { border-color: #a15f56; color: #e79487; }
+.plan-step-copy { min-width: 0; flex: 1; }
+.plan-step-copy strong { display: block; color: #d9e5e0; font-size: 12px; }
+.plan-step-copy > span { display: block; margin-top: 3px; color: #73807f; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase; }
+.plan-step-copy p { margin: 7px 0 0; color: #85918f; font-size: 12px; line-height: 1.5; }
+.plan-step-copy pre { max-height: 110px; margin-top: 8px; }
+.plan-approval-toggle { display: flex !important; align-items: center; gap: 8px; color: #aebbb7 !important; font: 11px inherit !important; text-transform: none !important; }
+.plan-approval-toggle input { width: auto !important; }
+.plan-form-step { margin-top: 15px; padding: 12px; border: 1px solid #29383a; background: #12191b; }
+.plan-form-step-header { display: flex; align-items: center; justify-content: space-between; color: #81908d; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .1em; }
 .model-actions { flex-wrap: wrap; justify-content: flex-end; }
 .managed-tool-actions { display: flex; align-items: center; gap: 11px; padding-top: 1px; }
 .tool-toggle { position: relative; width: 33px; height: 19px; flex: 0 0 auto; }

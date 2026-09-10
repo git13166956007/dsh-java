@@ -19,6 +19,9 @@ import io.github.git13166956007.dsh.skill.SkillInfo;
 import io.github.git13166956007.dsh.skill.SkillRegistry;
 import io.github.git13166956007.dsh.model.ModelProfile;
 import io.github.git13166956007.dsh.model.ModelRegistry;
+import io.github.git13166956007.dsh.plan.Plan;
+import io.github.git13166956007.dsh.plan.PlanExecutor;
+import io.github.git13166956007.dsh.plan.PlanRegistry;
 import io.github.git13166956007.dsh.tool.ToolInfo;
 import io.github.git13166956007.dsh.tool.ToolRegistry;
 import io.github.git13166956007.dsh.core.DshRuntime;
@@ -51,11 +54,14 @@ public final class DshController {
     private final SkillRegistry skillRegistry;
     private final ModelRegistry modelRegistry;
     private final AgentProfileRegistry agentProfileRegistry;
+    private final PlanRegistry planRegistry;
+    private final PlanExecutor planExecutor;
 
     public DshController(DshRuntime runtime, AgentLoop agentLoop, ContextManager contextManager,
                          ToolRegistry toolRegistry, McpServerRegistry mcpServerRegistry,
                          McpClientManager mcpClientManager, SkillRegistry skillRegistry,
-                         ModelRegistry modelRegistry, AgentProfileRegistry agentProfileRegistry) {
+                         ModelRegistry modelRegistry, AgentProfileRegistry agentProfileRegistry,
+                         PlanRegistry planRegistry, PlanExecutor planExecutor) {
         this.runtime = runtime;
         this.agentLoop = agentLoop;
         this.contextManager = contextManager;
@@ -65,6 +71,8 @@ public final class DshController {
         this.skillRegistry = skillRegistry;
         this.modelRegistry = modelRegistry;
         this.agentProfileRegistry = agentProfileRegistry;
+        this.planRegistry = planRegistry;
+        this.planExecutor = planExecutor;
     }
 
     @GetMapping("/health")
@@ -300,6 +308,71 @@ public final class DshController {
         }
     }
 
+    @GetMapping("/plans")
+    public java.util.List<Plan> plans() {
+        return planRegistry.list();
+    }
+
+    @GetMapping("/plans/{id}")
+    public Plan plan(@PathVariable String id) {
+        Plan plan = planRegistry.find(id);
+        if (plan == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown plan: " + id);
+        return plan;
+    }
+
+    @PostMapping("/plans")
+    public Plan createPlan(@RequestBody PlanRequest request) {
+        if (request == null || request.steps() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "title, goal and steps are required");
+        }
+        try {
+            java.util.List<io.github.git13166956007.dsh.plan.PlanRegistry.PlanStepInput> steps = request.steps().stream()
+                    .map(step -> new io.github.git13166956007.dsh.plan.PlanRegistry.PlanStepInput(
+                            step.title(), step.instruction(), step.maxAttempts()))
+                    .toList();
+            return planRegistry.create(request.title(), request.goal(), request.agentId(), request.modelId(),
+                    request.approvalRequired() == null || request.approvalRequired(), steps);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
+        }
+    }
+
+    @PostMapping("/plans/{id}/approve")
+    public Plan approvePlan(@PathVariable String id) {
+        try {
+            return planRegistry.approve(id);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
+        } catch (IllegalStateException exception) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, exception.getMessage(), exception);
+        }
+    }
+
+    @PostMapping("/plans/{id}/execute")
+    public Plan executePlan(@PathVariable String id, @RequestBody(required = false) PlanExecuteRequest request) {
+        try {
+            return planExecutor.execute(id, request == null ? null : request.apiKey());
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
+        } catch (IllegalStateException exception) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, exception.getMessage(), exception);
+        }
+    }
+
+    @PostMapping("/plans/{id}/cancel")
+    public Plan cancelPlan(@PathVariable String id) {
+        try {
+            return planExecutor.cancel(id);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
+        }
+    }
+
+    @DeleteMapping("/plans/{id}")
+    public void deletePlan(@PathVariable String id) {
+        if (!planRegistry.delete(id)) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown plan: " + id);
+    }
+
     @PostMapping("/chat")
     public ChatResponse chat(@RequestBody ChatRequest request) throws Exception {
         if (request == null || request.message() == null || request.message().trim().isEmpty()) {
@@ -421,6 +494,16 @@ public final class DshController {
 
     public record AgentProfileRequest(String name, String mode, String modelId, String systemPrompt,
                                       Integer maxTurns, Boolean enabled, Boolean active) {
+    }
+
+    public record PlanRequest(String title, String goal, String agentId, String modelId,
+                               Boolean approvalRequired, java.util.List<PlanStepRequest> steps) {
+    }
+
+    public record PlanStepRequest(String title, String instruction, Integer maxAttempts) {
+    }
+
+    public record PlanExecuteRequest(String apiKey) {
     }
 
     public record ToolCreateRequest(String name, String description, tools.jackson.databind.JsonNode parameters,

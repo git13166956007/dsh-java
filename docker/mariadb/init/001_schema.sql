@@ -89,3 +89,34 @@ CREATE TABLE IF NOT EXISTS dsh_agent_profile (
     updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     INDEX idx_dsh_agent_active (active, enabled)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS dsh_plan (
+    id VARCHAR(64) NOT NULL PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    goal TEXT NOT NULL,
+    agent_id VARCHAR(64) NULL,
+    model_id VARCHAR(64) NULL,
+    approval_required BOOLEAN NOT NULL DEFAULT TRUE,
+    status VARCHAR(32) NOT NULL,
+    created_at TIMESTAMP(3) NOT NULL,
+    updated_at TIMESTAMP(3) NOT NULL,
+    INDEX idx_dsh_plan_status (status),
+    INDEX idx_dsh_plan_updated (updated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS dsh_plan_step (
+    id VARCHAR(64) NOT NULL PRIMARY KEY,
+    plan_id VARCHAR(64) NOT NULL,
+    step_no INT NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    instruction TEXT NOT NULL,
+    status VARCHAR(32) NOT NULL,
+    result_text LONGTEXT NULL,
+    attempts INT NOT NULL DEFAULT 0,
+    max_attempts INT NOT NULL DEFAULT 1,
+    created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    CONSTRAINT fk_dsh_plan_step_plan FOREIGN KEY (plan_id) REFERENCES dsh_plan (id) ON DELETE CASCADE,
+    UNIQUE KEY uq_dsh_plan_step_no (plan_id, step_no),
+    INDEX idx_dsh_plan_step_status (plan_id, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

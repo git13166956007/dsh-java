@@ -21,6 +21,11 @@ import io.github.git13166956007.dsh.model.MariaDbModelProfileStore;
 import io.github.git13166956007.dsh.model.ModelProfileStore;
 import io.github.git13166956007.dsh.model.ModelRegistry;
 import io.github.git13166956007.dsh.model.ModelRouter;
+import io.github.git13166956007.dsh.plan.InMemoryPlanStore;
+import io.github.git13166956007.dsh.plan.MariaDbPlanStore;
+import io.github.git13166956007.dsh.plan.PlanExecutor;
+import io.github.git13166956007.dsh.plan.PlanRegistry;
+import io.github.git13166956007.dsh.plan.PlanStore;
 import io.github.git13166956007.dsh.tool.ToolDefinition;
 import io.github.git13166956007.dsh.tool.ToolRegistry;
 import java.time.OffsetDateTime;
@@ -102,6 +107,26 @@ public class DshRuntimeConfiguration {
                                AgentProfileRegistry agentProfileRegistry, Environment environment) {
         return new AgentLoop(chatModel, toolRegistry, skillRegistry, agentProfileRegistry,
                 Integer.parseInt(environment.getProperty("dsh.agent.max-turns", "8")));
+    }
+
+    @Bean
+    public PlanStore planStore(Environment environment) {
+        boolean enabled = Boolean.parseBoolean(environment.getProperty("dsh.persistence.enabled", "false"));
+        if (!enabled) return new InMemoryPlanStore();
+        return new MariaDbPlanStore(
+                environment.getProperty("dsh.persistence.jdbc-url"),
+                environment.getProperty("dsh.persistence.username"),
+                environment.getProperty("dsh.persistence.password"));
+    }
+
+    @Bean
+    public PlanRegistry planRegistry(PlanStore store) {
+        return new PlanRegistry(store);
+    }
+
+    @Bean(destroyMethod = "close")
+    public PlanExecutor planExecutor(PlanRegistry planRegistry, AgentLoop agentLoop) {
+        return new PlanExecutor(planRegistry, agentLoop);
     }
 
     @Bean

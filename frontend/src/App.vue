@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import DOMPurify from 'dompurify'
 import katex from 'katex'
 import { marked } from 'marked'
@@ -39,6 +39,20 @@ const agentForm = ref({
 })
 const agentFormError = ref('')
 const agentSaving = ref(false)
+const plans = ref([])
+const selectedPlanId = ref(null)
+const planDetail = ref(null)
+const planForm = ref({
+  title: '',
+  goal: '',
+  agentId: '',
+  modelId: '',
+  approvalRequired: true,
+  steps: [{ title: '', instruction: '', maxAttempts: 1 }]
+})
+const planFormError = ref('')
+const planSaving = ref(false)
+let planPollTimer = null
 const modelForm = ref({
   id: null,
   name: '',
@@ -150,6 +164,107 @@ async function refreshAgents() {
   }
 }
 
+async function refreshPlans() {
+  try {
+    const response = await fetch('/api/v1/plans')
+    if (!response.ok) throw new Error('Plans unavailable')
+    plans.value = await response.json()
+    if (selectedPlanId.value && plans.value.some((plan) => plan.id === selectedPlanId.value)) {
+      await refreshPlanDetail(selectedPlanId.value)
+    }
+  } catch {
+    plans.value = []
+    planDetail.value = null
+  }
+}
+
+async function refreshPlanDetail(id) {
+  const response = await fetch(`/api/v1/plans/${encodeURIComponent(id)}`)
+  if (!response.ok) return
+  planDetail.value = await response.json()
+  const index = plans.value.findIndex((plan) => plan.id === id)
+  if (index >= 0) plans.value[index] = planDetail.value
+  if (planDetail.value.status === 'RUNNING') {
+    clearTimeout(planPollTimer)
+    planPollTimer = setTimeout(() => refreshPlanDetail(id), 1200)
+  }
+}
+
+function resetPlanForm() {
+  planForm.value = {
+    title: '',
+    goal: '',
+    agentId: selectedAgentId.value || '',
+    modelId: selectedModelId.value || '',
+    approvalRequired: true,
+    steps: [{ title: '', instruction: '', maxAttempts: 1 }]
+  }
+  planFormError.value = ''
+}
+
+function addPlanStep() {
+  planForm.value.steps.push({ title: '', instruction: '', maxAttempts: 1 })
+}
+
+function removePlanStep(index) {
+  if (planForm.value.steps.length > 1) planForm.value.steps.splice(index, 1)
+}
+
+async function createPlan() {
+  planFormError.value = ''
+  if (!planForm.value.title.trim() || !planForm.value.goal.trim()
+      || planForm.value.steps.some((step) => !step.title.trim() || !step.instruction.trim())) {
+    planFormError.value = 'Please provide a title, goal, and instructions for every step'
+    return
+  }
+  planSaving.value = true
+  try {
+    const response = await fetch('/api/v1/plans', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: planForm.value.title.trim(),
+        goal: planForm.value.goal.trim(),
+        agentId: planForm.value.agentId.trim() || null,
+        modelId: planForm.value.modelId.trim() || null,
+        approvalRequired: planForm.value.approvalRequired,
+        steps: planForm.value.steps.map((step) => ({
+          title: step.title.trim(),
+          instruction: step.instruction.trim(),
+          maxAttempts: Number(step.maxAttempts) || 1
+        }))
+      })
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload.message || payload.error || 'Plan creation failed')
+    selectedPlanId.value = payload.id
+    planDetail.value = payload
+    await refreshPlans()
+    resetPlanForm()
+  } catch (requestError) {
+    planFormError.value = requestError.message
+  } finally {
+    planSaving.value = false
+  }
+}
+
+async function planAction(plan, action) {
+  const body = action === 'execute' ? JSON.stringify({ apiKey: apiKey.value.trim() || null }) : undefined
+  const response = await fetch(`/api/v1/plans/${encodeURIComponent(plan.id)}/${action}`, {
+    method: 'POST',
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    planFormError.value = payload.message || payload.error || `Plan ${action} failed`
+    return
+  }
+  selectedPlanId.value = plan.id
+  planDetail.value = payload
+  await refreshPlans()
+}
+
 function applyAgentSelection() {
   const selected = agents.value.find((agent) => agent.id === selectedAgentId.value)
   if (selected) selectedMode.value = String(selected.mode || 'CHAT').toLowerCase()
@@ -171,6 +286,7 @@ function openCapabilities(tab) {
   refreshSkills()
   refreshModels()
   refreshAgents()
+  refreshPlans()
 }
 
 function resetAgentForm() {
@@ -682,7 +798,10 @@ onMounted(() => {
   refreshSkills()
   refreshModels()
   refreshAgents()
+  refreshPlans()
 })
+
+onUnmounted(() => clearTimeout(planPollTimer))
 </script>
 
 <template>
@@ -763,6 +882,10 @@ onMounted(() => {
           <button class="tools-button" type="button" title="Manage models" @click="openCapabilities('models')">
             <span>Models</span>
             <span class="tools-button-count">{{ models.length }}</span>
+          </button>
+          <button class="tools-button" type="button" title="Manage plans" @click="openCapabilities('plans')">
+            <span>Plans</span>
+            <span class="tools-button-count">{{ plans.length }}</span>
           </button>
           <label class="api-key-control">
             <span>DEBUG API KEY</span>
@@ -882,6 +1005,7 @@ onMounted(() => {
         <button :class="{ active: capabilityTab === 'skills' }" type="button" @click="capabilityTab = 'skills'">Skills</button>
         <button :class="{ active: capabilityTab === 'models' }" type="button" @click="capabilityTab = 'models'">Models</button>
         <button :class="{ active: capabilityTab === 'agents' }" type="button" @click="capabilityTab = 'agents'">Agents</button>
+        <button :class="{ active: capabilityTab === 'plans' }" type="button" @click="capabilityTab = 'plans'">Plans</button>
       </nav>
 
       <div v-if="capabilityTab === 'tools'" class="tool-manager-list">
@@ -1080,6 +1204,58 @@ onMounted(() => {
             <button class="secondary-button" type="button" @click="resetAgentForm">Reset</button>
             <button class="send-button" type="submit" :disabled="agentSaving"><span>{{ agentSaving ? 'Saving' : 'Save agent' }}</span><span class="send-arrow">↗</span></button>
           </div>
+        </form>
+      </div>
+
+      <div v-if="capabilityTab === 'plans'" class="tool-manager-list">
+        <div v-for="plan in plans" :key="plan.id" class="managed-tool plan-item" :class="{ selected: selectedPlanId === plan.id }">
+          <button class="plan-select" type="button" @click="selectedPlanId = plan.id; refreshPlanDetail(plan.id)">
+            <span class="managed-tool-copy">
+              <span class="managed-tool-title"><strong>{{ plan.title }}</strong><span class="tool-source">{{ String(plan.status).toLowerCase() }}</span></span>
+              <span class="managed-tool-copy"><span class="plan-goal">{{ plan.goal }}</span><span class="plan-meta">{{ plan.steps.length }} steps · {{ plan.approvalRequired ? 'approval required' : 'auto-run' }}</span></span>
+            </span>
+          </button>
+          <div class="managed-tool-actions model-actions">
+            <button v-if="plan.status === 'DRAFT'" class="secondary-button compact" type="button" @click="planAction(plan, 'approve')">Approve</button>
+            <button v-if="plan.status === 'APPROVED'" class="secondary-button compact" type="button" @click="planAction(plan, 'execute')">Execute</button>
+            <button v-if="plan.status === 'RUNNING'" class="secondary-button compact" type="button" @click="planAction(plan, 'cancel')">Cancel</button>
+          </div>
+        </div>
+        <p v-if="plans.length === 0" class="tool-manager-empty">No plans configured.</p>
+
+        <div v-if="planDetail" class="plan-detail">
+          <div class="tool-form-heading">
+            <div><div class="eyebrow">PLAN INSPECTOR</div><h3>{{ planDetail.title }}</h3></div>
+            <span class="tool-form-note">{{ String(planDetail.status).toLowerCase() }}</span>
+          </div>
+          <p class="plan-detail-goal">{{ planDetail.goal }}</p>
+          <div v-for="step in planDetail.steps" :key="step.id" class="plan-step" :class="String(step.status).toLowerCase()">
+            <div class="plan-step-index">{{ step.stepNo }}</div>
+            <div class="plan-step-copy"><strong>{{ step.title }}</strong><span>{{ String(step.status).toLowerCase() }} · {{ step.attempts }}/{{ step.maxAttempts }}</span><p>{{ step.instruction }}</p><pre v-if="step.result">{{ step.result }}</pre></div>
+          </div>
+        </div>
+
+        <form class="tool-create-form inline-form" @submit.prevent="createPlan">
+          <div class="tool-form-heading">
+            <div><div class="eyebrow">PLAN BUILDER</div><h3>Create plan</h3></div>
+            <span class="tool-form-note">Approval-aware</span>
+          </div>
+          <label><span>Title</span><input v-model="planForm.title" placeholder="Release checklist" autocomplete="off" /></label>
+          <label><span>Goal</span><textarea v-model="planForm.goal" rows="2" placeholder="What should this plan accomplish?"></textarea></label>
+          <div class="tool-form-grid">
+            <label><span>Agent profile ID</span><input v-model="planForm.agentId" placeholder="Optional" autocomplete="off" /></label>
+            <label><span>Model profile ID</span><input v-model="planForm.modelId" placeholder="Optional" autocomplete="off" /></label>
+          </div>
+          <label class="plan-approval-toggle"><input v-model="planForm.approvalRequired" type="checkbox" /> Require approval before execution</label>
+          <div v-for="(step, index) in planForm.steps" :key="index" class="plan-form-step">
+            <div class="plan-form-step-header"><span>STEP {{ index + 1 }}</span><button v-if="planForm.steps.length > 1" class="delete-tool-button" type="button" title="Remove step" aria-label="Remove step" @click="removePlanStep(index)">×</button></div>
+            <label><span>Title</span><input v-model="step.title" placeholder="Build" autocomplete="off" /></label>
+            <label><span>Instruction</span><textarea v-model="step.instruction" rows="2" placeholder="Tell the execution agent what to do"></textarea></label>
+            <label><span>Max attempts</span><input v-model="step.maxAttempts" type="number" min="1" max="10" inputmode="numeric" /></label>
+          </div>
+          <button class="secondary-button" type="button" @click="addPlanStep">+ Add step</button>
+          <p v-if="planFormError" class="tool-form-error">{{ planFormError }}</p>
+          <div class="tool-form-footer"><button class="secondary-button" type="button" @click="resetPlanForm">Reset</button><button class="send-button" type="submit" :disabled="planSaving"><span>{{ planSaving ? 'Creating' : 'Create plan' }}</span><span class="send-arrow">↗</span></button></div>
         </form>
       </div>
     </section>
