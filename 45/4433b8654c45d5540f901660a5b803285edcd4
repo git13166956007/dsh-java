@@ -1,0 +1,58 @@
+README.md
+  h_eb697744b14c1b 91
+docker/mariadb/init/001_schema.sql
+  h_eb697744b14c1b 18
+frontend/src/App.vue
+  h_eb697744b14c1b 149-153,1351-1353,1386-1496,1616,1643-1644,1675-1676,2040-2046,2110-2117,2352-2366
+frontend/src/style.css
+  h_eb697744b14c1b 94-98,199-209,215-216
+src/main/java/io/github/git13166956007/dsh/agent/AgentLoop.java
+  h_eb697744b14c1b 223-224,282-286,344-355,358-359,501-502,828,846,849,873,890
+src/main/java/io/github/git13166956007/dsh/agent/AgentRunResult.java
+  h_eb697744b14c1b 20-28
+src/main/java/io/github/git13166956007/dsh/agent/AgentStreamListener.java
+  h_eb697744b14c1b 6-8
+src/main/java/io/github/git13166956007/dsh/agent/AgentTraceEvent.java
+  h_eb697744b14c1b 13-14,16-21,32-33
+src/main/java/io/github/git13166956007/dsh/agent/ChatMessage.java
+  h_eb697744b14c1b 24,28-29,32,38,42,46-50,54,65-68
+src/main/java/io/github/git13166956007/dsh/agent/ModelResponse.java
+  h_eb697744b14c1b 11,22-27,31,49-52
+src/main/java/io/github/git13166956007/dsh/agent/ModelStreamListener.java
+  h_eb697744b14c1b 6-8
+src/main/java/io/github/git13166956007/dsh/agent/SubAgentSessionManager.java
+  h_eb697744b14c1b 153-154
+src/main/java/io/github/git13166956007/dsh/context/ContextManager.java
+  h_eb697744b14c1b 216-218
+src/main/java/io/github/git13166956007/dsh/context/MariaDbConversationStore.java
+  h_eb697744b14c1b 46,54,78-79,84-85,142-145,151,153
+src/main/java/io/github/git13166956007/dsh/model/ModelCatalogEntry.java
+  h_eb697744b14c1b 1-5
+src/main/java/io/github/git13166956007/dsh/model/ModelProvider.java
+  h_eb697744b14c1b 4,16-21
+src/main/java/io/github/git13166956007/dsh/model/ModelRegistry.java
+  h_eb697744b14c1b 87-111
+src/main/java/io/github/git13166956007/dsh/model/ModelRouter.java
+  h_eb697744b14c1b 74-85,90,93-94,114-123,170-178,190-195,207-212,217-220
+src/main/java/io/github/git13166956007/dsh/model/ModelTokenizer.java
+  h_eb697744b14c1b 24-25
+src/main/java/io/github/git13166956007/dsh/provider/deepseek/DeepSeekChatModel.java
+  h_eb697744b14c1b 7,60-63
+src/main/java/io/github/git13166956007/dsh/provider/openai/OpenAiCompatibleChatModel.java
+  h_eb697744b14c1b 12,38,78-79,124,153-158,201-225,232-233,238,246-251,306-309,326-328
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 7,49,96,109,128,425-456,878-879,994-995,1043-1047,1065-1066,1180-1186
+src/test/java/io/github/git13166956007/dsh/model/ModelRouterTest.java
+  h_eb697744b14c1b 10,29,54,77-142,145,148-149,167-176,179-180,189-231
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "454433b8654c45d5540f901660a5b803285edcd4",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
