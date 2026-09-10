@@ -1,0 +1,20 @@
+.env.example
+  h_eb697744b14c1b 6-11
+README.md
+  h_eb697744b14c1b 91
+frontend/src/App.vue
+  h_eb697744b14c1b 124,141-143,1312,1361,1404-1406,2173,2206
+src/test/java/io/github/git13166956007/dsh/model/ModelRegistryTest.java
+  h_eb697744b14c1b 90-92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "ca91e2dd8edd7c1a5464aaca05237ebf326b8fd7",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
