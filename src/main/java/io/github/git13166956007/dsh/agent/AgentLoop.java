@@ -25,6 +25,10 @@ public final class AgentLoop {
     }
 
     public AgentRunResult runDetailed(String prompt) throws Exception {
+        return runDetailed(prompt, null);
+    }
+
+    public AgentRunResult runDetailed(String prompt, String apiKey) throws Exception {
         if (prompt == null || prompt.trim().isEmpty()) {
             throw new IllegalArgumentException("prompt must not be blank");
         }
@@ -35,7 +39,7 @@ public final class AgentLoop {
         messages.add(ChatMessage.user(prompt));
 
         for (int turn = 0; turn < maxTurns; turn++) {
-            ModelResponse response = model.complete(messages, tools.definitions());
+            ModelResponse response = model.complete(messages, tools.definitions(), apiKey);
             messages.add(ChatMessage.assistant(response.content(), response.toolCalls()));
             if (response.content() != null && !response.content().isEmpty()) {
                 trace.add(AgentTraceEvent.model(response.content()));
@@ -52,6 +56,44 @@ public final class AgentLoop {
                     result = "Tool execution failed: " + exception.getMessage();
                 }
                 trace.add(AgentTraceEvent.tool(call.name(), call.arguments(), result));
+                messages.add(ChatMessage.tool(call.id(), result));
+            }
+        }
+
+        throw new IllegalStateException("agent exceeded max turns: " + maxTurns);
+    }
+
+    public AgentRunResult runStreaming(String prompt, String apiKey, AgentStreamListener listener) throws Exception {
+        if (prompt == null || prompt.trim().isEmpty()) {
+            throw new IllegalArgumentException("prompt must not be blank");
+        }
+
+        List<ChatMessage> messages = new ArrayList<ChatMessage>();
+        List<AgentTraceEvent> trace = new ArrayList<AgentTraceEvent>();
+        messages.add(ChatMessage.system(SYSTEM_PROMPT));
+        messages.add(ChatMessage.user(prompt));
+
+        for (int turn = 0; turn < maxTurns; turn++) {
+            ModelResponse response = model.stream(messages, tools.definitions(), apiKey, listener::onText);
+            messages.add(ChatMessage.assistant(response.content(), response.toolCalls()));
+            if (response.content() != null && !response.content().isEmpty()) {
+                trace.add(AgentTraceEvent.model(response.content()));
+            }
+            if (response.toolCalls().isEmpty()) {
+                return new AgentRunResult(response.content() == null ? "" : response.content(), trace, turn + 1);
+            }
+
+            for (ToolCall call : response.toolCalls()) {
+                listener.onToolCall(call);
+                String result;
+                try {
+                    result = tools.execute(call.name(), call.arguments());
+                } catch (Exception exception) {
+                    result = "Tool execution failed: " + exception.getMessage();
+                }
+                AgentTraceEvent event = AgentTraceEvent.tool(call.name(), call.arguments(), result);
+                trace.add(event);
+                listener.onToolResult(event);
                 messages.add(ChatMessage.tool(call.id(), result));
             }
         }

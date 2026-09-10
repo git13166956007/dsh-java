@@ -4,6 +4,7 @@ import tools.jackson.databind.node.JsonNodeFactory;
 import io.github.git13166956007.dsh.tool.ToolDefinition;
 import io.github.git13166956007.dsh.tool.ToolRegistry;
 import java.util.Collections;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
@@ -40,5 +41,59 @@ class AgentLoopTest {
 
         assertEquals("done", new AgentLoop(model, tools, 2).run("hello"));
         assertEquals(1, executions.get());
+    }
+
+    @Test
+    void streamsTextAndToolLifecycleEvents() throws Exception {
+        ToolRegistry tools = new ToolRegistry();
+        tools.register(new ToolDefinition("demo.echo", "Echo a value.",
+                JsonNodeFactory.instance.objectNode().put("type", "object")), arguments -> "tool-result");
+        List<String> text = new ArrayList<>();
+        List<String> events = new ArrayList<>();
+
+        ChatModel model = new ChatModel() {
+            private int calls;
+
+            @Override
+            public ModelResponse complete(List<ChatMessage> messages, List<ToolDefinition> definitions) {
+                throw new UnsupportedOperationException("streaming test model");
+            }
+
+            @Override
+            public ModelResponse stream(List<ChatMessage> messages, List<ToolDefinition> definitions,
+                                        String apiKey, ModelStreamListener listener) {
+                calls++;
+                if (calls == 1) {
+                    return new ModelResponse(null,
+                            Collections.singletonList(new ToolCall(
+                                    "call-1", "demo.echo", JsonNodeFactory.instance.objectNode())),
+                            "tool_calls");
+                }
+                listener.onText("done");
+                return new ModelResponse("done", Collections.emptyList(), "stop");
+            }
+        };
+
+        AgentRunResult result = new AgentLoop(model, tools, 2).runStreaming("hello", null,
+                new AgentStreamListener() {
+                    @Override
+                    public void onText(String delta) {
+                        text.add(delta);
+                    }
+
+                    @Override
+                    public void onToolCall(ToolCall call) {
+                        events.add("call:" + call.name());
+                    }
+
+                    @Override
+                    public void onToolResult(AgentTraceEvent event) {
+                        events.add("result:" + event.result());
+                    }
+                });
+
+        assertEquals("done", result.answer());
+        assertEquals(Collections.singletonList("done"), text);
+        assertEquals(List.of("call:demo.echo", "result:tool-result"), events);
     }
 }

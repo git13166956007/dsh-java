@@ -11,6 +11,7 @@ Java 版 DeepSeek Harness 的最小运行时内核。
 - Java 17、Gradle、Spring Boot 4
 - Spring Boot 宿主 API：`GET /api/v1/health`
 - 最小 Agent Loop：`POST /api/v1/chat`
+- 流式 Agent 调试：`POST /api/v1/chat/stream`，支持 Markdown 输出和工具追踪
 
 项目结构说明见 [`docs/architecture.md`](docs/architecture.md)。
 
@@ -52,6 +53,16 @@ curl -X POST http://localhost:8080/api/v1/chat \
   -H 'Content-Type: application/json' \
   -d '{"message":"现在几点？"}'
 ```
+
+流式调用：
+
+```bash
+curl -N -X POST http://localhost:8080/api/v1/chat/stream \
+  -H 'Content-Type: application/json' \
+  -d '{"message":"请调用 time_now 工具，然后用 Markdown 告诉我当前时间。"}'
+```
+
+调试前端可以在页面输入框临时填写 API Key。它只随当前请求提交，不保存到浏览器、本地配置或 Git；未填写时使用 `DEEPSEEK_API_KEY` 环境变量。
 
 当前默认使用 `deepseek-v4-flash`，内置了 `time_now` 工具。模型客户端是 OpenAI-compatible 的 DeepSeek Chat Completions 适配器，MCP 工具适配将在 `ToolRegistry` 边界上接入。
 

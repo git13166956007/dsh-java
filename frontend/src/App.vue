@@ -1,7 +1,10 @@
 <script setup>
 import { computed, nextTick, onMounted, ref } from 'vue'
+import DOMPurify from 'dompurify'
+import { marked } from 'marked'
 
 const draft = ref('')
+const apiKey = ref('')
 const messages = ref([
   {
     role: 'assistant',
@@ -43,32 +46,90 @@ async function sendMessage() {
   draft.value = ''
   error.value = ''
   messages.value.push({ role: 'user', content: prompt })
+  const assistantIndex = messages.value.length
+  messages.value.push({ role: 'assistant', content: '' })
+  trace.value = []
   sending.value = true
   await scrollTranscript()
 
   try {
-    const response = await fetch('/api/v1/chat', {
+    const response = await fetch('/api/v1/chat/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: prompt })
+      body: JSON.stringify({ message: prompt, apiKey: apiKey.value.trim() || null })
     })
-    const payload = await response.json()
-    if (!response.ok) throw new Error(payload.error || '请求失败')
-    messages.value.push({ role: 'assistant', content: payload.message })
-    trace.value = payload.trace || []
-    history.value.unshift({
-      prompt,
-      answer: payload.message,
-      turns: payload.turns || 0,
-      tools: (payload.trace || []).filter((item) => item.type === 'tool').length,
-      time: new Date()
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}))
+      throw new Error(payload.error || '请求失败')
+    }
+
+    await consumeSse(response, (event, data) => {
+      if (event === 'delta') {
+        messages.value[assistantIndex].content += typeof data === 'string' ? data : ''
+      } else if (event === 'tool_call') {
+        trace.value.push({ type: 'tool', name: data.name, arguments: data.arguments, result: null })
+      } else if (event === 'tool_result') {
+        const pending = [...trace.value].reverse().find((item) => item.type === 'tool' && item.name === data.name && !item.result)
+        if (pending) pending.result = data.result
+        else trace.value.push(data)
+      } else if (event === 'done') {
+        messages.value[assistantIndex].content = data.answer || messages.value[assistantIndex].content
+        trace.value = data.trace || trace.value
+        history.value.unshift({
+          prompt,
+          answer: data.answer,
+          turns: data.turns || 0,
+          tools: (data.trace || []).filter((item) => item.type === 'tool').length,
+          time: new Date()
+        })
+      } else if (event === 'error') {
+        throw new Error(data.error || '运行失败')
+      }
     })
   } catch (requestError) {
     error.value = requestError.message
+    messages.value.splice(assistantIndex, 1)
     messages.value.push({ role: 'error', content: requestError.message })
   } finally {
     sending.value = false
     await scrollTranscript()
+  }
+}
+
+async function consumeSse(response, onEvent) {
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { value, done } = await reader.read()
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done })
+    buffer = buffer.replace(/\r\n/g, '\n')
+    let boundary = buffer.indexOf('\n\n')
+    while (boundary >= 0) {
+      const block = buffer.slice(0, boundary)
+      buffer = buffer.slice(boundary + 2)
+      const parsed = parseSseBlock(block)
+      if (parsed) onEvent(parsed.event, parsed.data)
+      boundary = buffer.indexOf('\n\n')
+    }
+    if (done) break
+  }
+}
+
+function parseSseBlock(block) {
+  let event = 'message'
+  const data = []
+  for (const line of block.split('\n')) {
+    if (line.startsWith('event:')) event = line.slice(6).trim()
+    if (line.startsWith('data:')) data.push(line.slice(5).trimStart())
+  }
+  if (data.length === 0) return null
+  const raw = data.join('\n')
+  try {
+    return { event, data: JSON.parse(raw) }
+  } catch {
+    return { event, data: raw }
   }
 }
 
@@ -88,6 +149,10 @@ function clearConversation() {
 function formatArguments(argumentsNode) {
   if (!argumentsNode) return '{}'
   return JSON.stringify(argumentsNode, null, 2)
+}
+
+function renderMarkdown(content) {
+  return DOMPurify.sanitize(marked.parse(content || '', { breaks: true, gfm: true }))
 }
 
 function formatTime(value) {
@@ -155,6 +220,17 @@ onMounted(refreshHealth)
         </div>
         <div class="header-actions">
           <span class="trace-summary">{{ modelCount }} model · {{ toolCount }} tools</span>
+          <label class="api-key-control">
+            <span>DEBUG API KEY</span>
+            <input
+              v-model="apiKey"
+              type="password"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="Optional"
+              :disabled="sending"
+            />
+          </label>
           <button class="icon-button" type="button" title="Clear current run" aria-label="Clear current run" @click="clearConversation">⌫</button>
         </div>
       </header>
@@ -173,7 +249,8 @@ onMounted(refreshHealth)
               <strong>{{ item.role === 'user' ? 'You' : item.role === 'error' ? 'Runtime' : 'DSH Agent' }}</strong>
               <span>{{ item.role === 'user' ? 'prompt' : item.role === 'error' ? 'error' : 'answer' }}</span>
             </div>
-            <div class="message-content">{{ item.content }}</div>
+            <div v-if="item.role === 'assistant'" class="message-content markdown-content" v-html="renderMarkdown(item.content)"></div>
+            <div v-else class="message-content">{{ item.content }}</div>
           </div>
         </article>
 
