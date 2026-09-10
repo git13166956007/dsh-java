@@ -1,0 +1,28 @@
+frontend/src/App.vue
+  h_eb697744b14c1b 66,361-367,374-391,1636-1640
+src/main/java/io/github/git13166956007/dsh/agent/AgentLoop.java
+  h_eb697744b14c1b 303-306
+src/main/java/io/github/git13166956007/dsh/plan/PlanExecutor.java
+  h_eb697744b14c1b 29,51-56,67-71,97-103,135,138,140-145,151,211-238,253-256
+src/main/java/io/github/git13166956007/dsh/plan/PlanRegistry.java
+  h_eb697744b14c1b 120-142
+src/main/java/io/github/git13166956007/dsh/plan/PlanStatus.java
+  h_eb697744b14c1b 9
+src/main/java/io/github/git13166956007/dsh/plan/PlanStepStatus.java
+  h_eb697744b14c1b 8
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 459-467,479-481
+src/test/java/io/github/git13166956007/dsh/plan/PlanExecutorTest.java
+  h_eb697744b14c1b 21,91-141
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "eb93f55ef235d519ca3da2fe06736bd45ef71656",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
