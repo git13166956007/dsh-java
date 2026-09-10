@@ -1,0 +1,36 @@
+README.md
+  h_eb697744b14c1b 99-100,111
+docs/runtime-roadmap.md
+  h_eb697744b14c1b 12,28
+frontend/src/App.vue
+  h_eb697744b14c1b 56-64,485-577,1607,1609,2118,2126-2144
+frontend/src/style.css
+  h_eb697744b14c1b 158-164
+src/main/java/io/github/git13166956007/dsh/agent/AgentLoop.java
+  h_eb697744b14c1b 13,15-17,24,35,38-40,139-163,168,170-175,226-229,231-234,237-244,248-253,293,350-353,355-358,361-362,429-446,665-674,854-861
+src/main/java/io/github/git13166956007/dsh/agent/AgentRunHandle.java
+  h_eb697744b14c1b 1-29
+src/main/java/io/github/git13166956007/dsh/agent/SubAgentRunner.java
+  h_eb697744b14c1b 29-42,58,63-68
+src/main/java/io/github/git13166956007/dsh/config/DshRuntimeConfiguration.java
+  h_eb697744b14c1b 273
+src/main/java/io/github/git13166956007/dsh/run/RunManager.java
+  h_eb697744b14c1b 122
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 9,15,83,97-98,113,570-588,712-719,1044-1046
+src/test/java/io/github/git13166956007/dsh/agent/AgentLoopTest.java
+  h_eb697744b14c1b 14-15,26-54
+src/test/java/io/github/git13166956007/dsh/agent/SubAgentRunnerTest.java
+  h_eb697744b14c1b 1-99
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9449ac4402c43b230a6d530d766048ee52c5e1d4",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
