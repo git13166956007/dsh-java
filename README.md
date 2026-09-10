@@ -122,6 +122,8 @@ enabled: true
 
 Skills 管理接口为 `GET /api/v1/skills`、`PATCH /api/v1/skills/{id}` 和 `POST /api/v1/skills/refresh`，前端的 `MCP`、`Skills` 入口也可以直接管理它们。
 
+启用 MariaDB 持久化后，Skill 的启用/禁用状态会保存到 `dsh_skill_state`；Skill 正文和附属资源仍从 `DSH_SKILLS_DIR` 读取，应用重启后不会自动执行远程或本地 Skill，只恢复配置状态。
+
 调试前端可以在页面输入框临时填写 API Key。它只随当前请求提交，不保存到浏览器、本地配置或 Git；未填写时使用 `DEEPSEEK_API_KEY` 环境变量。
 
 当前默认使用 `deepseek-v4-flash`，内置了 `time_now` 工具。模型客户端是 OpenAI-compatible 的 DeepSeek Chat Completions 适配器，MCP 工具和本地工具都从同一个 `ToolRegistry` 边界进入 Agent Loop。

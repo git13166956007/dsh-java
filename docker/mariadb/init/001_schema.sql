@@ -61,6 +61,12 @@ CREATE TABLE IF NOT EXISTS dsh_memory (
     FULLTEXT INDEX ft_dsh_memory_content (content)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS dsh_skill_state (
+    skill_id VARCHAR(255) NOT NULL PRIMARY KEY,
+    enabled BOOLEAN NOT NULL,
+    updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS dsh_run (
     id CHAR(36) NOT NULL PRIMARY KEY,
     parent_run_id CHAR(36) NULL,

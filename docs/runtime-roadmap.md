@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | Tools | In-process `ToolRegistry`, local `time_now`, durable custom debug tools, management API | Permissions, reload, approval policy and real executable adapters |
 | MCP | Java SDK client with stdio/SSE/Streamable HTTP, durable profiles, initialize/list-tools/call-tool, lifecycle API and ToolRegistry synchronization | Credentials, approval policy, reconnect backoff and resource/prompt management |
-| Skills | Filesystem `skills/<name>/SKILL.md`, front matter, enable/disable and system-prompt injection | Durable enablement state, package/version management and resource indexing |
+| Skills | Filesystem `skills/<name>/SKILL.md`, front matter, durable enable/disable state and system-prompt injection | Package/version management and resource indexing |
 | Models | Model profiles, active model selection, OpenAI-compatible routing, MariaDB persistence and redacted API responses | Encrypted secret storage, provider-specific adapters, health checks, model capabilities and routing policies |
 | Agent modes | Persisted Agent Profiles with chat, planning and execution modes; profile-specific model, prompt and turn budget | Adaptive delegation |
 | Sub-agents | Persisted sub-agent profiles with independent model/mode/prompt, tool and Skill allowlists; plan steps can dispatch them; adaptive planner selects workers | Parent-child run tree, parallel scheduling, budgets and adaptive creation |

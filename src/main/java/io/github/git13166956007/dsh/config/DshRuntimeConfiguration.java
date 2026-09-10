@@ -32,6 +32,9 @@ import io.github.git13166956007.dsh.run.MariaDbRunStore;
 import io.github.git13166956007.dsh.run.RunManager;
 import io.github.git13166956007.dsh.run.RunStore;
 import io.github.git13166956007.dsh.skill.SkillRegistry;
+import io.github.git13166956007.dsh.skill.InMemorySkillStateStore;
+import io.github.git13166956007.dsh.skill.MariaDbSkillStateStore;
+import io.github.git13166956007.dsh.skill.SkillStateStore;
 import io.github.git13166956007.dsh.model.InMemoryModelProfileStore;
 import io.github.git13166956007.dsh.model.MariaDbModelProfileStore;
 import io.github.git13166956007.dsh.model.ModelProfileStore;
@@ -171,9 +174,17 @@ public class DshRuntimeConfiguration {
     }
 
     @Bean
-    public SkillRegistry skillRegistry(Environment environment) {
+    public SkillStateStore skillStateStore(Environment environment) {
+        boolean enabled = Boolean.parseBoolean(environment.getProperty("dsh.persistence.enabled", "false"));
+        if (!enabled) return new InMemorySkillStateStore();
+        return new MariaDbSkillStateStore(environment.getProperty("dsh.persistence.jdbc-url"),
+                environment.getProperty("dsh.persistence.username"), environment.getProperty("dsh.persistence.password"));
+    }
+
+    @Bean
+    public SkillRegistry skillRegistry(Environment environment, SkillStateStore stateStore) {
         return new SkillRegistry(environment.getProperty("dsh.skills.directory",
-                environment.getProperty("DSH_SKILLS_DIR", "skills")));
+                environment.getProperty("DSH_SKILLS_DIR", "skills")), stateStore);
     }
 
     @Bean
