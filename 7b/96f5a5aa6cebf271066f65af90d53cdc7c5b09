@@ -1,0 +1,36 @@
+README.md
+  h_eb697744b14c1b 116
+docs/runtime-roadmap.md
+  h_eb697744b14c1b 14
+frontend/src/App.vue
+  h_eb697744b14c1b 175-177,1694,1839-1920,1930,1978,2089,2136-2163
+frontend/src/style.css
+  h_eb697744b14c1b 33-54
+src/main/java/io/github/git13166956007/dsh/context/ContextManager.java
+  h_eb697744b14c1b 106-123,138,154-170
+src/main/java/io/github/git13166956007/dsh/context/ConversationInfo.java
+  h_eb697744b14c1b 1-13
+src/main/java/io/github/git13166956007/dsh/context/ConversationSearchResult.java
+  h_eb697744b14c1b 3-7
+src/main/java/io/github/git13166956007/dsh/context/ConversationStore.java
+  h_eb697744b14c1b 9-24
+src/main/java/io/github/git13166956007/dsh/context/InMemoryConversationStore.java
+  h_eb697744b14c1b 5,8,17-18,24-25,27,31-56,66,69-75,80-99,111-116
+src/main/java/io/github/git13166956007/dsh/context/MariaDbConversationStore.java
+  h_eb697744b14c1b 11,52-126,225-231
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 28,730-768,1320-1322
+src/test/java/io/github/git13166956007/dsh/context/InMemoryConversationStoreTest.java
+  h_eb697744b14c1b 187-204
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "7b96f5a5aa6cebf271066f65af90d53cdc7c5b09",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
