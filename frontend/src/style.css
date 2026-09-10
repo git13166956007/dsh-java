@@ -45,6 +45,9 @@ h1 { font-size: 23px; font-weight: 700; }
 h2 { font-size: 17px; }
 .header-actions { display: flex; align-items: center; gap: 17px; padding-top: 5px; }
 .trace-summary { color: #7f8b8e; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; }
+.tools-button { display: inline-flex; align-items: center; gap: 7px; padding: 7px 9px; border: 1px solid #354246; background: #161d20; color: #bdc9c5; font-size: 11px; font-weight: 700; }
+.tools-button:hover { border-color: #6a9f92; color: #c7eee0; }
+.tools-button-count { min-width: 17px; height: 17px; display: grid; place-items: center; border: 1px solid #45635c; color: #9ce3ca; font: 9px ui-monospace, SFMono-Regular, Menlo, monospace; }
 .api-key-control { display: flex; align-items: center; gap: 8px; color: #657275; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9px; letter-spacing: .08em; }
 .api-key-control input { width: 150px; padding: 7px 8px; border: 1px solid #354246; outline: 0; background: #161d20; color: #dce6e3; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0; }
 .api-key-control input:focus { border-color: #6a9f92; box-shadow: 0 0 0 3px rgba(106, 159, 146, .09); }
@@ -86,6 +89,42 @@ h2 { font-size: 17px; }
 .markdown-content hr { margin: 18px 0; border: 0; border-top: 1px solid #354346; }
 .markdown-content .katex-display { overflow-x: auto; overflow-y: hidden; margin: 16px 0; padding: 4px 0; text-align: left; }
 .markdown-content .katex { color: #dce9e4; font-size: 1.02em; }
+.modal-backdrop { position: fixed; z-index: 10; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(5, 8, 9, .78); }
+.tool-manager { width: min(680px, 100%); max-height: min(820px, calc(100vh - 48px)); overflow: auto; border: 1px solid #3b4c4e; background: #151a1d; box-shadow: 0 18px 70px rgba(0, 0, 0, .4); }
+.tool-manager-header { display: flex; align-items: flex-start; justify-content: space-between; padding: 22px 23px 18px; border-bottom: 1px solid #293236; }
+.tool-manager-list { padding: 15px 23px 5px; }
+.managed-tool { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 13px 0; border-bottom: 1px solid #273235; }
+.managed-tool-copy { min-width: 0; }
+.managed-tool-title { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.managed-tool-title strong { overflow: hidden; color: #d9e5e0; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow: ellipsis; white-space: nowrap; }
+.managed-tool-copy p { margin: 7px 0 0; color: #85918f; font-size: 12px; line-height: 1.5; }
+.tool-source { padding: 3px 5px; border: 1px solid #38534c; color: #9ce3ca; font: 9px ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase; }
+.tool-source.builtin { border-color: #4e4a3a; color: #d2b982; }
+.managed-tool-actions { display: flex; align-items: center; gap: 11px; padding-top: 1px; }
+.tool-toggle { position: relative; width: 33px; height: 19px; flex: 0 0 auto; }
+.tool-toggle input { position: absolute; opacity: 0; pointer-events: none; }
+.tool-toggle span { position: absolute; inset: 0; border: 1px solid #46575a; background: #20292b; cursor: pointer; }
+.tool-toggle span::after { content: ''; position: absolute; top: 3px; left: 3px; width: 11px; height: 11px; background: #788487; transition: transform .15s ease, background .15s ease; }
+.tool-toggle input:checked + span { border-color: #6ca695; background: #29423c; }
+.tool-toggle input:checked + span::after { transform: translateX(14px); background: #9ce3ca; }
+.delete-tool-button { width: 23px; height: 23px; border: 1px solid #5a3f3d; background: transparent; color: #d99588; font-size: 16px; line-height: 1; }
+.delete-tool-button:hover { border-color: #d99588; background: #342122; }
+.tool-manager-empty { margin: 10px 0 18px; color: #718083; font-size: 12px; }
+.tool-create-form { margin: 17px 23px 23px; padding-top: 18px; border-top: 1px solid #293236; }
+.tool-form-heading { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 15px; }
+.tool-form-heading h3 { margin: 7px 0 0; color: #e7efec; font-size: 15px; }
+.tool-form-note { color: #7c8988; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.tool-form-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 12px; }
+.tool-create-form label { display: block; margin-top: 12px; }
+.tool-create-form label > span { display: block; margin-bottom: 6px; color: #81908d; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .08em; text-transform: uppercase; }
+.tool-create-form input, .tool-create-form textarea { display: block; width: 100%; resize: vertical; border: 1px solid #354447; outline: 0; background: #101618; color: #e2ebe8; padding: 9px 10px; font-size: 12px; line-height: 1.5; }
+.tool-create-form input:focus, .tool-create-form textarea:focus { border-color: #6a9f92; box-shadow: 0 0 0 3px rgba(106, 159, 146, .09); }
+.tool-create-form textarea { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.tool-create-form input::placeholder, .tool-create-form textarea::placeholder { color: #596568; }
+.tool-form-error { margin: 12px 0 0; color: #e79487; font-size: 12px; }
+.tool-form-footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 17px; }
+.secondary-button { padding: 8px 12px; border: 1px solid #3d4b4f; background: transparent; color: #bdc9c5; font-size: 11px; font-weight: 700; }
+.secondary-button:hover { border-color: #6a9f92; color: #c7eee0; }
 .thinking-row { display: flex; align-items: center; gap: 10px; max-width: 780px; margin: 10px auto; color: #879493; font-size: 12px; }
 .thinking-dots { display: inline-flex; gap: 3px; }
 .thinking-dots i { width: 5px; height: 5px; border-radius: 50%; background: #91d7c2; animation: blink 1.1s infinite ease-in-out; }
@@ -141,6 +180,8 @@ pre.result { color: #d6b98e; }
   .workspace-header { padding: 22px 18px 17px; }
   .workspace-header h1 { font-size: 19px; }
   .trace-summary { display: none; }
+  .tools-button { padding: 7px; }
+  .tools-button span:first-child { display: none; }
   .header-actions { flex-wrap: wrap; justify-content: flex-end; gap: 9px; }
   .api-key-control { order: 3; width: 100%; justify-content: flex-end; }
   .api-key-control input { flex: 1; width: auto; max-width: 190px; }

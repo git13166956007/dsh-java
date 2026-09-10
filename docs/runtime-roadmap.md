@@ -4,7 +4,7 @@
 
 | Area | Current implementation | Missing for a usable runtime |
 | --- | --- | --- |
-| Tools | In-process `ToolRegistry`, local `time_now` tool | Tool metadata, enable/disable, permissions, reload, management API |
+| Tools | In-process `ToolRegistry`, local `time_now`, runtime custom debug tools, management API | Durable catalog, permissions, reload, approval policy and real executable adapters |
 | MCP | Server configuration registry; connection status is explicit `DISCONNECTED` | MCP client, stdio/HTTP transports, initialize/list-tools lifecycle, reconnect and timeout policy |
 | Context | Per-request `List<ChatMessage>` | Conversation IDs, persisted messages, token budget, truncation, summarization, system/context providers |
 | Memory | JSONL session store exists but is not in the Agent Loop | Explicit memory extraction, durable storage, retrieval policy, user/workspace namespaces, forgetting/update rules |

@@ -17,6 +17,16 @@ const messages = ref([
 const trace = ref([])
 const history = ref([])
 const runtime = ref({ runtimeStarted: false, pluginCount: 0 })
+const tools = ref([])
+const toolManagerOpen = ref(false)
+const toolForm = ref({
+  name: '',
+  description: '',
+  parameters: '{\n  "type": "object",\n  "properties": {}\n}',
+  result: ''
+})
+const toolFormError = ref('')
+const toolSaving = ref(false)
 const sending = ref(false)
 const error = ref('')
 const transcript = ref(null)
@@ -41,6 +51,85 @@ async function refreshHealth() {
   } catch {
     runtime.value = { runtimeStarted: false, pluginCount: 0 }
   }
+}
+
+async function refreshTools() {
+  try {
+    const response = await fetch('/api/v1/tools')
+    if (!response.ok) throw new Error('工具列表不可用')
+    tools.value = await response.json()
+  } catch {
+    tools.value = []
+  }
+}
+
+function openToolManager() {
+  toolFormError.value = ''
+  toolManagerOpen.value = true
+  refreshTools()
+}
+
+function resetToolForm() {
+  toolForm.value = {
+    name: '',
+    description: '',
+    parameters: '{\n  "type": "object",\n  "properties": {}\n}',
+    result: ''
+  }
+  toolFormError.value = ''
+}
+
+async function createTool() {
+  toolFormError.value = ''
+  let parameters
+  try {
+    parameters = JSON.parse(toolForm.value.parameters)
+  } catch {
+    toolFormError.value = 'Parameters 必须是有效的 JSON'
+    return
+  }
+  if (!toolForm.value.name.trim() || !toolForm.value.description.trim() || !toolForm.value.result.trim()) {
+    toolFormError.value = '请填写名称、描述和返回值'
+    return
+  }
+  toolSaving.value = true
+  try {
+    const response = await fetch('/api/v1/tools', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: toolForm.value.name.trim(),
+        description: toolForm.value.description.trim(),
+        parameters,
+        result: toolForm.value.result
+      })
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload.message || payload.error || '工具创建失败')
+    tools.value.push(payload)
+    resetToolForm()
+  } catch (requestError) {
+    toolFormError.value = requestError.message
+  } finally {
+    toolSaving.value = false
+  }
+}
+
+async function toggleTool(tool) {
+  const response = await fetch(`/api/v1/tools/${encodeURIComponent(tool.name)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled: !tool.enabled })
+  })
+  if (!response.ok) return
+  const updated = await response.json()
+  Object.assign(tool, updated)
+}
+
+async function deleteTool(tool) {
+  if (!tool.removable) return
+  const response = await fetch(`/api/v1/tools/${encodeURIComponent(tool.name)}`, { method: 'DELETE' })
+  if (response.ok) tools.value = tools.value.filter((item) => item.name !== tool.name)
 }
 
 async function sendMessage() {
@@ -202,7 +291,10 @@ async function scrollTranscript() {
   if (transcript.value) transcript.value.scrollTop = transcript.value.scrollHeight
 }
 
-onMounted(refreshHealth)
+onMounted(() => {
+  refreshHealth()
+  refreshTools()
+})
 </script>
 
 <template>
@@ -255,6 +347,10 @@ onMounted(refreshHealth)
         </div>
         <div class="header-actions">
           <span class="trace-summary">{{ modelCount }} model · {{ toolCount }} tools</span>
+          <button class="tools-button" type="button" title="Manage tools" @click="openToolManager">
+            <span>Tools</span>
+            <span class="tools-button-count">{{ tools.length }}</span>
+          </button>
           <label class="api-key-control">
             <span>DEBUG API KEY</span>
             <input
@@ -347,4 +443,72 @@ onMounted(refreshHealth)
       </div>
     </aside>
   </main>
+
+  <div v-if="toolManagerOpen" class="modal-backdrop" @click.self="toolManagerOpen = false">
+    <section class="tool-manager" role="dialog" aria-modal="true" aria-labelledby="tool-manager-title">
+      <header class="tool-manager-header">
+        <div>
+          <div class="eyebrow">RUNTIME REGISTRY</div>
+          <h2 id="tool-manager-title">Tool manager</h2>
+        </div>
+        <button class="icon-button" type="button" title="Close tool manager" aria-label="Close tool manager" @click="toolManagerOpen = false">×</button>
+      </header>
+
+      <div class="tool-manager-list">
+        <div v-for="tool in tools" :key="tool.name" class="managed-tool">
+          <div class="managed-tool-copy">
+            <div class="managed-tool-title">
+              <strong>{{ tool.name }}</strong>
+              <span :class="['tool-source', tool.source]">{{ tool.source }}</span>
+            </div>
+            <p>{{ tool.description }}</p>
+          </div>
+          <div class="managed-tool-actions">
+            <label class="tool-toggle" :title="tool.enabled ? 'Disable tool' : 'Enable tool'">
+              <input type="checkbox" :checked="tool.enabled" @change="toggleTool(tool)" />
+              <span></span>
+            </label>
+            <button v-if="tool.removable" class="delete-tool-button" type="button" title="Delete tool" aria-label="Delete tool" @click="deleteTool(tool)">×</button>
+          </div>
+        </div>
+        <p v-if="tools.length === 0" class="tool-manager-empty">No tools registered.</p>
+      </div>
+
+      <form class="tool-create-form" @submit.prevent="createTool">
+        <div class="tool-form-heading">
+          <div>
+            <div class="eyebrow">CUSTOM TOOL</div>
+            <h3>Add debug tool</h3>
+          </div>
+          <span class="tool-form-note">Fixed response</span>
+        </div>
+        <div class="tool-form-grid">
+          <label>
+            <span>Name</span>
+            <input v-model="toolForm.name" placeholder="weather_lookup" autocomplete="off" />
+          </label>
+          <label>
+            <span>Description</span>
+            <input v-model="toolForm.description" placeholder="Look up the weather" autocomplete="off" />
+          </label>
+        </div>
+        <label>
+          <span>Parameters JSON Schema</span>
+          <textarea v-model="toolForm.parameters" rows="5" spellcheck="false"></textarea>
+        </label>
+        <label>
+          <span>Tool result</span>
+          <textarea v-model="toolForm.result" rows="3" placeholder="Return value sent back to the model"></textarea>
+        </label>
+        <p v-if="toolFormError" class="tool-form-error">{{ toolFormError }}</p>
+        <div class="tool-form-footer">
+          <button class="secondary-button" type="button" @click="resetToolForm">Reset</button>
+          <button class="send-button" type="submit" :disabled="toolSaving">
+            <span>{{ toolSaving ? 'Adding' : 'Add tool' }}</span>
+            <span class="send-arrow">↗</span>
+          </button>
+        </div>
+      </form>
+    </section>
+  </div>
 </template>

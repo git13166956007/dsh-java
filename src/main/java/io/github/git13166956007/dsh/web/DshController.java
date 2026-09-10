@@ -2,6 +2,7 @@ package io.github.git13166956007.dsh.web;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import tools.jackson.databind.node.ObjectNode;
 import io.github.git13166956007.dsh.agent.AgentLoop;
 import io.github.git13166956007.dsh.agent.AgentStreamListener;
 import io.github.git13166956007.dsh.agent.AgentRunResult;
@@ -61,6 +62,28 @@ public final class DshController {
         return toolRegistry.list();
     }
 
+    @PostMapping("/tools")
+    public ToolInfo createTool(@RequestBody ToolCreateRequest request) {
+        if (request == null || request.name() == null || request.description() == null
+                || request.parameters() == null || request.result() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "name, description, parameters and result are required");
+        }
+        try {
+            if (!request.parameters().isObject()) {
+                throw new IllegalArgumentException("parameters must be a JSON object");
+            }
+            toolRegistry.registerCustom(new io.github.git13166956007.dsh.tool.ToolDefinition(
+                    request.name().trim(), request.description().trim(),
+                    (ObjectNode) request.parameters()), request.result());
+            return toolRegistry.list().stream()
+                    .filter(tool -> tool.name().equals(request.name().trim()))
+                    .findFirst().orElseThrow();
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
+        }
+    }
+
     @PatchMapping("/tools/{name}")
     public ToolInfo updateTool(@PathVariable String name, @RequestBody ToolUpdateRequest request) {
         if (request == null || request.enabled() == null) {
@@ -70,6 +93,14 @@ public final class DshController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown tool: " + name);
         }
         return toolRegistry.list().stream().filter(tool -> tool.name().equals(name)).findFirst().orElseThrow();
+    }
+
+    @DeleteMapping("/tools/{name}")
+    public void deleteTool(@PathVariable String name) {
+        if (!toolRegistry.remove(name)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "tool does not exist or is not removable: " + name);
+        }
     }
 
     @GetMapping("/mcp/servers")
@@ -191,6 +222,10 @@ public final class DshController {
     }
 
     public record ToolUpdateRequest(Boolean enabled) {
+    }
+
+    public record ToolCreateRequest(String name, String description, tools.jackson.databind.JsonNode parameters,
+                                    String result) {
     }
 
     public record McpServerRequest(String name, String transport, String endpoint, String command,

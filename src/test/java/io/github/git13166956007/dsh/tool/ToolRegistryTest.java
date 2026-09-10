@@ -20,4 +20,15 @@ class ToolRegistryTest {
         assertThrows(IllegalStateException.class,
                 () -> registry.execute("demo", JsonNodeFactory.instance.objectNode()));
     }
+
+    @Test
+    void customToolsCanBeAddedAndRemoved() throws Exception {
+        ToolRegistry registry = new ToolRegistry();
+        registry.registerCustom(new ToolDefinition("demo.custom", "Custom tool.",
+                JsonNodeFactory.instance.objectNode().put("type", "object")), "custom-result");
+
+        assertEquals("custom-result", registry.execute("demo.custom", JsonNodeFactory.instance.objectNode()));
+        assertEquals(true, registry.list().get(0).removable());
+        assertEquals(true, registry.remove("demo.custom"));
+    }
 }

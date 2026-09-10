@@ -80,6 +80,8 @@ export DSH_PERSISTENCE_ENABLED=true
 
 同一个 `conversationId` 会复用最近的历史消息；不传时服务会创建新的会话 ID。工具管理接口为 `GET /api/v1/tools` 和 `PATCH /api/v1/tools/{name}`，请求体示例为 `{"enabled":false}`。
 
+前端右上角的 `Tools` 可以添加调试工具。自定义工具当前是运行时内存工具：填写名称、描述、JSON Schema 和固定返回值后，模型即可调用；应用重启后需要重新添加，真正的业务执行工具通过插件或 MCP 接入。
+
 MCP Server 配置管理接口为 `GET/POST/PATCH/DELETE /api/v1/mcp/servers`。当前只保存和校验连接配置，状态会显示为 `DISCONNECTED`；真正的 MCP 连接、工具同步和重连策略随后接入。
 
 调试前端可以在页面输入框临时填写 API Key。它只随当前请求提交，不保存到浏览器、本地配置或 Git；未填写时使用 `DEEPSEEK_API_KEY` 环境变量。
