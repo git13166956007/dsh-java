@@ -19,6 +19,9 @@ class AgentProfileRegistryTest {
 
         assertEquals(AgentMode.PLANNING, registry.resolve(null).mode());
         assertEquals(4, registry.resolve(null).maxTurns());
+        assertEquals(64, registry.resolve(null).maxToolCalls());
+        assertEquals(300, registry.resolve(null).timeoutSeconds());
+        assertEquals(4, registry.resolve(null).maxDepth());
         assertFalse(registry.find("default").active());
         assertTrue(registry.find(planning.id()).active());
     }
@@ -41,5 +44,18 @@ class AgentProfileRegistryTest {
 
         assertFalse(disabled.active());
         assertEquals("default", registry.resolve(null).id());
+    }
+
+    @Test
+    void persistsExecutionBudgets() {
+        InMemoryAgentProfileStore store = new InMemoryAgentProfileStore();
+        AgentProfileRegistry registry = new AgentProfileRegistry(store, 8);
+        AgentProfile profile = registry.create("Bounded", AgentMode.EXECUTION, null, "", 6, true, false,
+                12, 45, 2);
+
+        AgentProfile restored = new AgentProfileRegistry(store, 8).find(profile.id());
+        assertEquals(12, restored.maxToolCalls());
+        assertEquals(45, restored.timeoutSeconds());
+        assertEquals(2, restored.maxDepth());
     }
 }

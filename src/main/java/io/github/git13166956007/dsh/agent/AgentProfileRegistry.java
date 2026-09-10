@@ -52,6 +52,12 @@ public final class AgentProfileRegistry {
 
     public synchronized AgentProfile create(String name, AgentMode mode, String modelId, String systemPrompt,
                                              Integer maxTurns, Boolean enabled, Boolean active) {
+        return create(name, mode, modelId, systemPrompt, maxTurns, enabled, active, 64, 300, 4);
+    }
+
+    public synchronized AgentProfile create(String name, AgentMode mode, String modelId, String systemPrompt,
+                                             Integer maxTurns, Boolean enabled, Boolean active, Integer maxToolCalls,
+                                             Integer timeoutSeconds, Integer maxDepth) {
         String id = UUID.randomUUID().toString();
         boolean nextEnabled = enabled == null || enabled;
         boolean nextActive = nextEnabled && (Boolean.TRUE.equals(active)
@@ -59,13 +65,21 @@ public final class AgentProfileRegistry {
         if (nextActive) deactivateAll();
         AgentProfileData profile = new AgentProfileData(id, required(name, "name"), mode == null ? AgentMode.CHAT : mode,
                 blankToNull(modelId), blankToEmpty(systemPrompt), validMaxTurns(maxTurns == null ? defaultMaxTurns : maxTurns),
-                nextEnabled, nextActive);
+                validMaxToolCalls(maxToolCalls == null ? 64 : maxToolCalls),
+                validTimeoutSeconds(timeoutSeconds == null ? 300 : timeoutSeconds),
+                validMaxDepth(maxDepth == null ? 4 : maxDepth), nextEnabled, nextActive);
         save(profile);
         return AgentProfile.from(profile);
     }
 
     public synchronized AgentProfile update(String id, String name, AgentMode mode, String modelId,
                                              String systemPrompt, Integer maxTurns, Boolean enabled, Boolean active) {
+        return update(id, name, mode, modelId, systemPrompt, maxTurns, enabled, active, null, null, null);
+    }
+
+    public synchronized AgentProfile update(String id, String name, AgentMode mode, String modelId,
+                                             String systemPrompt, Integer maxTurns, Boolean enabled, Boolean active,
+                                             Integer maxToolCalls, Integer timeoutSeconds, Integer maxDepth) {
         AgentProfileData current = require(id);
         boolean nextActive = active == null ? current.active() : active;
         boolean nextEnabled = enabled == null ? current.enabled() : enabled;
@@ -76,7 +90,10 @@ public final class AgentProfileRegistry {
                 mode == null ? current.mode() : mode,
                 modelId == null ? current.modelId() : blankToNull(modelId),
                 systemPrompt == null ? current.systemPrompt() : blankToEmpty(systemPrompt),
-                maxTurns == null ? current.maxTurns() : validMaxTurns(maxTurns), nextEnabled, nextActive);
+                maxTurns == null ? current.maxTurns() : validMaxTurns(maxTurns),
+                maxToolCalls == null ? current.maxToolCalls() : validMaxToolCalls(maxToolCalls),
+                timeoutSeconds == null ? current.timeoutSeconds() : validTimeoutSeconds(timeoutSeconds),
+                maxDepth == null ? current.maxDepth() : validMaxDepth(maxDepth), nextEnabled, nextActive);
         save(updated);
         ensureActive();
         return AgentProfile.from(profiles.get(id));
@@ -87,7 +104,7 @@ public final class AgentProfileRegistry {
         if (!target.enabled()) throw new IllegalArgumentException("agent profile is disabled: " + id);
         deactivateAll();
         AgentProfileData active = new AgentProfileData(target.id(), target.name(), target.mode(), target.modelId(),
-                target.systemPrompt(), target.maxTurns(), true, true);
+                target.systemPrompt(), target.maxTurns(), target.maxToolCalls(), target.timeoutSeconds(), target.maxDepth(), true, true);
         save(active);
         return AgentProfile.from(active);
     }
@@ -114,7 +131,8 @@ public final class AgentProfileRegistry {
         for (AgentProfileData profile : new ArrayList<AgentProfileData>(profiles.values())) {
             if (profile.active()) {
                 save(new AgentProfileData(profile.id(), profile.name(), profile.mode(), profile.modelId(),
-                        profile.systemPrompt(), profile.maxTurns(), profile.enabled(), false));
+                        profile.systemPrompt(), profile.maxTurns(), profile.maxToolCalls(), profile.timeoutSeconds(),
+                        profile.maxDepth(), profile.enabled(), false));
             }
         }
     }
@@ -142,6 +160,21 @@ public final class AgentProfileRegistry {
 
     private static int validMaxTurns(int value) {
         if (value < 1 || value > 64) throw new IllegalArgumentException("maxTurns must be between 1 and 64");
+        return value;
+    }
+
+    private static int validMaxToolCalls(int value) {
+        if (value < 0 || value > 10000) throw new IllegalArgumentException("maxToolCalls must be between 0 and 10000");
+        return value;
+    }
+
+    private static int validTimeoutSeconds(int value) {
+        if (value < 0 || value > 86400) throw new IllegalArgumentException("timeoutSeconds must be between 0 and 86400");
+        return value;
+    }
+
+    private static int validMaxDepth(int value) {
+        if (value < 0 || value > 32) throw new IllegalArgumentException("maxDepth must be between 0 and 32");
         return value;
     }
 

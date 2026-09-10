@@ -523,7 +523,7 @@ public final class AgentLoop {
         AgentProfileData profile = profiles.resolve(agentId);
         return new RunOptions(blankToNull(modelId) == null ? profile.modelId() : blankToNull(modelId),
                 modeOverride == null ? profile.mode() : modeOverride, profile.maxTurns(), profile.systemPrompt(), null, null,
-                64, 300, 4, memoryNamespace, memorySubjectKey, agentId);
+                profile.maxToolCalls(), profile.timeoutSeconds(), profile.maxDepth(), memoryNamespace, memorySubjectKey, agentId);
     }
 
     private String systemPrompt(RunOptions options, String query) throws Exception {
