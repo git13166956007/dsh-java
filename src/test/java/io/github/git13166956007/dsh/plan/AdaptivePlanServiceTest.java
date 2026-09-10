@@ -63,6 +63,28 @@ class AdaptivePlanServiceTest {
     }
 
     @Test
+    void persistsDynamicWorkerModelAndExecutionBudgets() throws Exception {
+        ChatModel model = (messages, definitions) -> new ModelResponse(
+                "{\"title\":\"Analyze\",\"goal\":\"Analyze safely\",\"steps\":[{"
+                        + "\"title\":\"Analyze\",\"instruction\":\"Analyze the input\",\"worker\":{"
+                        + "\"name\":\"Bounded worker\",\"modelId\":\"model-2\",\"maxTurns\":5,"
+                        + "\"maxToolCalls\":7,\"timeoutSeconds\":41,\"maxDepth\":2}}]}",
+                List.of(), "stop");
+        SubAgentProfileRegistry subAgents = new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 8);
+        AdaptivePlanService service = new AdaptivePlanService(new AgentLoop(model, new ToolRegistry(), 2),
+                new PlanRegistry(new InMemoryPlanStore()), subAgents, new ObjectMapper());
+
+        Plan plan = service.create("Analyze the input", null, null, "model-1", false, 4, 1, true);
+
+        var worker = subAgents.find(plan.steps().get(0).subAgentId());
+        assertEquals("model-2", worker.modelId());
+        assertEquals(5, worker.maxTurns());
+        assertEquals(7, worker.maxToolCalls());
+        assertEquals(41, worker.timeoutSeconds());
+        assertEquals(2, worker.maxDepth());
+    }
+
+    @Test
     void preservesDependenciesGeneratedByThePlanningAgent() throws Exception {
         ChatModel model = (messages, definitions) -> new ModelResponse(
                 "{\"title\":\"Build task\",\"goal\":\"Build and verify\",\"steps\":["

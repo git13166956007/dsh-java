@@ -63,7 +63,8 @@ public final class AdaptivePlanService {
                 + "{\"title\":\"step title\",\"instruction\":\"complete instruction\","
                 + "\"dependsOn\":[],"
                 + "\"worker\":{\"name\":\"optional worker name\",\"systemPrompt\":\"optional worker instructions\","
-                + "\"allowedToolNames\":[],\"skillIds\":[]}}]}"
+                + "\"modelId\":\"optional model profile id\",\"maxTurns\":8,\"maxToolCalls\":64,"
+                + "\"timeoutSeconds\":300,\"maxDepth\":4,\"allowedToolNames\":[],\"skillIds\":[]}}]}"
                 + " No Markdown, no code fence, no commentary. Use at most " + stepLimit + " ordered steps.\n\nTask:\n" + prompt.trim();
         AgentRunResult result = agentLoop.runDetailed(planningPrompt, apiKey, List.of(), modelId, agentId, AgentMode.PLANNING);
         JsonNode planJson = parseJson(result.answer());
@@ -96,9 +97,15 @@ public final class AdaptivePlanService {
         String name = requiredOrDefault(worker.path("name").asText(null), "Adaptive worker - " + title);
         String systemPrompt = requiredOrDefault(worker.path("systemPrompt").asText(null),
                 "You are an adaptive execution worker. Focus on this task and report verifiable results.");
+        String workerModelId = requiredOrDefault(worker.path("modelId").asText(null), modelId);
+        int maxTurns = boundedInt(worker, "maxTurns", 8, 1, 64);
+        int maxToolCalls = boundedInt(worker, "maxToolCalls", 64, 0, 10000);
+        int timeoutSeconds = boundedInt(worker, "timeoutSeconds", 300, 0, 86400);
+        int maxDepth = boundedInt(worker, "maxDepth", 4, 0, 32);
         List<String> allowedTools = filterTools(readStrings(worker.path("allowedToolNames")));
         List<String> skillIds = filterSkills(readStrings(worker.path("skillIds")));
-        return subAgents.create(name, AgentMode.EXECUTION, modelId, systemPrompt, 8, allowedTools, skillIds, true).id();
+        return subAgents.create(name, AgentMode.EXECUTION, workerModelId, systemPrompt, maxTurns, allowedTools,
+                skillIds, true, maxToolCalls, timeoutSeconds, maxDepth).id();
     }
 
     private List<String> filterTools(List<String> values) {
@@ -201,6 +208,17 @@ public final class AdaptivePlanService {
 
     private static String requiredOrDefault(String value, String fallback) {
         return value == null || value.trim().isEmpty() ? fallback : value.trim();
+    }
+
+    private static int boundedInt(JsonNode object, String field, int fallback, int minimum, int maximum) {
+        JsonNode value = object == null ? null : object.path(field);
+        if (value == null || value.isMissingNode() || value.isNull()) return fallback;
+        if (!value.isIntegralNumber()) throw new IllegalArgumentException("generated worker " + field + " must be an integer");
+        int number = value.asInt();
+        if (number < minimum || number > maximum) {
+            throw new IllegalArgumentException("generated worker " + field + " must be between " + minimum + " and " + maximum);
+        }
+        return number;
     }
 
     private record Candidate(String id, int score) {
