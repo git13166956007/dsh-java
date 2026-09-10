@@ -1,0 +1,48 @@
+README.md
+  h_eb697744b14c1b 5,14-15,23
+docs/architecture.md
+  h_eb697744b14c1b 1-27
+src/main/java/io/github/git13166956007/dsh/agent/ChatModel.java
+  h_eb697744b14c1b 1
+src/main/java/io/github/git13166956007/dsh/bootstrap/DshJavaApplication.java
+  h_eb697744b14c1b 1,6
+src/main/java/io/github/git13166956007/dsh/config/DshRuntimeConfiguration.java
+  h_eb697744b14c1b 1-15
+src/main/java/io/github/git13166956007/dsh/core/DshRuntime.java
+  h_eb697744b14c1b 1,10-14
+src/main/java/io/github/git13166956007/dsh/event/EventBus.java
+  h_eb697744b14c1b 1,8
+src/main/java/io/github/git13166956007/dsh/plugin/DshPlugin.java
+  h_eb697744b14c1b 1
+src/main/java/io/github/git13166956007/dsh/plugin/PluginContext.java
+  h_eb697744b14c1b 1,4
+src/main/java/io/github/git13166956007/dsh/plugin/Registration.java
+  h_eb697744b14c1b 1
+src/main/java/io/github/git13166956007/dsh/service/ServiceKey.java
+  h_eb697744b14c1b 1
+src/main/java/io/github/git13166956007/dsh/session/JsonlSessionStore.java
+  h_eb697744b14c1b 1
+src/main/java/io/github/git13166956007/dsh/tool/ToolProvider.java
+  h_eb697744b14c1b 1
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 1,5
+src/main/resources/application.yml
+  h_eb697744b14c1b 1-6
+src/test/java/io/github/git13166956007/dsh/bootstrap/DshJavaApplicationTests.java
+  h_eb697744b14c1b 1
+src/test/java/io/github/git13166956007/dsh/core/DshRuntimeTest.java
+  h_eb697744b14c1b 1,7-10,12-15,18-19,38,40-41
+src/test/java/io/github/git13166956007/dsh/session/JsonlSessionStoreTest.java
+  h_eb697744b14c1b 1-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e7d7522efe78b2f3300dd38a4ce9fd9358316389",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
