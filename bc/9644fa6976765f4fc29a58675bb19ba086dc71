@@ -1,0 +1,14 @@
+src/main/resources/application.yml
+  h_eb697744b14c1b 23-24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "bc9644fa6976765f4fc29a58675bb19ba086dc71",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
