@@ -96,11 +96,7 @@ public final class OpenAiCompatibleChatModel implements ChatModel {
         ensureSuccess(response.statusCode(), response.body());
 
         JsonNode root = objectMapper.readTree(response.body());
-        JsonNode choice = root.path("choices").path(0);
-        JsonNode message = choice.path("message");
-        String content = message.path("content").isNull() ? null : message.path("content").asText(null);
-        List<ToolCall> toolCalls = parseToolCalls(message.path("tool_calls"));
-        return new ModelResponse(content, toolCalls, choice.path("finish_reason").asText(null));
+        return parseCompletion(root);
     }
 
     @Override
@@ -116,15 +112,22 @@ public final class OpenAiCompatibleChatModel implements ChatModel {
         }
 
         StringBuilder content = new StringBuilder();
+        StringBuilder nonSseBody = new StringBuilder();
         Map<Integer, PartialToolCall> partialCalls = new LinkedHashMap<Integer, PartialToolCall>();
         String finishReason = null;
+        boolean sawSsePayload = false;
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(
                 response.body(), StandardCharsets.UTF_8))) {
             String line;
             while ((line = reader.readLine()) != null) {
-                if (!line.startsWith("data:")) continue;
+                if (!line.startsWith("data:")) {
+                    if (!line.isBlank()) nonSseBody.append(line).append('\n');
+                    continue;
+                }
                 String data = line.substring(5).trim();
                 if ("[DONE]".equals(data)) break;
+                sawSsePayload = true;
+                if (data.isEmpty()) continue;
 
                 JsonNode chunk = objectMapper.readTree(data);
                 JsonNode choice = chunk.path("choices").path(0);
@@ -154,12 +157,42 @@ public final class OpenAiCompatibleChatModel implements ChatModel {
             }
         }
 
+        if (!sawSsePayload) {
+            String fallbackBody = nonSseBody.toString().trim();
+            if (!fallbackBody.isEmpty()) {
+                try {
+                    JsonNode root = objectMapper.readTree(fallbackBody);
+                    if (root != null && root.path("choices").isArray() && root.path("choices").size() > 0) {
+                        return parseCompletion(root);
+                    }
+                } catch (Exception ignored) {
+                    // Report the original non-SSE body below with a bounded diagnostic.
+                }
+            }
+            throw new IllegalStateException(provider + " API returned 200 without an SSE payload: "
+                    + diagnostic(fallbackBody));
+        }
+
         List<ToolCall> toolCalls = new ArrayList<ToolCall>();
         for (PartialToolCall partial : partialCalls.values()) {
             String arguments = partial.arguments.length() == 0 ? "{}" : partial.arguments.toString();
             toolCalls.add(new ToolCall(partial.id, partial.name, objectMapper.readTree(arguments)));
         }
         return new ModelResponse(content.length() == 0 ? null : content.toString(), toolCalls, finishReason);
+    }
+
+    private ModelResponse parseCompletion(JsonNode root) throws Exception {
+        JsonNode choice = root.path("choices").path(0);
+        JsonNode message = choice.path("message");
+        String content = message.path("content").isNull() ? null : message.path("content").asText(null);
+        List<ToolCall> toolCalls = parseToolCalls(message.path("tool_calls"));
+        return new ModelResponse(content, toolCalls, choice.path("finish_reason").asText(null));
+    }
+
+    private static String diagnostic(String body) {
+        if (body == null || body.isBlank()) return "empty response";
+        String normalized = body.replaceAll("\\s+", " ").trim();
+        return normalized.length() <= 1000 ? normalized : normalized.substring(0, 1000) + "...";
     }
 
     private String resolveApiKey(String requestApiKey) {

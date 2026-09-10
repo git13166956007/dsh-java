@@ -65,6 +65,36 @@ class ModelRouterTest {
     }
 
     @Test
+    void rejectsA200NonSseErrorInsteadOfTreatingItAsAnEmptySuccess() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            byte[] response = "{\"status\":\"0\",\"info\":\"INVALID_USER_KEY\",\"infocode\":\"10001\"}"
+                    .getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+        try {
+            ModelRegistry registry = new ModelRegistry(new InMemoryModelProfileStore(),
+                    "https://api.deepseek.com", "deepseek", "fallback", "key", "", 0);
+            ModelProfile profile = registry.create("Invalid SSE", "openai_compatible",
+                    "http://127.0.0.1:" + server.getAddress().getPort() + "/v1", "test-model",
+                    "key", "", 0, true, false);
+
+            Exception failure = assertThrows(Exception.class, () -> new ModelRouter(registry, new ObjectMapper()).stream(
+                    List.of(ChatMessage.user("ping")), List.of(), null, profile.id(), ignored -> { }));
+
+            org.junit.jupiter.api.Assertions.assertTrue(failure.getMessage().contains("without an SSE payload"));
+            assertEquals("UNHEALTHY", registry.health(profile.id()).status());
+            assertEquals(1, registry.health(profile.id()).failureCount());
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void rejectsUnsupportedProviderInsteadOfSilentlyUsingDeepSeek() {
         ModelRegistry registry = new ModelRegistry(new InMemoryModelProfileStore(),
                 "https://api.deepseek.com", "deepseek", "fallback", "key", "", 0);
