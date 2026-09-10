@@ -313,8 +313,11 @@ public class DshRuntimeConfiguration {
 
     @Bean(destroyMethod = "close")
     public McpClientManager mcpClientManager(McpServerRegistry mcpServerRegistry, ToolRegistry toolRegistry,
-                                             ObjectMapper objectMapper) {
-        McpClientManager manager = new McpClientManager(mcpServerRegistry, toolRegistry, objectMapper);
+                                             ObjectMapper objectMapper, Environment environment) {
+        McpClientManager manager = new McpClientManager(mcpServerRegistry, toolRegistry, objectMapper,
+                Long.parseLong(environment.getProperty("dsh.mcp.reconnect.initial-delay-ms", "1000")),
+                Long.parseLong(environment.getProperty("dsh.mcp.reconnect.max-delay-ms", "60000")),
+                Integer.parseInt(environment.getProperty("dsh.mcp.reconnect.max-attempts", "8")));
         manager.restoreEnabled();
         return manager;
     }

@@ -28,3 +28,8 @@ dsh:
     directory: ${DSH_SKILLS_DIR:skills}
   plugins:
     directory: ${DSH_PLUGINS_DIR:plugins}
+  mcp:
+    reconnect:
+      initial-delay-ms: ${DSH_MCP_RECONNECT_INITIAL_DELAY_MS:1000}
+      max-delay-ms: ${DSH_MCP_RECONNECT_MAX_DELAY_MS:60000}
+      max-attempts: ${DSH_MCP_RECONNECT_MAX_ATTEMPTS:8}

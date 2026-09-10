@@ -17,6 +17,8 @@ Java 版 DeepSeek Harness 的最小运行时内核。
 
 插件放在项目根目录 `plugins/`（或通过 `DSH_PLUGINS_DIR` 指定目录）。每个 JAR 通过 `META-INF/services/io.github.git13166956007.dsh.plugin.DshPlugin` 声明一个或多个插件实现；插件可以通过 `DshServices` 获取工具、模型、MCP、Skills、Agent、子 Agent、上下文、记忆和运行追踪服务，并使用 `PluginContext.effect` 注册清理动作。启动时会自动加载，运行中可调用 `POST /api/v1/plugins/load` 扫描同一目录；`GET /api/v1/plugins` 和健康接口会返回已加载的插件 ID。
 
+MCP 持久化 Server 在启动恢复失败或工具调用断线后会自动指数退避重连。可以通过 `DSH_MCP_RECONNECT_INITIAL_DELAY_MS`、`DSH_MCP_RECONNECT_MAX_DELAY_MS` 和 `DSH_MCP_RECONNECT_MAX_ATTEMPTS` 调整重连策略。
+
 ## 快速运行
 
 ```bash

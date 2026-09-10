@@ -19,6 +19,9 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -28,26 +31,48 @@ public final class McpClientManager implements AutoCloseable {
     private final ObjectMapper objectMapper;
     private final Map<String, ConnectedServer> connected = new ConcurrentHashMap<String, ConnectedServer>();
     private final ExecutorService restoreExecutor = Executors.newCachedThreadPool();
+    private final ScheduledExecutorService reconnectExecutor = Executors.newScheduledThreadPool(1);
+    private final Map<String, ScheduledFuture<?>> reconnects = new ConcurrentHashMap<String, ScheduledFuture<?>>();
+    private final long reconnectInitialDelayMs;
+    private final long reconnectMaxDelayMs;
+    private final int reconnectMaxAttempts;
+    private volatile boolean closed;
 
     public McpClientManager(McpServerRegistry servers, ToolRegistry tools, ObjectMapper objectMapper) {
+        this(servers, tools, objectMapper, 1_000, 60_000, 8);
+    }
+
+    public McpClientManager(McpServerRegistry servers, ToolRegistry tools, ObjectMapper objectMapper,
+                            long reconnectInitialDelayMs, long reconnectMaxDelayMs, int reconnectMaxAttempts) {
+        if (reconnectInitialDelayMs < 1 || reconnectMaxDelayMs < reconnectInitialDelayMs) {
+            throw new IllegalArgumentException("invalid MCP reconnect delay configuration");
+        }
+        if (reconnectMaxAttempts < 0) throw new IllegalArgumentException("reconnectMaxAttempts must not be negative");
         this.servers = servers;
         this.tools = tools;
         this.objectMapper = objectMapper;
+        this.reconnectInitialDelayMs = reconnectInitialDelayMs;
+        this.reconnectMaxDelayMs = reconnectMaxDelayMs;
+        this.reconnectMaxAttempts = reconnectMaxAttempts;
     }
 
     public synchronized McpServerInfo connect(String id) {
         McpServerInfo server = servers.find(id);
         if (server == null) throw new IllegalArgumentException("unknown MCP server: " + id);
         if (!server.enabled()) throw new IllegalStateException("MCP server is disabled: " + server.name());
+        cancelReconnect(id);
         disconnect(id);
         String source = source(id);
+        McpSyncClient client = null;
         try {
-            McpSyncClient client = buildClient(server);
+            client = buildClient(server);
             client.initialize();
             registerTools(server, client);
             connected.put(id, new ConnectedServer(client, source));
+            reconnects.remove(id);
             return servers.setStatus(id, "CONNECTED");
         } catch (RuntimeException exception) {
+            if (client != null) client.close();
             tools.removeBySource(source);
             servers.setStatus(id, "ERROR");
             throw new IllegalStateException(connectionError(server, exception), exception);
@@ -66,13 +91,7 @@ public final class McpClientManager implements AutoCloseable {
     public synchronized void restoreEnabled() {
         for (McpServerInfo server : servers.list()) {
             if (!server.enabled()) continue;
-            restoreExecutor.submit(() -> {
-                try {
-                    connect(server.id());
-                } catch (Exception ignored) {
-                    // A failed remote server must not prevent the host application from starting.
-                }
-            });
+            restoreExecutor.submit(() -> attemptRestore(server.id(), 0));
         }
     }
 
@@ -146,6 +165,7 @@ public final class McpClientManager implements AutoCloseable {
     public synchronized McpServerInfo disconnect(String id) {
         McpServerInfo server = servers.find(id);
         if (server == null) throw new IllegalArgumentException("unknown MCP server: " + id);
+        cancelReconnect(id);
         ConnectedServer connection = connected.remove(id);
         tools.removeBySource(source(id));
         if (connection != null) connection.client().close();
@@ -218,6 +238,8 @@ public final class McpClientManager implements AutoCloseable {
             if (Boolean.TRUE.equals(result.isError())) return "MCP tool error: " + output;
             return output;
         } catch (Exception exception) {
+            ConnectedServer failed = connected.values().stream().filter(value -> value.client() == client).findFirst().orElse(null);
+            if (failed != null) scheduleReconnect(failed.source().substring("mcp:".length()), 0);
             throw new IllegalStateException("MCP tool call failed: " + exception.getMessage(), exception);
         }
     }
@@ -355,6 +377,10 @@ public final class McpClientManager implements AutoCloseable {
 
     @Override
     public synchronized void close() {
+        closed = true;
+        reconnects.values().forEach(future -> future.cancel(false));
+        reconnects.clear();
+        reconnectExecutor.shutdownNow();
         restoreExecutor.shutdownNow();
         for (String id : new ArrayList<String>(connected.keySet())) {
             try { disconnect(id); } catch (Exception ignored) { }
@@ -362,4 +388,42 @@ public final class McpClientManager implements AutoCloseable {
     }
 
     private record ConnectedServer(McpSyncClient client, String source) { }
+
+    private void attemptRestore(String id, int attempt) {
+        if (closed) return;
+        McpServerInfo server = servers.find(id);
+        if (server == null || !server.enabled()) return;
+        try {
+            connect(id);
+        } catch (Exception ignored) {
+            if (attempt < reconnectMaxAttempts && !closed && servers.find(id) != null
+                    && servers.find(id).enabled()) {
+                scheduleReconnect(id, attempt + 1);
+            }
+        }
+    }
+
+    private void scheduleReconnect(String id, int attempt) {
+        if (closed || reconnects.containsKey(id)) return;
+        long delay = reconnectDelay(reconnectInitialDelayMs, reconnectMaxDelayMs, attempt);
+        ScheduledFuture<?> future = reconnectExecutor.schedule(() -> {
+            reconnects.remove(id);
+            attemptRestore(id, attempt);
+        }, delay, TimeUnit.MILLISECONDS);
+        ScheduledFuture<?> previous = reconnects.putIfAbsent(id, future);
+        if (previous != null) future.cancel(false);
+    }
+
+    private void cancelReconnect(String id) {
+        ScheduledFuture<?> future = reconnects.remove(id);
+        if (future != null) future.cancel(false);
+    }
+
+    static long reconnectDelay(long initialDelayMs, long maxDelayMs, int attempt) {
+        long delay = initialDelayMs;
+        for (int index = 0; index < attempt && delay < maxDelayMs; index++) {
+            delay = Math.min(maxDelayMs, delay > maxDelayMs / 2 ? maxDelayMs : delay * 2);
+        }
+        return delay;
+    }
 }
