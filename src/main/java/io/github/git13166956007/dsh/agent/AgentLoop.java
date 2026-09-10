@@ -4,6 +4,7 @@ import io.github.git13166956007.dsh.tool.ToolRegistry;
 import io.github.git13166956007.dsh.tool.ToolApprovalRequiredException;
 import io.github.git13166956007.dsh.skill.SkillRegistry;
 import io.github.git13166956007.dsh.memory.MemoryManager;
+import io.github.git13166956007.dsh.run.Run;
 import io.github.git13166956007.dsh.run.RunManager;
 import io.github.git13166956007.dsh.run.RunSpec;
 import java.util.ArrayList;
@@ -147,6 +148,27 @@ public final class AgentLoop implements AutoCloseable {
         RunOptions options = runOptions(executionOptions, context);
         validatePrompt(prompt);
         String runId = beginRun(options, context);
+        return submitAsync(runId, prompt, apiKey, history, options, context);
+    }
+
+    /** Reattaches an async execution to an existing durable Run after a restart. */
+    public AgentRunHandle resumeAsync(String runId, String prompt, String apiKey, List<ChatMessage> history,
+                                      AgentExecutionOptions executionOptions, AgentRunContext context) throws Exception {
+        if (executionOptions == null) throw new IllegalArgumentException("executionOptions must not be null");
+        if (runs == null) throw new IllegalStateException("async agent runs require a RunManager");
+        Run run = runs.find(runId);
+        if (run == null) throw new IllegalArgumentException("unknown run: " + runId);
+        if (run.status() != io.github.git13166956007.dsh.run.RunStatus.RUNNING) {
+            throw new IllegalStateException("run is not recoverable: " + runId);
+        }
+        RunOptions options = runOptions(executionOptions, context);
+        validatePrompt(prompt);
+        return submitAsync(runId, prompt, apiKey, history, options, context);
+    }
+
+    private AgentRunHandle submitAsync(String runId, String prompt, String apiKey, List<ChatMessage> history,
+                                        RunOptions options, AgentRunContext context) throws Exception {
+        persistAsyncRequest(runId, prompt, history, options);
         CompletableFuture<AgentRunResult> result = new CompletableFuture<AgentRunResult>();
         Future<?> task = asyncExecutor.submit(() -> {
             try {
@@ -688,6 +710,25 @@ public final class AgentLoop implements AutoCloseable {
         if (continuations != null) continuations.save(pending.runId, serializeContinuation(pending));
     }
 
+    private void persistAsyncRequest(String runId, String prompt, List<ChatMessage> history,
+                                     RunOptions options) throws Exception {
+        if (continuations == null) return;
+        ObjectNode root = objectMapper.createObjectNode();
+        root.put("kind", "async_request");
+        root.put("prompt", prompt);
+        root.set("options", writeOptions(options));
+        root.set("history", writeMessages(history == null ? List.of() : history));
+        continuations.save(runId, objectMapper.writeValueAsString(root));
+    }
+
+    AsyncRequest readAsyncRequest(String payload) throws Exception {
+        if (payload == null || payload.isBlank()) return null;
+        JsonNode root = objectMapper.readTree(payload);
+        if (root == null || !"async_request".equals(root.path("kind").asString(null))) return null;
+        return new AsyncRequest(root.path("prompt").asString(null), readMessages(root.path("history")),
+                readOptions(root.path("options")));
+    }
+
     private PendingExecution restoreContinuation(String runId) throws Exception {
         if (continuations == null) return null;
         String payload = continuations.load(runId);
@@ -837,6 +878,9 @@ public final class AgentLoop implements AutoCloseable {
         values.forEach(array::add);
     }
 
+    record AsyncRequest(String prompt, List<ChatMessage> history, AgentLoop.RunOptions options) {
+    }
+
     private static java.util.Set<String> readSet(JsonNode array) {
         if (array == null || array.isNull() || array.isMissingNode()) return null;
         java.util.Set<String> result = new java.util.LinkedHashSet<String>();
@@ -859,7 +903,7 @@ public final class AgentLoop implements AutoCloseable {
         activeThreads.clear();
     }
 
-        private record RunOptions(String modelId, AgentMode mode, int maxTurns, String systemPrompt,
+        record RunOptions(String modelId, AgentMode mode, int maxTurns, String systemPrompt,
                               java.util.Set<String> allowedToolNames, java.util.Set<String> skillIds,
                               int maxToolCalls, int timeoutSeconds, int maxDepth,
                               String memoryNamespace, String memorySubjectKey, String agentId) {

@@ -1485,11 +1485,26 @@ async function sendMessage() {
         assistantMessage.content = data.answer || assistantMessage.content
         assistantMessage.runId = data.runId
         trace.value = data.trace || trace.value
-        const pendingTool = [...messages.value].reverse().find((item) => item.role === 'tool' && item.state === 'running')
-        if (data.pendingApproval && pendingTool) {
-          pendingTool.runId = data.runId
-          pendingTool.state = 'awaiting_approval'
-          pendingTool.approval = data.pendingApproval
+        syncToolMessages(trace.value)
+        const pendingTool = [...messages.value].reverse().find((item) => item.role === 'tool' && item.result === null)
+        if (data.pendingApproval) {
+          if (pendingTool) {
+            pendingTool.runId = data.runId
+            pendingTool.state = 'awaiting_approval'
+            pendingTool.approval = data.pendingApproval
+          } else {
+            const position = messages.value.indexOf(assistantMessage)
+            messages.value.splice(position < 0 ? messages.value.length : position, 0, {
+              role: 'tool',
+              id: data.pendingApproval.toolCallId,
+              name: data.pendingApproval.toolName,
+              arguments: data.pendingApproval.arguments,
+              result: null,
+              state: 'awaiting_approval',
+              runId: data.runId,
+              approval: data.pendingApproval
+            })
+          }
         }
         history.value.unshift({
           prompt,
@@ -1581,6 +1596,8 @@ async function consumeSse(response, onEvent) {
     }
     if (done) break
   }
+  const trailing = parseSseBlock(buffer.trim())
+  if (trailing) onEvent(trailing.event, trailing.data)
 }
 
 function parseSseBlock(block) {
@@ -1618,6 +1635,37 @@ function clearConversation() {
 function formatArguments(argumentsNode) {
   if (!argumentsNode) return '{}'
   return JSON.stringify(argumentsNode, null, 2)
+}
+
+function syncToolMessages(events) {
+  const toolEvents = (events || []).filter((item) => item?.type === 'tool')
+  const existing = messages.value.filter((item) => item.role === 'tool')
+  const occurrences = new Map()
+
+  for (const event of toolEvents) {
+    const occurrence = occurrences.get(event.name) || 0
+    occurrences.set(event.name, occurrence + 1)
+    const candidates = existing.filter((item) => item.name === event.name)
+    let message = candidates[occurrence]
+    if (!message) {
+      message = {
+        role: 'tool',
+        id: null,
+        name: event.name,
+        arguments: event.arguments,
+        result: event.result ?? null,
+        state: event.result == null ? 'running' : 'complete',
+        runId: null
+      }
+      const assistantPosition = messages.value.indexOf([...messages.value].reverse().find((item) => item.role === 'assistant'))
+      messages.value.splice(assistantPosition < 0 ? messages.value.length : assistantPosition, 0, message)
+      existing.push(message)
+    } else {
+      message.arguments = event.arguments || message.arguments
+      message.result = event.result ?? message.result
+      if (event.result != null) message.state = 'complete'
+    }
+  }
 }
 
 function renderMarkdown(content) {

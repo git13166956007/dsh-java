@@ -5,6 +5,8 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
 
 public final class MariaDbAgentContinuationStore implements AgentContinuationStore {
     private final String jdbcUrl;
@@ -28,6 +30,18 @@ public final class MariaDbAgentContinuationStore implements AgentContinuationSto
                 return rows.next() ? rows.getString(1) : null;
             }
         }
+    }
+
+    @Override
+    public List<String> listRunIds() throws SQLException {
+        List<String> result = new ArrayList<String>();
+        try (Connection connection = connection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "SELECT run_id FROM dsh_agent_continuation ORDER BY updated_at, run_id");
+             ResultSet rows = statement.executeQuery()) {
+            while (rows.next()) result.add(rows.getString(1));
+        }
+        return result;
     }
 
     @Override

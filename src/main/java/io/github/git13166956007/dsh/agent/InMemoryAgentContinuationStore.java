@@ -1,6 +1,7 @@
 package io.github.git13166956007.dsh.agent;
 
 import java.util.Map;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 
 public final class InMemoryAgentContinuationStore implements AgentContinuationStore {
@@ -9,6 +10,11 @@ public final class InMemoryAgentContinuationStore implements AgentContinuationSt
     @Override
     public String load(String runId) {
         return values.get(runId);
+    }
+
+    @Override
+    public List<String> listRunIds() {
+        return List.copyOf(values.keySet());
     }
 
     @Override

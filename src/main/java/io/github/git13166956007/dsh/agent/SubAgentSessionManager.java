@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 /** Keeps a durable sub-agent conversation while each turn remains a normal Run. */
@@ -70,8 +71,9 @@ public final class SubAgentSessionManager {
                     AgentRunContext.child(null, RunKind.SUB_AGENT, session.conversationId(), null, null, profile.id()));
             activeRuns.put(sessionId, handle.runId());
             touch(session);
-            handle.result().whenComplete((result, error) -> finish(sessionId, handle.runId(), result, error));
-            return handle;
+            CompletableFuture<AgentRunResult> lifecycleResult = handle.result()
+                    .whenComplete((result, error) -> finish(sessionId, handle.runId(), result, error));
+            return new AgentRunHandle(handle.runId(), lifecycleResult, handle::cancel);
         }
     }
 
@@ -96,6 +98,20 @@ public final class SubAgentSessionManager {
         if (sessionId == null) return;
         activeRuns.remove(sessionId, runId);
         touch(store.find(sessionId));
+    }
+
+    public void trackRecoveredRun(Run run) throws Exception {
+        if (run == null || run.conversationId() == null) return;
+        String sessionId = sessionForConversation(run.conversationId());
+        if (sessionId != null && store.find(sessionId) != null) activeRuns.put(sessionId, run.id());
+    }
+
+    public void onRunResult(String runId, AgentRunResult result, Throwable error) throws Exception {
+        if (runId == null) return;
+        Run run = runs.find(runId);
+        if (run == null || run.conversationId() == null) return;
+        String sessionId = sessionForConversation(run.conversationId());
+        if (sessionId != null) finish(sessionId, runId, result, error);
     }
 
     public SubAgentSession close(String id) throws Exception {

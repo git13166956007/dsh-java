@@ -24,6 +24,7 @@ import io.github.git13166956007.dsh.agent.SubAgentSessionStore;
 import io.github.git13166956007.dsh.agent.InMemorySubAgentSessionStore;
 import io.github.git13166956007.dsh.agent.MariaDbSubAgentSessionStore;
 import io.github.git13166956007.dsh.agent.SubAgentSessionManager;
+import io.github.git13166956007.dsh.agent.AgentRunRecovery;
 import io.github.git13166956007.dsh.core.DshRuntime;
 import io.github.git13166956007.dsh.mcp.McpServerRegistry;
 import io.github.git13166956007.dsh.mcp.McpClientManager;
@@ -239,6 +240,13 @@ public class DshRuntimeConfiguration {
                                                          SubAgentProfileRegistry profiles, ModelRegistry models,
                                                          RunManager runs) {
         return new SubAgentSessionManager(store, contextManager, subAgentRunner, profiles, models, runs);
+    }
+
+    @Bean(initMethod = "recover")
+    public AgentRunRecovery agentRunRecovery(AgentContinuationStore continuations, RunManager runs,
+                                             AgentLoop agentLoop,
+                                             SubAgentProfileRegistry profiles, SubAgentSessionManager sessions) {
+        return new AgentRunRecovery(continuations, runs, agentLoop, profiles, sessions);
     }
 
     @Bean
