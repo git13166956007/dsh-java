@@ -299,10 +299,16 @@ public final class AgentLoop {
     }
 
     public AgentRunResult resumeApproval(String runId, boolean approved) throws Exception {
+        return resumeApproval(runId, approved, null);
+    }
+
+    public AgentRunResult resumeApproval(String runId, boolean approved, String requestApiKey) throws Exception {
         if (runId == null || runId.isBlank()) throw new IllegalArgumentException("runId must not be blank");
         PendingExecution pending = pendingApprovals.remove(runId);
         if (pending == null) pending = restoreContinuation(runId);
         if (pending == null) throw new IllegalArgumentException("run is not awaiting tool approval: " + runId);
+        String effectiveApiKey = blankToNull(requestApiKey);
+        if (effectiveApiKey != null) pending.apiKey = effectiveApiKey;
         try {
             deleteContinuation(runId);
             if (runs != null) {
@@ -313,7 +319,7 @@ public final class AgentLoop {
             }
             String result;
             if (pending.approval.delegatedRunId() != null) {
-                AgentRunResult child = resumeApproval(pending.approval.delegatedRunId(), approved);
+                AgentRunResult child = resumeApproval(pending.approval.delegatedRunId(), approved, pending.apiKey);
                 if (child.pendingApproval() != null) {
                     PendingToolApproval nextApproval = new PendingToolApproval(pending.approval.toolCallId(),
                             pending.approval.toolName(), pending.approval.arguments(), child.runId());
@@ -556,16 +562,17 @@ public final class AgentLoop {
     }
 
     private void finishRun(String runId, String answer) throws Exception {
-        if (runId != null) {
+        if (runId != null && runs != null) {
             runs.complete(runId, answer);
             deleteContinuation(runId);
         }
+        else if (runId != null) deleteContinuation(runId);
     }
 
     private void failRun(String runId, Exception exception) {
         if (runId == null) return;
         try {
-            runs.fail(runId, exception.getMessage());
+            if (runs != null) runs.fail(runId, exception.getMessage());
             deleteContinuation(runId);
         } catch (Exception auditFailure) {
             exception.addSuppressed(auditFailure);
@@ -573,7 +580,7 @@ public final class AgentLoop {
     }
 
     private void recordEvent(String runId, String type, String payload) throws Exception {
-        if (runId != null) runs.event(runId, type, payload);
+        if (runId != null && runs != null) runs.event(runId, type, payload);
     }
 
     private void recordEventUnchecked(String runId, String type, String payload) {
@@ -763,7 +770,7 @@ public final class AgentLoop {
         private final List<AgentTraceEvent> trace;
         private final int nextTurn;
         private final RunOptions options;
-        private final String apiKey;
+        private String apiKey;
         private final List<io.github.git13166956007.dsh.tool.ToolDefinition> definitions;
         private final ExecutionBudget budget;
         private final PendingToolApproval approval;

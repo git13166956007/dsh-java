@@ -15,6 +15,7 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -430,6 +431,45 @@ class AgentLoopTest {
         assertEquals("resumed", result.answer());
         assertEquals(1, executions.get());
         assertEquals(RunStatus.COMPLETED, runs.find(pending.runId()).status());
+        assertEquals(null, continuations.load(pending.runId()));
+    }
+
+    @Test
+    void approvalResumeCanUseAOneRequestApiKeyWithoutPersistingIt() throws Exception {
+        ToolRegistry tools = new ToolRegistry();
+        tools.register(new ToolDefinition("debug_key_tool", "Approval tool.",
+                JsonNodeFactory.instance.objectNode().put("type", "object")), arguments -> "approved");
+        tools.setApprovalRequired("debug_key_tool", true);
+        InMemoryAgentContinuationStore continuations = new InMemoryAgentContinuationStore();
+        AtomicInteger calls = new AtomicInteger();
+        List<String> receivedKeys = new ArrayList<>();
+        ChatModel model = new ChatModel() {
+            @Override
+            public ModelResponse complete(List<ChatMessage> messages, List<ToolDefinition> definitions) {
+                return complete(messages, definitions, null, null);
+            }
+
+            @Override
+            public ModelResponse complete(List<ChatMessage> messages, List<ToolDefinition> definitions,
+                                          String apiKey, String modelId) {
+                receivedKeys.add(apiKey);
+                if (calls.getAndIncrement() == 0) {
+                    return new ModelResponse(null, List.of(new ToolCall("debug-key-call", "debug_key_tool",
+                            JsonNodeFactory.instance.objectNode())), "tool_calls");
+                }
+                return new ModelResponse("resumed", List.of(), "stop");
+            }
+        };
+        AgentLoop loop = new AgentLoop(model, tools, null, null, null, null, continuations,
+                new ObjectMapper(), 2);
+
+        AgentRunResult pending = loop.runDetailed("debug key", null, List.of());
+        assertFalse(continuations.load(pending.runId()).contains("temporary-debug-key"));
+
+        AgentRunResult result = loop.resumeApproval(pending.runId(), true, "temporary-debug-key");
+
+        assertEquals("resumed", result.answer());
+        assertEquals(java.util.Arrays.asList(null, "temporary-debug-key"), receivedKeys);
         assertEquals(null, continuations.load(pending.runId()));
     }
 

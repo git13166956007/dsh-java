@@ -209,6 +209,11 @@ public final class PlanExecutor implements AutoCloseable {
     }
 
     public io.github.git13166956007.dsh.agent.AgentRunResult resumeApproval(String approvalRunId, boolean approved) throws Exception {
+        return resumeApproval(approvalRunId, approved, null);
+    }
+
+    public io.github.git13166956007.dsh.agent.AgentRunResult resumeApproval(String approvalRunId, boolean approved,
+                                                                            String requestApiKey) throws Exception {
         PendingPlan pending = pendingApprovals.get(approvalRunId);
         if (pending == null) pending = restorePendingPlan(approvalRunId);
         if (pending == null) throw new IllegalArgumentException("plan approval is not pending: " + approvalRunId);
@@ -216,7 +221,9 @@ public final class PlanExecutor implements AutoCloseable {
         if (planBeforeResume == null || planBeforeResume.status() == PlanStatus.CANCELLED) {
             throw new IllegalStateException("plan is no longer active: " + pending.planId());
         }
-        io.github.git13166956007.dsh.agent.AgentRunResult result = agentLoop.resumeApproval(approvalRunId, approved);
+        String effectiveApiKey = requestApiKey == null || requestApiKey.isBlank() ? pending.apiKey() : requestApiKey;
+        io.github.git13166956007.dsh.agent.AgentRunResult result = agentLoop.resumeApproval(approvalRunId, approved,
+                effectiveApiKey);
         if (result.pendingApproval() != null) {
             pendingApprovals.remove(approvalRunId);
             pendingApprovals.put(result.runId(), pending);
@@ -232,7 +239,7 @@ public final class PlanExecutor implements AutoCloseable {
                     .findFirst().orElse(null);
             if (step != null) plans.completeStep(plan.id(), step.id(), result.answer());
             plans.resume(plan.id());
-            PendingPlan resumed = pending;
+            PendingPlan resumed = new PendingPlan(pending.planId(), effectiveApiKey, pending.planRunId(), pending.stepId());
             executor.submit(() -> run(plan.id(), resumed.apiKey(), resumed.planRunId()));
         }
         return result;

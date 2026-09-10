@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -15,6 +16,7 @@ public final class ModelRegistry {
     private final ModelProfileStore store;
     private final ModelHealthStore healthStore;
     private final Map<String, ModelProfileData> profiles = new LinkedHashMap<String, ModelProfileData>();
+    private final Map<String, ModelProvider> providers = new ConcurrentHashMap<String, ModelProvider>();
 
     public ModelRegistry(ModelProfileStore store, String baseUrl, String provider, String model,
                          String apiKey, String proxyHost, int proxyPort) {
@@ -51,6 +53,26 @@ public final class ModelRegistry {
     public synchronized ModelProfile find(String id) {
         ModelProfileData profile = profiles.get(id);
         return profile == null ? null : ModelProfile.from(profile);
+    }
+
+    /** Registers a provider implementation supplied by the host or a plugin. */
+    public void registerProvider(ModelProvider provider) {
+        if (provider == null) throw new IllegalArgumentException("model provider must not be null");
+        String id = required(provider.id(), "model provider id").toLowerCase(Locale.ROOT);
+        if (!id.matches("[a-z0-9_-]{1,64}")) throw new IllegalArgumentException("invalid model provider id");
+        ModelProvider previous = providers.putIfAbsent(id, provider);
+        if (previous != null && previous != provider) {
+            throw new IllegalArgumentException("duplicate model provider: " + id);
+        }
+    }
+
+    public ModelProvider provider(String id) {
+        String normalized = blankToNull(id);
+        return normalized == null ? null : providers.get(normalized.toLowerCase(Locale.ROOT));
+    }
+
+    public List<String> providerIds() {
+        return providers.keySet().stream().sorted().toList();
     }
 
     public synchronized ModelProfile create(String name, String provider, String baseUrl, String model,

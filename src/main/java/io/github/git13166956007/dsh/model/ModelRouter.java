@@ -19,6 +19,7 @@ public final class ModelRouter implements ChatModel {
     public ModelRouter(ModelRegistry registry, ObjectMapper objectMapper) {
         this.registry = registry;
         this.objectMapper = objectMapper;
+        registerBuiltInProviders();
     }
 
     @Override
@@ -86,19 +87,56 @@ public final class ModelRouter implements ChatModel {
     }
 
     private ChatModel client(ModelProfileData profile) {
-        String provider = profile.provider().toLowerCase(Locale.ROOT);
-        if ("deepseek".equals(provider)) {
-            return new DeepSeekChatModel(objectMapper, profile.baseUrl(), profile.apiKey(), profile.model(),
-                    profile.proxyHost(), profile.proxyPort(), profile.temperature(), profile.topP(), profile.maxTokens(),
-                    profile.frequencyPenalty(), profile.presencePenalty(), profile.timeoutSeconds(), profile.requestOptionsJson());
+        ModelProvider provider = registry.provider(profile.provider());
+        if (provider == null) {
+            throw new IllegalArgumentException("unsupported model provider: " + profile.provider());
         }
-        if ("openai".equals(provider) || "openai_compatible".equals(provider)) {
-            return new OpenAiCompatibleChatModel(objectMapper, provider, profile.baseUrl(), profile.apiKey(),
-                    profile.model(), profile.proxyHost(), profile.proxyPort(), profile.temperature(), profile.topP(),
-                    profile.maxTokens(), profile.frequencyPenalty(), profile.presencePenalty(), profile.timeoutSeconds(),
-                    profile.requestOptionsJson());
-        }
-        throw new IllegalArgumentException("unsupported model provider: " + profile.provider()
-                + "; use deepseek, openai, or openai_compatible");
+        return provider.create(profile, objectMapper);
+    }
+
+    private void registerBuiltInProviders() {
+        registry.registerProvider(new ModelProvider() {
+            @Override
+            public String id() {
+                return "deepseek";
+            }
+
+            @Override
+            public ChatModel create(ModelProfileData profile, ObjectMapper mapper) {
+                return new DeepSeekChatModel(mapper, profile.baseUrl(), profile.apiKey(), profile.model(),
+                        profile.proxyHost(), profile.proxyPort(), profile.temperature(), profile.topP(),
+                        profile.maxTokens(), profile.frequencyPenalty(), profile.presencePenalty(),
+                        profile.timeoutSeconds(), profile.requestOptionsJson());
+            }
+        });
+        registry.registerProvider(new ModelProvider() {
+            @Override
+            public String id() {
+                return "openai";
+            }
+
+            @Override
+            public ChatModel create(ModelProfileData profile, ObjectMapper mapper) {
+                return openAi(profile, mapper);
+            }
+        });
+        registry.registerProvider(new ModelProvider() {
+            @Override
+            public String id() {
+                return "openai_compatible";
+            }
+
+            @Override
+            public ChatModel create(ModelProfileData profile, ObjectMapper mapper) {
+                return openAi(profile, mapper);
+            }
+        });
+    }
+
+    private static ChatModel openAi(ModelProfileData profile, ObjectMapper mapper) {
+        return new OpenAiCompatibleChatModel(mapper, profile.provider(), profile.baseUrl(), profile.apiKey(),
+                profile.model(), profile.proxyHost(), profile.proxyPort(), profile.temperature(), profile.topP(),
+                profile.maxTokens(), profile.frequencyPenalty(), profile.presencePenalty(), profile.timeoutSeconds(),
+                profile.requestOptionsJson());
     }
 }

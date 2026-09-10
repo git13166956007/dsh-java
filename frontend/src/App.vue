@@ -24,6 +24,7 @@ const capabilityTab = ref('tools')
 const mcpServers = ref([])
 const skills = ref([])
 const models = ref([])
+const modelProviders = ref([])
 const contextInfo = ref(null)
 const contextLoading = ref(false)
 const contextError = ref('')
@@ -204,9 +205,13 @@ async function refreshSkills() {
 
 async function refreshModels() {
   try {
-    const response = await fetch('/api/v1/models')
+    const [response, providersResponse] = await Promise.all([
+      fetch('/api/v1/models'),
+      fetch('/api/v1/models/providers')
+    ])
     if (!response.ok) throw new Error('模型列表不可用')
     const profiles = await response.json()
+    modelProviders.value = providersResponse.ok ? await providersResponse.json() : []
     models.value = await Promise.all(profiles.map(async (model) => {
       try {
         const healthResponse = await fetch(`/api/v1/models/${encodeURIComponent(model.id)}/health`)
@@ -221,6 +226,7 @@ async function refreshModels() {
     }
   } catch {
     models.value = []
+    modelProviders.value = []
     selectedModelId.value = null
   }
 }
@@ -496,7 +502,7 @@ async function approvePlanRun(approved) {
   const response = await fetch(`/api/v1/runs/${encodeURIComponent(runId)}/approval`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ approved })
+    body: JSON.stringify({ approved, apiKey: apiKey.value.trim() || null })
   })
   if (!response.ok) return
   planApprovalRun.value = null
@@ -1222,7 +1228,7 @@ async function approveTool(toolMessage, approved) {
     const response = await fetch(`/api/v1/runs/${encodeURIComponent(toolMessage.runId)}/approval`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ approved })
+      body: JSON.stringify({ approved, apiKey: apiKey.value.trim() || null })
     })
     const payload = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(payload.error || '审批操作失败')
@@ -1764,7 +1770,7 @@ onUnmounted(() => {
           </div>
           <div class="tool-form-grid">
             <label><span>Name</span><input v-model="modelForm.name" placeholder="DeepSeek Production" autocomplete="off" /></label>
-            <label><span>Provider</span><input v-model="modelForm.provider" placeholder="deepseek" autocomplete="off" /></label>
+            <label><span>Provider</span><input v-model="modelForm.provider" list="model-provider-options" placeholder="deepseek" autocomplete="off" /><datalist id="model-provider-options"><option v-for="provider in modelProviders" :key="provider" :value="provider" /></datalist></label>
           </div>
           <label><span>Base URL</span><input v-model="modelForm.baseUrl" placeholder="https://api.deepseek.com" autocomplete="off" /></label>
           <label><span>Model</span><input v-model="modelForm.model" placeholder="deepseek-v4-flash" autocomplete="off" /></label>

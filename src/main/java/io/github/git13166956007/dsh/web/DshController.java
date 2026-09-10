@@ -25,6 +25,8 @@ import io.github.git13166956007.dsh.mcp.McpPromptInfo;
 import io.github.git13166956007.dsh.mcp.McpPromptResult;
 import io.github.git13166956007.dsh.mcp.McpResourceContent;
 import io.github.git13166956007.dsh.mcp.McpResourceInfo;
+import io.github.git13166956007.dsh.mcp.McpResourceSubscription;
+import io.github.git13166956007.dsh.mcp.McpResourceUpdate;
 import io.github.git13166956007.dsh.mcp.McpHealth;
 import io.github.git13166956007.dsh.memory.MemoryManager;
 import io.github.git13166956007.dsh.memory.MemoryRecord;
@@ -134,6 +136,16 @@ public final class DshController {
         }
     }
 
+    @PostMapping("/plugins/reload")
+    public java.util.List<String> reloadPlugins() {
+        try {
+            runtime.reloadPlugins(pluginDirectory);
+            return runtime.pluginIds();
+        } catch (Exception exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, exception.getMessage(), exception);
+        }
+    }
+
     @GetMapping("/tools")
     public java.util.List<ToolInfo> tools() {
         return toolRegistry.list();
@@ -232,6 +244,30 @@ public final class DshController {
         return mcpClientManager.readResource(id, uri);
     }
 
+    @PostMapping("/mcp/servers/{id}/resources/subscribe")
+    public McpResourceSubscription subscribeMcpResource(@PathVariable String id,
+                                                        @RequestBody ResourceSubscriptionRequest request) {
+        if (request == null || request.uri() == null || request.uri().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "uri must not be blank");
+        }
+        return mcpClientManager.subscribeResource(id, request.uri());
+    }
+
+    @DeleteMapping("/mcp/servers/{id}/resources/subscribe")
+    public McpResourceSubscription unsubscribeMcpResource(@PathVariable String id, @RequestParam String uri) {
+        return mcpClientManager.unsubscribeResource(id, uri);
+    }
+
+    @GetMapping("/mcp/servers/{id}/resources/subscriptions")
+    public java.util.List<String> mcpResourceSubscriptions(@PathVariable String id) {
+        return mcpClientManager.subscriptions(id);
+    }
+
+    @GetMapping("/mcp/servers/{id}/resources/updates")
+    public java.util.List<McpResourceUpdate> mcpResourceUpdates(@PathVariable String id) {
+        return mcpClientManager.resourceUpdates(id);
+    }
+
     @GetMapping("/mcp/servers/{id}/prompts")
     public java.util.List<McpPromptInfo> mcpPrompts(@PathVariable String id) {
         return mcpClientManager.prompts(id);
@@ -314,6 +350,11 @@ public final class DshController {
     @GetMapping("/models")
     public java.util.List<ModelProfile> models() {
         return modelRegistry.list();
+    }
+
+    @GetMapping("/models/providers")
+    public java.util.List<String> modelProviders() {
+        return modelRegistry.providerIds();
     }
 
     @PostMapping("/models")
@@ -591,8 +632,8 @@ public final class DshController {
         }
         try {
             AgentRunResult result = run.planId() == null
-                    ? agentLoop.resumeApproval(id, request.approved())
-                    : planExecutor.resumeApproval(id, request.approved());
+                    ? agentLoop.resumeApproval(id, request.approved(), request.apiKey())
+                    : planExecutor.resumeApproval(id, request.approved(), request.apiKey());
             if (result.pendingApproval() == null && run.conversationId() != null) {
                 contextManager.append(run.conversationId(), ChatMessage.assistant(result.answer(), java.util.List.of()));
             }
@@ -858,6 +899,9 @@ public final class DshController {
     public record ModelTestResponse(String modelId, boolean ok, String message, String content) {
     }
 
+    public record ResourceSubscriptionRequest(String uri) {
+    }
+
     public record AgentProfileRequest(String name, String mode, String modelId, String systemPrompt,
                                       Integer maxTurns, Boolean enabled, Boolean active) {
     }
@@ -910,7 +954,10 @@ public final class DshController {
                                  io.github.git13166956007.dsh.agent.PendingToolApproval pendingApproval) {
     }
 
-    public record ApprovalRequest(Boolean approved) {
+    public record ApprovalRequest(Boolean approved, String apiKey) {
+        public ApprovalRequest(Boolean approved) {
+            this(approved, null);
+        }
     }
 
     public record ErrorResponse(String error) {
