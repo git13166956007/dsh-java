@@ -192,6 +192,10 @@ CREATE TABLE IF NOT EXISTS dsh_sub_agent_profile (
     max_tool_calls INT NOT NULL DEFAULT 64,
     timeout_seconds INT NOT NULL DEFAULT 300,
     max_depth INT NOT NULL DEFAULT 4,
+    priority INT NOT NULL DEFAULT 50,
+    cost_weight DOUBLE NOT NULL DEFAULT 1.0,
+    max_concurrent_runs INT NOT NULL DEFAULT 4,
+    capability_tags TEXT NULL,
     created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     INDEX idx_dsh_sub_agent_enabled (enabled)

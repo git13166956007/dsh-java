@@ -27,14 +27,15 @@ public final class MariaDbSubAgentProfileStore implements SubAgentProfileStore {
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(
                      "SELECT id, name, mode, model_id, system_prompt, max_turns, allowed_tools, skill_ids, enabled, "
-                             + "max_tool_calls, timeout_seconds, max_depth "
+                             + "max_tool_calls, timeout_seconds, max_depth, priority, cost_weight, max_concurrent_runs, capability_tags "
                              + "FROM dsh_sub_agent_profile ORDER BY created_at, id");
              ResultSet rows = statement.executeQuery()) {
             while (rows.next()) result.add(new SubAgentProfileData(rows.getString("id"), rows.getString("name"),
                     AgentMode.parse(rows.getString("mode")), rows.getString("model_id"), rows.getString("system_prompt"),
                     rows.getInt("max_turns"), split(rows.getString("allowed_tools")), split(rows.getString("skill_ids")),
                     rows.getBoolean("enabled"), rows.getInt("max_tool_calls"), rows.getInt("timeout_seconds"),
-                    rows.getInt("max_depth")));
+                    rows.getInt("max_depth"), rows.getInt("priority"), rows.getDouble("cost_weight"),
+                    rows.getInt("max_concurrent_runs"), split(rows.getString("capability_tags"))));
         }
         return result;
     }
@@ -45,12 +46,14 @@ public final class MariaDbSubAgentProfileStore implements SubAgentProfileStore {
              PreparedStatement statement = connection.prepareStatement(
                      "INSERT INTO dsh_sub_agent_profile "
                              + "(id, name, mode, model_id, system_prompt, max_turns, allowed_tools, skill_ids, enabled, "
-                             + "max_tool_calls, timeout_seconds, max_depth) "
-                             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=VALUES(name), "
+                             + "max_tool_calls, timeout_seconds, max_depth, priority, cost_weight, max_concurrent_runs, capability_tags) "
+                             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=VALUES(name), "
                              + "mode=VALUES(mode), model_id=VALUES(model_id), system_prompt=VALUES(system_prompt), "
                              + "max_turns=VALUES(max_turns), allowed_tools=VALUES(allowed_tools), skill_ids=VALUES(skill_ids), "
                              + "enabled=VALUES(enabled), max_tool_calls=VALUES(max_tool_calls), "
-                             + "timeout_seconds=VALUES(timeout_seconds), max_depth=VALUES(max_depth)")) {
+                             + "timeout_seconds=VALUES(timeout_seconds), max_depth=VALUES(max_depth), priority=VALUES(priority), "
+                             + "cost_weight=VALUES(cost_weight), max_concurrent_runs=VALUES(max_concurrent_runs), "
+                             + "capability_tags=VALUES(capability_tags)")) {
             statement.setString(1, profile.id());
             statement.setString(2, profile.name());
             statement.setString(3, profile.mode().value());
@@ -63,6 +66,10 @@ public final class MariaDbSubAgentProfileStore implements SubAgentProfileStore {
             statement.setInt(10, profile.maxToolCalls());
             statement.setInt(11, profile.timeoutSeconds());
             statement.setInt(12, profile.maxDepth());
+            statement.setInt(13, profile.priority());
+            statement.setDouble(14, profile.costWeight());
+            statement.setInt(15, profile.maxConcurrentRuns());
+            statement.setString(16, join(profile.capabilityTags()));
             statement.executeUpdate();
         }
     }
@@ -84,7 +91,9 @@ public final class MariaDbSubAgentProfileStore implements SubAgentProfileStore {
                              + "model_id VARCHAR(64) NULL, system_prompt TEXT NULL, max_turns INT NOT NULL DEFAULT 8, "
                              + "allowed_tools TEXT NULL, skill_ids TEXT NULL, enabled BOOLEAN NOT NULL DEFAULT TRUE, "
                              + "max_tool_calls INT NOT NULL DEFAULT 64, timeout_seconds INT NOT NULL DEFAULT 300, "
-                             + "max_depth INT NOT NULL DEFAULT 4, "
+                             + "max_depth INT NOT NULL DEFAULT 4, priority INT NOT NULL DEFAULT 50, "
+                             + "cost_weight DOUBLE NOT NULL DEFAULT 1.0, max_concurrent_runs INT NOT NULL DEFAULT 4, "
+                             + "capability_tags TEXT NULL, "
                              + "created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), "
                              + "updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3), "
                              + "INDEX idx_dsh_sub_agent_enabled (enabled)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4")) {
@@ -101,6 +110,10 @@ public final class MariaDbSubAgentProfileStore implements SubAgentProfileStore {
                     "ALTER TABLE dsh_sub_agent_profile ADD COLUMN IF NOT EXISTS max_depth INT NOT NULL DEFAULT 4")) {
                 alter.executeUpdate();
             }
+            addColumn(connection, "priority INT NOT NULL DEFAULT 50");
+            addColumn(connection, "cost_weight DOUBLE NOT NULL DEFAULT 1.0");
+            addColumn(connection, "max_concurrent_runs INT NOT NULL DEFAULT 4");
+            addColumn(connection, "capability_tags TEXT NULL");
         } catch (SQLException exception) {
             throw new IllegalStateException("failed to initialize sub-agent profile schema", exception);
         }
@@ -117,5 +130,12 @@ public final class MariaDbSubAgentProfileStore implements SubAgentProfileStore {
     private static List<String> split(String value) {
         return value == null || value.isBlank() ? List.of() : Arrays.stream(value.split(","))
                 .map(String::trim).filter(item -> !item.isEmpty()).toList();
+    }
+
+    private static void addColumn(Connection connection, String definition) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "ALTER TABLE dsh_sub_agent_profile ADD COLUMN IF NOT EXISTS " + definition)) {
+            statement.executeUpdate();
+        }
     }
 }

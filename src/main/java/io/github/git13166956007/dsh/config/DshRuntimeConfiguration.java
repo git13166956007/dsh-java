@@ -245,8 +245,9 @@ public class DshRuntimeConfiguration {
     @Bean(initMethod = "recover")
     public AgentRunRecovery agentRunRecovery(AgentContinuationStore continuations, RunManager runs,
                                              AgentLoop agentLoop,
-                                             SubAgentProfileRegistry profiles, SubAgentSessionManager sessions) {
-        return new AgentRunRecovery(continuations, runs, agentLoop, profiles, sessions);
+                                             SubAgentProfileRegistry profiles, SubAgentSessionManager sessions,
+                                             SubAgentRunner subAgents) {
+        return new AgentRunRecovery(continuations, runs, agentLoop, profiles, sessions, subAgents);
     }
 
     @Bean
@@ -308,8 +309,8 @@ public class DshRuntimeConfiguration {
     }
 
     @Bean
-    public SubAgentRunner subAgentRunner(AgentLoop agentLoop, SubAgentProfileRegistry profiles) {
-        SubAgentRunner runner = new SubAgentRunner(agentLoop, profiles);
+    public SubAgentRunner subAgentRunner(AgentLoop agentLoop, SubAgentProfileRegistry profiles, RunManager runs) {
+        SubAgentRunner runner = new SubAgentRunner(agentLoop, profiles, runs);
         agentLoop.setSubAgentRunner(runner);
         return runner;
     }
@@ -333,9 +334,10 @@ public class DshRuntimeConfiguration {
     public AdaptivePlanService adaptivePlanService(AgentLoop agentLoop, PlanRegistry planRegistry,
                                                    SubAgentProfileRegistry subAgentProfileRegistry,
                                                    ObjectMapper objectMapper, ToolRegistry toolRegistry,
-                                                   SkillRegistry skillRegistry) {
+                                                   SkillRegistry skillRegistry, RunManager runManager,
+                                                   ModelRegistry modelRegistry) {
         return new AdaptivePlanService(agentLoop, planRegistry, subAgentProfileRegistry, objectMapper,
-                toolRegistry, skillRegistry);
+                toolRegistry, skillRegistry, runManager, modelRegistry);
     }
 
     @Bean(initMethod = "recover", destroyMethod = "close")

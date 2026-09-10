@@ -161,6 +161,11 @@ h2 { font-size: 17px; }
 .sub-agent-run-output { max-height: 220px; margin-top: 12px; }
 .sub-agent-session-panel { border-color: #36504b; }
 .sub-agent-session-actions { justify-content: flex-start; margin: 8px 0 12px; }
+.candidate-list { margin-top: 12px; border-top: 1px solid #273235; }
+.candidate-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid #273235; }
+.candidate-row strong, .candidate-row small { display: block; overflow-wrap: anywhere; }
+.candidate-row strong { color: #cbd9d4; font-size: 11px; }
+.candidate-row small { margin-top: 4px; color: #718083; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; line-height: 1.5; }
 .tool-source.running { border-color: #6ca695; color: #9ce3ca; }
 .tool-source.completed { border-color: #6ca695; color: #9ce3ca; }
 .tool-source.failed, .tool-source.cancelled { border-color: #a15f56; color: #e79487; }

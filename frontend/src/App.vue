@@ -47,12 +47,19 @@ const subAgentForm = ref({
   maxToolCalls: 64,
   timeoutSeconds: 300,
   maxDepth: 4,
+  priority: 50,
+  costWeight: 1,
+  maxConcurrentRuns: 4,
+  capabilityTags: '',
   allowedToolNames: '',
   skillIds: '',
   enabled: true
 })
 const subAgentFormError = ref('')
 const subAgentSaving = ref(false)
+const subAgentCandidateTask = ref('')
+const subAgentCandidates = ref([])
+const subAgentCandidateError = ref('')
 const subAgentRunPrompt = ref('')
 const subAgentRunProfileId = ref('')
 const subAgentRunError = ref('')
@@ -475,6 +482,10 @@ function resetSubAgentForm() {
     maxToolCalls: 64,
     timeoutSeconds: 300,
     maxDepth: 4,
+    priority: 50,
+    costWeight: 1,
+    maxConcurrentRuns: 4,
+    capabilityTags: '',
     allowedToolNames: '',
     skillIds: '',
     enabled: true
@@ -493,6 +504,10 @@ function editSubAgent(profile) {
     maxToolCalls: profile.maxToolCalls ?? 64,
     timeoutSeconds: profile.timeoutSeconds ?? 300,
     maxDepth: profile.maxDepth ?? 4,
+    priority: profile.priority ?? 50,
+    costWeight: profile.costWeight ?? 1,
+    maxConcurrentRuns: profile.maxConcurrentRuns ?? 4,
+    capabilityTags: (profile.capabilityTags || []).join(', '),
     allowedToolNames: (profile.allowedToolNames || []).join(', '),
     skillIds: (profile.skillIds || []).join(', '),
     enabled: profile.enabled
@@ -521,6 +536,10 @@ async function saveSubAgent() {
         maxToolCalls: Number(subAgentForm.value.maxToolCalls) || 0,
         timeoutSeconds: Number(subAgentForm.value.timeoutSeconds) || 0,
         maxDepth: Number(subAgentForm.value.maxDepth) || 0,
+        priority: Number(subAgentForm.value.priority) || 0,
+        costWeight: Number(subAgentForm.value.costWeight),
+        maxConcurrentRuns: Number(subAgentForm.value.maxConcurrentRuns) || 1,
+        capabilityTags: subAgentForm.value.capabilityTags.split(',').map((value) => value.trim()).filter(Boolean),
         allowedToolNames: subAgentForm.value.allowedToolNames.split(',').map((value) => value.trim()).filter(Boolean),
         skillIds: subAgentForm.value.skillIds.split(',').map((value) => value.trim()).filter(Boolean),
         enabled: subAgentForm.value.enabled
@@ -534,6 +553,23 @@ async function saveSubAgent() {
     subAgentFormError.value = requestError.message
   } finally {
     subAgentSaving.value = false
+  }
+}
+
+async function inspectSubAgentCandidates() {
+  subAgentCandidateError.value = ''
+  subAgentCandidates.value = []
+  if (!subAgentCandidateTask.value.trim()) {
+    subAgentCandidateError.value = 'Please provide a task'
+    return
+  }
+  try {
+    const response = await fetch(`/api/v1/sub-agents/candidates?task=${encodeURIComponent(subAgentCandidateTask.value.trim())}`)
+    const payload = await response.json().catch(() => [])
+    if (!response.ok) throw new Error(payload.message || payload.error || 'Candidate inspection failed')
+    subAgentCandidates.value = payload
+  } catch (requestError) {
+    subAgentCandidateError.value = requestError.message
   }
 }
 
@@ -2233,7 +2269,7 @@ onUnmounted(() => {
         <div v-for="profile in subAgents" :key="profile.id" class="managed-tool model-item">
           <div class="managed-tool-copy">
             <div class="managed-tool-title"><strong>{{ profile.name }}</strong><span class="tool-source">{{ String(profile.mode).toLowerCase() }}</span></div>
-            <p>{{ profile.maxTurns }} turns · {{ profile.maxToolCalls }} tool calls · {{ profile.timeoutSeconds }}s · depth {{ profile.maxDepth }}</p>
+            <p>{{ profile.maxTurns }} turns · {{ profile.maxToolCalls }} tool calls · {{ profile.timeoutSeconds }}s · depth {{ profile.maxDepth }} · priority {{ profile.priority }} · cost {{ profile.costWeight }} · load {{ profile.maxConcurrentRuns }}</p>
           </div>
           <div class="managed-tool-actions model-actions">
             <button class="secondary-button compact" type="button" :disabled="!profile.enabled" @click="prepareSubAgentRun(profile)">Run</button>
@@ -2243,6 +2279,19 @@ onUnmounted(() => {
           </div>
         </div>
         <p v-if="subAgents.length === 0" class="tool-manager-empty">No sub-agent profiles configured.</p>
+
+        <form class="tool-create-form inline-form" @submit.prevent="inspectSubAgentCandidates">
+          <div class="tool-form-heading"><div><div class="eyebrow">ADAPTIVE ROUTING</div><h3>Inspect worker candidates</h3></div><span class="tool-form-note">Explainable scoring</span></div>
+          <label><span>Task</span><input v-model="subAgentCandidateTask" placeholder="Inspect database migration logs" autocomplete="off" /></label>
+          <p v-if="subAgentCandidateError" class="tool-form-error">{{ subAgentCandidateError }}</p>
+          <div class="tool-form-footer"><button class="send-button" type="submit"><span>Rank candidates</span><span class="send-arrow">↗</span></button></div>
+          <div v-if="subAgentCandidates.length" class="candidate-list">
+            <div v-for="candidate in subAgentCandidates" :key="candidate.id" class="candidate-row">
+              <div><strong>{{ candidate.name }}</strong><small>{{ candidate.reasons.join(' · ') }}</small></div>
+              <span :class="['tool-source', candidate.available ? 'connected' : 'unhealthy']">{{ candidate.score }} · {{ candidate.activeRuns }}/{{ candidate.maxConcurrentRuns }}</span>
+            </div>
+          </div>
+        </form>
 
         <div class="tool-create-form inline-form sub-agent-session-panel">
           <div class="tool-form-heading"><div><div class="eyebrow">CONTINUABLE SESSION</div><h3>Keep a sub-agent conversation alive</h3></div><span class="tool-form-note">Persistent context</span></div>
@@ -2286,6 +2335,8 @@ onUnmounted(() => {
           <div class="tool-form-grid"><label><span>Allowed tools</span><input v-model="subAgentForm.allowedToolNames" placeholder="time_now, search" autocomplete="off" /></label><label><span>Allowed skills</span><input v-model="subAgentForm.skillIds" placeholder="skill_id" autocomplete="off" /></label></div>
           <div class="tool-form-grid"><label><span>Max turns</span><input v-model="subAgentForm.maxTurns" type="number" min="1" max="64" inputmode="numeric" /></label><label><span>Max tool calls</span><input v-model="subAgentForm.maxToolCalls" type="number" min="0" max="10000" inputmode="numeric" /></label></div>
           <div class="tool-form-grid"><label><span>Timeout seconds</span><input v-model="subAgentForm.timeoutSeconds" type="number" min="0" max="86400" inputmode="numeric" /></label><label><span>Max delegation depth</span><input v-model="subAgentForm.maxDepth" type="number" min="0" max="32" inputmode="numeric" /></label></div>
+          <div class="tool-form-grid"><label><span>Priority</span><input v-model="subAgentForm.priority" type="number" min="0" max="100" inputmode="numeric" /></label><label><span>Cost weight</span><input v-model="subAgentForm.costWeight" type="number" min="0" max="100" step="0.1" inputmode="decimal" /></label></div>
+          <div class="tool-form-grid"><label><span>Max concurrent runs</span><input v-model="subAgentForm.maxConcurrentRuns" type="number" min="1" max="64" inputmode="numeric" /></label><label><span>Capability tags</span><input v-model="subAgentForm.capabilityTags" placeholder="database, research" autocomplete="off" /></label></div>
           <p v-if="subAgentFormError" class="tool-form-error">{{ subAgentFormError }}</p>
           <div class="tool-form-footer"><button class="secondary-button" type="button" @click="resetSubAgentForm">Reset</button><button class="send-button" type="submit" :disabled="subAgentSaving"><span>{{ subAgentSaving ? 'Saving' : 'Save sub-agent' }}</span><span class="send-arrow">↗</span></button></div>
         </form>

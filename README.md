@@ -94,7 +94,7 @@ export DSH_PERSISTENCE_ENABLED=true
 
 Agent Profile 管理接口为 `GET/POST/PATCH/DELETE /api/v1/agents`，以及 `POST /api/v1/agents/{id}/activate`。Profile 支持 `mode`（`chat`、`planning`、`execution`）、`modelId`、`systemPrompt`、`maxTurns`、`maxToolCalls`、`timeoutSeconds`、`maxDepth`、`enabled` 和 `active`，这些执行预算会持久化。聊天请求可以传 `agentId` 和 `mode`；不传时使用当前 active Agent Profile。Planning 模式不会向模型暴露工具，并要求输出结构化的执行计划；Execution 模式允许使用已启用工具。
 
-Sub-agent Profile 管理接口为 `GET/POST/PATCH/DELETE /api/v1/sub-agents`。每个子智能体可以独立配置 `mode`、`modelId`、`systemPrompt`、`maxTurns`、工具白名单 `allowedToolNames`、Skill 白名单 `skillIds` 和 `enabled`。白名单会在模型请求和实际工具执行两处生效。计划步骤可以填写 `subAgentId`，执行时由对应子智能体完成。
+Sub-agent Profile 管理接口为 `GET/POST/PATCH/DELETE /api/v1/sub-agents`。每个子智能体可以独立配置 `mode`、`modelId`、`systemPrompt`、`maxTurns`、工具白名单 `allowedToolNames`、Skill 白名单 `skillIds`、`priority`、`costWeight`、`maxConcurrentRuns`、能力标签 `capabilityTags` 和 `enabled`。白名单会在模型请求和实际工具执行两处生效；并发上限会覆盖后台 Run、持续会话和恢复中的 Run。计划步骤可以填写 `subAgentId`，执行时由对应子智能体完成。`GET /api/v1/sub-agents/candidates?task=...` 会返回候选的可用性、当前负载、评分和命中原因，方便调试自适应分派。
 
 可以通过 `POST /api/v1/sub-agents/{id}/runs` 启动后台执行，接口立即返回 `runId`；随后使用 `GET /api/v1/runs/{id}` 查询状态，或订阅 `GET /api/v1/runs/{id}/events/stream` 获取历史回放和实时事件。后台运行支持 `POST /api/v1/runs/{id}/cancel` 真实中断当前模型线程，也支持对 `WAITING_APPROVAL` 的运行调用现有审批接口。MariaDB 会持久化运行状态、事件和异步请求元数据；应用重启后会自动恢复 `RUNNING` 的 Sub-agent Run，恢复时不保存或恢复请求 API Key，而是重新使用模型 Profile 的 Key。
 
@@ -106,7 +106,7 @@ Sub-agent Profile 管理接口为 `GET/POST/PATCH/DELETE /api/v1/sub-agents`。�
 
 自适应计划接口为 `POST /api/v1/plans/adaptive`。它会调用 Planning Agent 生成严格 JSON 步骤，服务端限制最大步骤数、校验结构和步骤依赖，并根据子智能体的名称、说明、工具和 Skill 能力做确定性匹配；匹配不到时回退到父 Agent。生成结果直接进入同一套审批和执行状态机。
 
-自适应计划可以传 `allowDynamicSubAgents: true`。当已有 Worker 都无法匹配时，Planning Agent 可为步骤返回 Worker 描述，服务端会过滤不存在的工具/Skill，创建并持久化一个 `execution` Sub-agent Profile，再将步骤绑定到它。默认关闭，前端 Adaptive Planner 中可显式开启。
+自适应计划可以传 `allowDynamicSubAgents: true`。当已有 Worker 都无法匹配时，Planning Agent 可为步骤返回 Worker 描述，服务端会过滤不存在的工具/Skill，校验模型是否启用且支持工具调用，创建并持久化一个带优先级、成本权重、并发上限和能力标签的 `execution` Sub-agent Profile，再将步骤绑定到它。默认关闭，前端 Adaptive Planner 中可显式开启。已有 Worker 会按任务 Token、工具/Skill/能力命中、模型匹配、优先级、成本和当前负载进行确定性评分。
 
 记忆接口为 `GET /api/v1/memories`、`GET /api/v1/memories/search`、`POST /api/v1/memories` 和 `DELETE /api/v1/memories/{id}`。记忆按 `namespace + subjectKey` 隔离，当前聊天会以 `conversation + conversationId` 自动检索相关记忆并注入系统上下文；前端 Memory Tab 可以显式添加和删除记忆。设置 `DSH_MEMORY_AUTO_EXTRACT_ENABLED=true` 后，每次完成聊天会用模型提取少量持久化事实/偏好，自动过滤疑似密钥、密码和短期任务信息并去重；提取失败不会影响聊天结果。
 

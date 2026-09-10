@@ -542,12 +542,23 @@ public final class DshController {
         return subAgentProfileRegistry.list();
     }
 
+    @GetMapping("/sub-agents/candidates")
+    public java.util.List<AdaptivePlanService.SubAgentCandidate> subAgentCandidates(
+            @RequestParam String task) {
+        try {
+            return adaptivePlanService.rankSubAgents(task);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
+        }
+    }
+
     @PostMapping("/sub-agents")
     public SubAgentProfile createSubAgent(@RequestBody SubAgentProfileRequest request) {
         try {
             return subAgentProfileRegistry.create(request.name(), AgentMode.parse(request.mode()), request.modelId(),
                     request.systemPrompt(), request.maxTurns(), request.allowedToolNames(), request.skillIds(), request.enabled(),
-                    request.maxToolCalls(), request.timeoutSeconds(), request.maxDepth());
+                    request.maxToolCalls(), request.timeoutSeconds(), request.maxDepth(), request.priority(),
+                    request.costWeight(), request.maxConcurrentRuns(), request.capabilityTags());
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
         }
@@ -558,7 +569,8 @@ public final class DshController {
         try {
             return subAgentProfileRegistry.update(id, request.name(), request.mode() == null ? null : AgentMode.parse(request.mode()),
                     request.modelId(), request.systemPrompt(), request.maxTurns(), request.allowedToolNames(),
-                    request.skillIds(), request.enabled(), request.maxToolCalls(), request.timeoutSeconds(), request.maxDepth());
+                    request.skillIds(), request.enabled(), request.maxToolCalls(), request.timeoutSeconds(), request.maxDepth(),
+                    request.priority(), request.costWeight(), request.maxConcurrentRuns(), request.capabilityTags());
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
         }
@@ -778,6 +790,7 @@ public final class DshController {
         } else {
             agentLoop.cancel(id);
             agentLoop.cancelPendingApproval(id);
+            subAgentRunner.releaseCompletedReservations();
             if (!run.status().terminal() && runManager.find(id) != null
                     && !runManager.find(id).status().terminal()) runManager.cancel(id);
         }
@@ -802,6 +815,7 @@ public final class DshController {
                 contextManager.append(run.conversationId(), ChatMessage.assistant(result.answer(), java.util.List.of()));
             }
             subAgentSessionManager.onApprovalResult(result);
+            subAgentRunner.releaseCompletedReservations();
             return new ChatResponse(run.conversationId(), result.answer(), result.trace(), result.turns(),
                     result.runId(), result.pendingApproval());
         } catch (IllegalArgumentException exception) {
@@ -1108,7 +1122,8 @@ public final class DshController {
     public record SubAgentProfileRequest(String name, String mode, String modelId, String systemPrompt,
                                          Integer maxTurns, java.util.List<String> allowedToolNames,
                                          java.util.List<String> skillIds, Boolean enabled, Integer maxToolCalls,
-                                         Integer timeoutSeconds, Integer maxDepth) {
+                                         Integer timeoutSeconds, Integer maxDepth, Integer priority, Double costWeight,
+                                         Integer maxConcurrentRuns, java.util.List<String> capabilityTags) {
     }
 
     public record SubAgentRunRequest(String prompt, String apiKey) {

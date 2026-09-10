@@ -14,15 +14,23 @@ public final class AgentRunRecovery {
     private final AgentLoop agentLoop;
     private final SubAgentProfileRegistry profiles;
     private final SubAgentSessionManager sessions;
+    private final SubAgentRunner subAgents;
 
     public AgentRunRecovery(AgentContinuationStore continuations, RunManager runs, AgentLoop agentLoop,
                             SubAgentProfileRegistry profiles,
                             SubAgentSessionManager sessions) {
+        this(continuations, runs, agentLoop, profiles, sessions, null);
+    }
+
+    public AgentRunRecovery(AgentContinuationStore continuations, RunManager runs, AgentLoop agentLoop,
+                            SubAgentProfileRegistry profiles,
+                            SubAgentSessionManager sessions, SubAgentRunner subAgents) {
         this.continuations = continuations;
         this.runs = runs;
         this.agentLoop = agentLoop;
         this.profiles = profiles;
         this.sessions = sessions;
+        this.subAgents = subAgents;
     }
 
     public void recover() {
@@ -45,6 +53,7 @@ public final class AgentRunRecovery {
                         continue;
                     }
                     profiles.resolve(run.agentId());
+                    if (subAgents != null) subAgents.trackRecoveredRun(run.id(), run.agentId());
                     sessions.trackRecoveredRun(run);
                     AgentExecutionOptions options = new AgentExecutionOptions(request.options().modelId(),
                             request.options().mode(), request.options().systemPrompt(), request.options().maxTurns(),
@@ -54,6 +63,7 @@ public final class AgentRunRecovery {
                             options, AgentRunContext.child(run.parentRunId(), run.kind(), run.conversationId(),
                                     run.planId(), run.stepId(), run.agentId()));
                     handle.result().whenComplete((result, error) -> {
+                        if (subAgents != null) subAgents.releaseCompletedReservations();
                         try { sessions.onRunResult(handle.runId(), result, error); }
                         catch (Exception ignored) { }
                     });

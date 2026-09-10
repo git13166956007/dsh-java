@@ -11,6 +11,10 @@ import io.github.git13166956007.dsh.agent.ModelResponse;
 import io.github.git13166956007.dsh.agent.SubAgentProfileRegistry;
 import io.github.git13166956007.dsh.tool.ToolDefinition;
 import io.github.git13166956007.dsh.tool.ToolRegistry;
+import io.github.git13166956007.dsh.run.InMemoryRunStore;
+import io.github.git13166956007.dsh.run.RunKind;
+import io.github.git13166956007.dsh.run.RunManager;
+import io.github.git13166956007.dsh.run.RunSpec;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
@@ -113,5 +117,25 @@ class AdaptivePlanServiceTest {
                 .create("执行数据库迁移", null, null, null, false, 4, 1);
 
         assertEquals("数据库迁移 Worker", subAgents.find(plan.steps().get(0).subAgentId()).name());
+    }
+
+    @Test
+    void ranksCandidatesByPriorityCostAndCurrentLoad() throws Exception {
+        SubAgentProfileRegistry subAgents = new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 8);
+        var expensive = subAgents.create("Database expert", AgentMode.EXECUTION, null, "database migration", 4,
+                List.of(), List.of(), true, 64, 300, 4, 90, 2.0, 2, List.of("database"));
+        var cheap = subAgents.create("Database generalist", AgentMode.EXECUTION, null, "database migration", 4,
+                List.of(), List.of(), true, 64, 300, 4, 20, 0.1, 1, List.of("database"));
+        RunManager runs = new RunManager(new InMemoryRunStore());
+        String runId = runs.start(new RunSpec(null, RunKind.SUB_AGENT, null, null, null, cheap.id(), null));
+        AdaptivePlanService service = new AdaptivePlanService(new AgentLoop((messages, definitions) ->
+                new ModelResponse("ok", List.of(), "stop"), new ToolRegistry(), 2),
+                new PlanRegistry(new InMemoryPlanStore()), subAgents, new ObjectMapper(), null, null, runs, null);
+
+        var candidates = service.rankSubAgents("database migration");
+
+        assertEquals(expensive.id(), candidates.get(0).id());
+        assertEquals(1, candidates.stream().filter(candidate -> candidate.id().equals(cheap.id())).findFirst().orElseThrow().activeRuns());
+        runs.complete(runId, "done");
     }
 }

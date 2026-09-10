@@ -1,15 +1,18 @@
 package io.github.git13166956007.dsh.agent;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 public final class SubAgentProfileRegistry {
     private final SubAgentProfileStore store;
     private final int defaultMaxTurns;
     private final Map<String, SubAgentProfileData> profiles = new LinkedHashMap<String, SubAgentProfileData>();
+    private final Map<String, Set<String>> activeReservations = new LinkedHashMap<String, Set<String>>();
 
     public SubAgentProfileRegistry(SubAgentProfileStore store, int defaultMaxTurns) {
         if (defaultMaxTurns < 1) throw new IllegalArgumentException("defaultMaxTurns must be positive");
@@ -42,23 +45,57 @@ public final class SubAgentProfileRegistry {
                 .toList();
     }
 
+    public synchronized int activeRunCount(String id) {
+        return activeReservations.getOrDefault(id, Set.of()).size();
+    }
+
+    public synchronized void reserve(String id, String runId) {
+        SubAgentProfileData profile = resolve(id);
+        if (runId == null || runId.isBlank()) throw new IllegalArgumentException("run id must not be blank");
+        Set<String> reservations = activeReservations.computeIfAbsent(id, ignored -> new HashSet<String>());
+        if (!reservations.contains(runId) && reservations.size() >= profile.maxConcurrentRuns()) {
+            throw new IllegalStateException("sub-agent profile concurrency limit reached: " + id);
+        }
+        reservations.add(runId);
+    }
+
+    public synchronized void release(String id, String runId) {
+        Set<String> reservations = activeReservations.get(id);
+        if (reservations == null) return;
+        reservations.remove(runId);
+        if (reservations.isEmpty()) activeReservations.remove(id);
+    }
+
     public synchronized SubAgentProfile create(String name, AgentMode mode, String modelId, String systemPrompt,
                                                 Integer maxTurns, List<String> allowedToolNames, List<String> skillIds,
                                                 Boolean enabled) {
-        return create(name, mode, modelId, systemPrompt, maxTurns, allowedToolNames, skillIds, enabled, 64, 300, 4);
+        return create(name, mode, modelId, systemPrompt, maxTurns, allowedToolNames, skillIds, enabled,
+                64, 300, 4, 50, 1.0, 4, List.of());
     }
 
     public synchronized SubAgentProfile create(String name, AgentMode mode, String modelId, String systemPrompt,
                                                 Integer maxTurns, List<String> allowedToolNames, List<String> skillIds,
                                                 Boolean enabled, Integer maxToolCalls, Integer timeoutSeconds,
                                                 Integer maxDepth) {
+        return create(name, mode, modelId, systemPrompt, maxTurns, allowedToolNames, skillIds, enabled,
+                maxToolCalls, timeoutSeconds, maxDepth, 50, 1.0, 4, List.of());
+    }
+
+    public synchronized SubAgentProfile create(String name, AgentMode mode, String modelId, String systemPrompt,
+                                                Integer maxTurns, List<String> allowedToolNames, List<String> skillIds,
+                                                Boolean enabled, Integer maxToolCalls, Integer timeoutSeconds,
+                                                Integer maxDepth, Integer priority, Double costWeight,
+                                                Integer maxConcurrentRuns, List<String> capabilityTags) {
         SubAgentProfileData profile = new SubAgentProfileData(UUID.randomUUID().toString(), required(name, "name"),
                 mode == null ? AgentMode.CHAT : mode, blankToNull(modelId), systemPrompt == null ? "" : systemPrompt.trim(),
                 validMaxTurns(maxTurns == null ? defaultMaxTurns : maxTurns), normalizeList(allowedToolNames, "tool"),
                 normalizeList(skillIds, "skill"), enabled == null || enabled,
                 validMaxToolCalls(maxToolCalls == null ? 64 : maxToolCalls),
                 validTimeoutSeconds(timeoutSeconds == null ? 300 : timeoutSeconds),
-                validMaxDepth(maxDepth == null ? 4 : maxDepth));
+                validMaxDepth(maxDepth == null ? 4 : maxDepth), validPriority(priority == null ? 50 : priority),
+                validCostWeight(costWeight == null ? 1.0 : costWeight),
+                validMaxConcurrentRuns(maxConcurrentRuns == null ? 4 : maxConcurrentRuns),
+                normalizeList(capabilityTags, "capability"));
         save(profile);
         return SubAgentProfile.from(profile);
     }
@@ -74,6 +111,16 @@ public final class SubAgentProfileRegistry {
                                                 String systemPrompt, Integer maxTurns, List<String> allowedToolNames,
                                                 List<String> skillIds, Boolean enabled, Integer maxToolCalls,
                                                 Integer timeoutSeconds, Integer maxDepth) {
+        return update(id, name, mode, modelId, systemPrompt, maxTurns, allowedToolNames, skillIds, enabled,
+                maxToolCalls, timeoutSeconds, maxDepth, null, null, null, null);
+    }
+
+    public synchronized SubAgentProfile update(String id, String name, AgentMode mode, String modelId,
+                                                String systemPrompt, Integer maxTurns, List<String> allowedToolNames,
+                                                List<String> skillIds, Boolean enabled, Integer maxToolCalls,
+                                                Integer timeoutSeconds, Integer maxDepth, Integer priority,
+                                                Double costWeight, Integer maxConcurrentRuns,
+                                                List<String> capabilityTags) {
         SubAgentProfileData current = resolveExisting(id);
         SubAgentProfileData updated = new SubAgentProfileData(id, name == null ? current.name() : required(name, "name"),
                 mode == null ? current.mode() : mode, modelId == null ? current.modelId() : blankToNull(modelId),
@@ -84,7 +131,11 @@ public final class SubAgentProfileRegistry {
                 enabled == null ? current.enabled() : enabled,
                 maxToolCalls == null ? current.maxToolCalls() : validMaxToolCalls(maxToolCalls),
                 timeoutSeconds == null ? current.timeoutSeconds() : validTimeoutSeconds(timeoutSeconds),
-                maxDepth == null ? current.maxDepth() : validMaxDepth(maxDepth));
+                maxDepth == null ? current.maxDepth() : validMaxDepth(maxDepth),
+                priority == null ? current.priority() : validPriority(priority),
+                costWeight == null ? current.costWeight() : validCostWeight(costWeight),
+                maxConcurrentRuns == null ? current.maxConcurrentRuns() : validMaxConcurrentRuns(maxConcurrentRuns),
+                capabilityTags == null ? current.capabilityTags() : normalizeList(capabilityTags, "capability"));
         save(updated);
         return SubAgentProfile.from(updated);
     }
@@ -142,6 +193,23 @@ public final class SubAgentProfileRegistry {
 
     private static int validMaxDepth(int value) {
         if (value < 0 || value > 32) throw new IllegalArgumentException("maxDepth must be between 0 and 32");
+        return value;
+    }
+
+    private static int validPriority(int value) {
+        if (value < 0 || value > 100) throw new IllegalArgumentException("priority must be between 0 and 100");
+        return value;
+    }
+
+    private static double validCostWeight(double value) {
+        if (Double.isNaN(value) || Double.isInfinite(value) || value < 0 || value > 100) {
+            throw new IllegalArgumentException("costWeight must be between 0 and 100");
+        }
+        return value;
+    }
+
+    private static int validMaxConcurrentRuns(int value) {
+        if (value < 1 || value > 64) throw new IllegalArgumentException("maxConcurrentRuns must be between 1 and 64");
         return value;
     }
 

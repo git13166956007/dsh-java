@@ -35,6 +35,25 @@ class SubAgentProfileRegistryTest {
     }
 
     @Test
+    void persistsRoutingPolicyAndEnforcesConcurrentReservations() {
+        InMemorySubAgentProfileStore store = new InMemorySubAgentProfileStore();
+        SubAgentProfileRegistry registry = new SubAgentProfileRegistry(store, 8);
+        SubAgentProfile created = registry.create("Database worker", AgentMode.EXECUTION, null, "Inspect databases", 5,
+                List.of(), List.of(), true, 12, 45, 3, 80, 0.25, 1, List.of("database", "migration"));
+
+        SubAgentProfile restored = new SubAgentProfileRegistry(store, 8).find(created.id());
+        assertEquals(80, restored.priority());
+        assertEquals(0.25, restored.costWeight());
+        assertEquals(1, restored.maxConcurrentRuns());
+        assertEquals(List.of("database", "migration"), restored.capabilityTags());
+
+        registry.reserve(created.id(), "run-1");
+        assertThrows(IllegalStateException.class, () -> registry.reserve(created.id(), "run-2"));
+        registry.release(created.id(), "run-1");
+        registry.reserve(created.id(), "run-2");
+    }
+
+    @Test
     void rejectsInvalidCapabilityNames() {
         SubAgentProfileRegistry registry = new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 8);
 
