@@ -11,6 +11,8 @@ import java.util.Collections;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
@@ -21,6 +23,35 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AgentLoopTest {
+    @Test
+    void runsSubAgentAsynchronouslyAndCanCancelTheLiveModelCall() throws Exception {
+        CountDownLatch started = new CountDownLatch(1);
+        ChatModel model = (messages, definitions) -> {
+            started.countDown();
+            Thread.sleep(10_000);
+            return new ModelResponse("late result", List.of(), "stop");
+        };
+        RunManager runs = new RunManager(new InMemoryRunStore());
+        AgentLoop loop = new AgentLoop(model, new ToolRegistry(), null, null, null, runs, null,
+                new ObjectMapper(), 2);
+        try {
+            AgentRunHandle handle = loop.runAsync("background task", null, List.of(),
+                    new AgentExecutionOptions(null, AgentMode.EXECUTION, "", 2, null, null, 4, 300, 4),
+                    AgentRunContext.child(null, io.github.git13166956007.dsh.run.RunKind.SUB_AGENT,
+                            null, null, null, "worker"));
+
+            assertTrue(started.await(2, TimeUnit.SECONDS));
+            assertEquals(RunStatus.RUNNING, runs.find(handle.runId()).status());
+            assertTrue(handle.cancel());
+            assertEquals(RunStatus.CANCELLED, runs.find(handle.runId()).status());
+
+            Thread.sleep(100);
+            assertEquals(RunStatus.CANCELLED, runs.find(handle.runId()).status());
+        } finally {
+            loop.close();
+        }
+    }
+
     @Test
     void executesToolThenReturnsFinalAnswer() throws Exception {
         ToolRegistry tools = new ToolRegistry();

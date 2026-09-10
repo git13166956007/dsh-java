@@ -119,6 +119,7 @@ public final class RunManager {
     private void update(String id, RunStatus status, String error, String output, Instant completedAt) throws Exception {
         RunData current = store.listRuns().stream().filter(run -> run.id().equals(id)).findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("unknown run: " + id));
+        if (current.status().terminal() && current.status() != status) return;
         store.saveRun(new RunData(current.id(), current.parentRunId(), current.kind(), status, current.conversationId(),
                 current.planId(), current.stepId(), current.agentId(), current.modelId(), current.startedAt(), completedAt,
                 error, output));

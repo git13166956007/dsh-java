@@ -10,14 +10,18 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 import io.github.git13166956007.dsh.tool.ToolDefinition;
 
-public final class AgentLoop {
+public final class AgentLoop implements AutoCloseable {
     private static final String DELEGATE_TOOL = "delegate_to_subagent";
     private final ChatModel model;
     private final ToolRegistry tools;
@@ -28,8 +32,12 @@ public final class AgentLoop {
     private final AgentContinuationStore continuations;
     private final ObjectMapper objectMapper;
     private final int maxTurns;
+    private final ExecutorService asyncExecutor = Executors.newCachedThreadPool();
     private volatile SubAgentRunner subAgents;
     private final Map<String, PendingExecution> pendingApprovals = new ConcurrentHashMap<String, PendingExecution>();
+    private final Map<String, Future<?>> activeRuns = new ConcurrentHashMap<String, Future<?>>();
+    private final Map<String, Thread> activeThreads = new ConcurrentHashMap<String, Thread>();
+    private final java.util.Set<String> cancelledRuns = ConcurrentHashMap.newKeySet();
 
     public AgentLoop(ChatModel model, ToolRegistry tools, int maxTurns) {
         this(model, tools, null, null, null, null, null, null, maxTurns);
@@ -128,19 +136,43 @@ public final class AgentLoop {
     public AgentRunResult runDetailed(String prompt, String apiKey, List<ChatMessage> history,
                                       AgentExecutionOptions executionOptions, AgentRunContext context) throws Exception {
         if (executionOptions == null) throw new IllegalArgumentException("executionOptions must not be null");
-        return runResolved(prompt, apiKey, history, new RunOptions(executionOptions.modelId(), executionOptions.mode(),
-                executionOptions.maxTurns(), executionOptions.systemPrompt(), executionOptions.allowedToolNames(),
-                executionOptions.skillIds(), executionOptions.maxToolCalls(), executionOptions.timeoutSeconds(),
-                executionOptions.maxDepth(), null, null, context.agentId()), context);
+        return runResolved(prompt, apiKey, history, runOptions(executionOptions, context), context);
+    }
+
+    /** Starts a durable Agent run without blocking the caller thread. */
+    public AgentRunHandle runAsync(String prompt, String apiKey, List<ChatMessage> history,
+                                   AgentExecutionOptions executionOptions, AgentRunContext context) throws Exception {
+        if (executionOptions == null) throw new IllegalArgumentException("executionOptions must not be null");
+        if (runs == null) throw new IllegalStateException("async agent runs require a RunManager");
+        RunOptions options = runOptions(executionOptions, context);
+        validatePrompt(prompt);
+        String runId = beginRun(options, context);
+        CompletableFuture<AgentRunResult> result = new CompletableFuture<AgentRunResult>();
+        Future<?> task = asyncExecutor.submit(() -> {
+            try {
+                result.complete(runResolved(prompt, apiKey, history, options, context, runId));
+            } catch (Throwable exception) {
+                result.completeExceptionally(exception);
+            } finally {
+                activeRuns.remove(runId);
+                cancelledRuns.remove(runId);
+            }
+        });
+        activeRuns.put(runId, task);
+        if (result.isDone()) activeRuns.remove(runId, task);
+        return new AgentRunHandle(runId, result, () -> cancel(runId));
     }
 
     private AgentRunResult runResolved(String prompt, String apiKey, List<ChatMessage> history,
                                        RunOptions options, AgentRunContext context) throws Exception {
-        if (prompt == null || prompt.trim().isEmpty()) {
-            throw new IllegalArgumentException("prompt must not be blank");
-        }
-
+        validatePrompt(prompt);
         String runId = beginRun(options, context);
+        return runResolved(prompt, apiKey, history, options, context, runId);
+    }
+
+    private AgentRunResult runResolved(String prompt, String apiKey, List<ChatMessage> history,
+                                       RunOptions options, AgentRunContext context, String runId) throws Exception {
+        if (runId != null) activeThreads.put(runId, Thread.currentThread());
         try {
             List<ChatMessage> messages = new ArrayList<ChatMessage>();
             List<AgentTraceEvent> trace = new ArrayList<AgentTraceEvent>();
@@ -191,10 +223,32 @@ public final class AgentLoop {
             }
 
             throw new IllegalStateException("agent exceeded max turns: " + options.maxTurns());
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            cancelRun(runId);
+            throw exception;
         } catch (Exception exception) {
+            if (runId != null && cancelledRuns.contains(runId)) {
+                cancelRun(runId);
+                throw exception;
+            }
             failRun(runId, exception);
             throw exception;
+        } finally {
+            if (runId != null) activeThreads.remove(runId, Thread.currentThread());
         }
+    }
+
+    private static void validatePrompt(String prompt) {
+        if (prompt == null || prompt.trim().isEmpty()) {
+            throw new IllegalArgumentException("prompt must not be blank");
+        }
+    }
+
+    private static RunOptions runOptions(AgentExecutionOptions options, AgentRunContext context) {
+        return new RunOptions(options.modelId(), options.mode(), options.maxTurns(), options.systemPrompt(),
+                options.allowedToolNames(), options.skillIds(), options.maxToolCalls(), options.timeoutSeconds(),
+                options.maxDepth(), null, null, context == null ? null : context.agentId());
     }
 
     public AgentRunResult runStreaming(String prompt, String apiKey, AgentStreamListener listener) throws Exception {
@@ -236,6 +290,7 @@ public final class AgentLoop {
 
         RunOptions options = options(modelId, agentId, modeOverride, memoryNamespace, memorySubjectKey);
         String runId = beginRun(options, context);
+        if (runId != null) activeThreads.put(runId, Thread.currentThread());
         try {
             List<ChatMessage> messages = new ArrayList<ChatMessage>();
             List<AgentTraceEvent> trace = new ArrayList<AgentTraceEvent>();
@@ -292,9 +347,19 @@ public final class AgentLoop {
             }
 
             throw new IllegalStateException("agent exceeded max turns: " + options.maxTurns());
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            cancelRun(runId);
+            throw exception;
         } catch (Exception exception) {
+            if (runId != null && cancelledRuns.contains(runId)) {
+                cancelRun(runId);
+                throw exception;
+            }
             failRun(runId, exception);
             throw exception;
+        } finally {
+            if (runId != null) activeThreads.remove(runId, Thread.currentThread());
         }
     }
 
@@ -359,6 +424,24 @@ public final class AgentLoop {
             throw new IllegalStateException("failed to delete agent continuation", exception);
         }
         return removed;
+    }
+
+    /** Interrupts a live run and marks it cancelled without turning it into a failure. */
+    public boolean cancel(String runId) {
+        if (runId == null || runId.isBlank()) return false;
+        Future<?> task = activeRuns.remove(runId);
+        boolean cancelled = task != null && task.cancel(true);
+        Thread thread = activeThreads.get(runId);
+        if (thread != null) {
+            thread.interrupt();
+            cancelled = true;
+        }
+        boolean pending = pendingApprovals.containsKey(runId);
+        if (!cancelled && !pending) return false;
+        cancelledRuns.add(runId);
+        cancelPendingApproval(runId);
+        cancelRun(runId);
+        return cancelled;
     }
 
     private AgentRunResult continueDetailed(PendingExecution pending) throws Exception {
@@ -579,6 +662,16 @@ public final class AgentLoop {
         }
     }
 
+    private void cancelRun(String runId) {
+        if (runId == null || runs == null) return;
+        try {
+            io.github.git13166956007.dsh.run.Run run = runs.find(runId);
+            if (run != null && !run.status().terminal()) runs.cancel(runId);
+        } catch (Exception exception) {
+            // Cancellation is best effort after the execution thread has been interrupted.
+        }
+    }
+
     private void recordEvent(String runId, String type, String payload) throws Exception {
         if (runId != null && runs != null) runs.event(runId, type, payload);
     }
@@ -756,6 +849,14 @@ public final class AgentLoop {
 
     private void deleteContinuation(String runId) throws Exception {
         if (continuations != null && runId != null) continuations.delete(runId);
+    }
+
+    @Override
+    public void close() {
+        asyncExecutor.shutdownNow();
+        activeRuns.clear();
+        activeThreads.values().forEach(Thread::interrupt);
+        activeThreads.clear();
     }
 
         private record RunOptions(String modelId, AgentMode mode, int maxTurns, String systemPrompt,

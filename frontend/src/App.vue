@@ -53,6 +53,15 @@ const subAgentForm = ref({
 })
 const subAgentFormError = ref('')
 const subAgentSaving = ref(false)
+const subAgentRunPrompt = ref('')
+const subAgentRunProfileId = ref('')
+const subAgentRunError = ref('')
+const subAgentRunStarting = ref(false)
+const subAgentRun = ref(null)
+const subAgentRunEvents = ref([])
+let subAgentRunPollTimer = null
+let subAgentEventSource = null
+let subAgentEventRunId = null
 const memories = ref([])
 const memoryForm = ref({ memoryType: 'fact', content: '', importance: 0.5 })
 const memoryEditingId = ref(null)
@@ -471,6 +480,99 @@ async function deleteSubAgent(profile) {
     await refreshSubAgents()
     resetSubAgentForm()
   }
+}
+
+function prepareSubAgentRun(profile) {
+  subAgentRunProfileId.value = profile.id
+  subAgentRunPrompt.value = ''
+  subAgentRunError.value = ''
+}
+
+function closeSubAgentEventStream() {
+  if (subAgentEventSource) subAgentEventSource.close()
+  subAgentEventSource = null
+  subAgentEventRunId = null
+}
+
+function openSubAgentEventStream(runId) {
+  if (!runId || subAgentEventRunId === runId) return
+  closeSubAgentEventStream()
+  subAgentRunEvents.value = []
+  subAgentEventRunId = runId
+  subAgentEventSource = new EventSource(`/api/v1/runs/${encodeURIComponent(runId)}/events/stream`)
+  subAgentEventSource.addEventListener('run_event', (event) => {
+    try {
+      const value = JSON.parse(event.data)
+      if (!subAgentRunEvents.value.some((item) => item.id === value.id && item.type === value.type)) {
+        subAgentRunEvents.value.push(value)
+      }
+      if (['run_completed', 'run_failed', 'run_cancelled'].includes(value.type)) refreshSubAgentRun()
+    } catch {
+      // Polling remains the source of truth when a diagnostic event is malformed.
+    }
+  })
+  subAgentEventSource.onerror = () => closeSubAgentEventStream()
+}
+
+async function refreshSubAgentRun() {
+  if (!subAgentRun.value?.id) return
+  try {
+    const response = await fetch(`/api/v1/runs/${encodeURIComponent(subAgentRun.value.id)}`)
+    if (!response.ok) return
+    subAgentRun.value = await response.json()
+    const status = String(subAgentRun.value.status || '').toUpperCase()
+    if (['RUNNING', 'WAITING_APPROVAL'].includes(status)) {
+      clearTimeout(subAgentRunPollTimer)
+      subAgentRunPollTimer = setTimeout(refreshSubAgentRun, 1000)
+    } else {
+      closeSubAgentEventStream()
+    }
+  } catch {
+    // Keep the last visible run state during a transient API failure.
+  }
+}
+
+async function startSubAgentRun() {
+  subAgentRunError.value = ''
+  if (!subAgentRunProfileId.value || !subAgentRunPrompt.value.trim()) {
+    subAgentRunError.value = '请选择子智能体并填写任务'
+    return
+  }
+  subAgentRunStarting.value = true
+  try {
+    const response = await fetch(`/api/v1/sub-agents/${encodeURIComponent(subAgentRunProfileId.value)}/runs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: subAgentRunPrompt.value.trim(), apiKey: apiKey.value.trim() || null })
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload.message || payload.error || '子智能体启动失败')
+    subAgentRun.value = payload
+    subAgentRunPrompt.value = ''
+    subAgentRunEvents.value = []
+    openSubAgentEventStream(payload.id)
+    await refreshSubAgentRun()
+  } catch (requestError) {
+    subAgentRunError.value = requestError.message
+  } finally {
+    subAgentRunStarting.value = false
+  }
+}
+
+async function cancelSubAgentRun() {
+  if (!subAgentRun.value?.id) return
+  const response = await fetch(`/api/v1/runs/${encodeURIComponent(subAgentRun.value.id)}/cancel`, { method: 'POST' })
+  if (response.ok) await refreshSubAgentRun()
+}
+
+async function approveSubAgentRun(approved) {
+  if (!subAgentRun.value?.id) return
+  const response = await fetch(`/api/v1/runs/${encodeURIComponent(subAgentRun.value.id)}/approval`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ approved, apiKey: apiKey.value.trim() || null })
+  })
+  if (response.ok) await refreshSubAgentRun()
 }
 
 async function refreshPlans() {
@@ -1502,7 +1604,9 @@ onMounted(() => {
 
 onUnmounted(() => {
   clearTimeout(planPollTimer)
+  clearTimeout(subAgentRunPollTimer)
   closePlanEventStream()
+  closeSubAgentEventStream()
 })
 </script>
 
@@ -2011,12 +2115,32 @@ onUnmounted(() => {
             <p>{{ profile.maxTurns }} turns · {{ profile.maxToolCalls }} tool calls · {{ profile.timeoutSeconds }}s · depth {{ profile.maxDepth }}</p>
           </div>
           <div class="managed-tool-actions model-actions">
+            <button class="secondary-button compact" type="button" :disabled="!profile.enabled" @click="prepareSubAgentRun(profile)">Run</button>
             <button class="secondary-button compact" type="button" @click="editSubAgent(profile)">Edit</button>
             <label class="tool-toggle" :title="profile.enabled ? 'Disable sub-agent profile' : 'Enable sub-agent profile'"><input type="checkbox" :checked="profile.enabled" @change="toggleSubAgent(profile)" /><span></span></label>
             <button class="delete-tool-button" type="button" title="Delete sub-agent profile" aria-label="Delete sub-agent profile" @click="deleteSubAgent(profile)">×</button>
           </div>
         </div>
         <p v-if="subAgents.length === 0" class="tool-manager-empty">No sub-agent profiles configured.</p>
+
+        <form class="tool-create-form inline-form" @submit.prevent="startSubAgentRun">
+          <div class="tool-form-heading"><div><div class="eyebrow">BACKGROUND RUN</div><h3>Run sub-agent</h3></div><span class="tool-form-note">Live lifecycle</span></div>
+          <div class="tool-form-grid">
+            <label><span>Profile</span><select v-model="subAgentRunProfileId"><option value="">Select profile</option><option v-for="profile in subAgents.filter((item) => item.enabled)" :key="profile.id" :value="profile.id">{{ profile.name }}</option></select></label>
+            <label><span>Task</span><input v-model="subAgentRunPrompt" placeholder="Inspect the repository and report findings" autocomplete="off" /></label>
+          </div>
+          <p v-if="subAgentRunError" class="tool-form-error">{{ subAgentRunError }}</p>
+          <div class="tool-form-footer"><button class="send-button" type="submit" :disabled="subAgentRunStarting"><span>{{ subAgentRunStarting ? 'Starting' : 'Start run' }}</span><span class="send-arrow">↗</span></button></div>
+        </form>
+
+        <div v-if="subAgentRun" class="sub-agent-run-inspector">
+          <div class="tool-form-heading"><div><div class="eyebrow">RUN INSPECTOR</div><h3>{{ subAgents.find((profile) => profile.id === subAgentRun.agentId)?.name || 'Sub-agent run' }}</h3></div><span :class="['tool-source', String(subAgentRun.status).toLowerCase()]">{{ String(subAgentRun.status).toLowerCase() }}</span></div>
+          <div class="sub-agent-run-meta">{{ subAgentRun.id }} · {{ subAgentRun.modelId || 'active model' }}</div>
+          <div class="tool-form-footer sub-agent-run-actions"><button v-if="String(subAgentRun.status).toUpperCase() === 'WAITING_APPROVAL'" class="secondary-button compact" type="button" @click="approveSubAgentRun(true)">Approve</button><button v-if="String(subAgentRun.status).toUpperCase() === 'WAITING_APPROVAL'" class="secondary-button compact" type="button" @click="approveSubAgentRun(false)">Deny</button><button v-if="['RUNNING', 'WAITING_APPROVAL'].includes(String(subAgentRun.status).toUpperCase())" class="secondary-button compact" type="button" @click="cancelSubAgentRun">Cancel</button><button class="secondary-button compact" type="button" @click="refreshSubAgentRun">Refresh</button></div>
+          <pre v-if="subAgentRun.output" class="sub-agent-run-output">{{ subAgentRun.output }}</pre>
+          <pre v-if="subAgentRun.error" class="result sub-agent-run-output">{{ subAgentRun.error }}</pre>
+          <div v-if="subAgentRunEvents.length" class="plan-event-log"><div class="trace-block-label">LIVE EVENTS</div><div v-for="event in subAgentRunEvents" :key="`${event.id}-${event.type}`" class="plan-event"><span>{{ event.type }}</span><small>{{ event.payload || '' }}</small></div></div>
+        </div>
 
         <form class="tool-create-form inline-form" @submit.prevent="saveSubAgent">
           <div class="tool-form-heading"><div><div class="eyebrow">SUB-AGENT PROFILE</div><h3>{{ subAgentForm.id ? 'Edit sub-agent' : 'Add sub-agent' }}</h3></div><span class="tool-form-note">Capability-scoped</span></div>

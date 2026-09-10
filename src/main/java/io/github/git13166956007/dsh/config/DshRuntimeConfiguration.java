@@ -270,7 +270,7 @@ public class DshRuntimeConfiguration {
                 environment.getProperty("DSH_SKILLS_DIR", "skills")), stateStore);
     }
 
-    @Bean
+    @Bean(destroyMethod = "close")
     public AgentLoop agentLoop(ChatModel chatModel, ToolRegistry toolRegistry, SkillRegistry skillRegistry,
                                AgentProfileRegistry agentProfileRegistry, MemoryManager memoryManager,
                                RunManager runManager, AgentContinuationStore continuations,

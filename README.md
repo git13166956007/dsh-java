@@ -96,6 +96,8 @@ Agent Profile 管理接口为 `GET/POST/PATCH/DELETE /api/v1/agents`，以及 `P
 
 Sub-agent Profile 管理接口为 `GET/POST/PATCH/DELETE /api/v1/sub-agents`。每个子智能体可以独立配置 `mode`、`modelId`、`systemPrompt`、`maxTurns`、工具白名单 `allowedToolNames`、Skill 白名单 `skillIds` 和 `enabled`。白名单会在模型请求和实际工具执行两处生效。计划步骤可以填写 `subAgentId`，执行时由对应子智能体完成。
 
+可以通过 `POST /api/v1/sub-agents/{id}/runs` 启动后台执行，接口立即返回 `runId`；随后使用 `GET /api/v1/runs/{id}` 查询状态，或订阅 `GET /api/v1/runs/{id}/events/stream` 获取历史回放和实时事件。后台运行支持 `POST /api/v1/runs/{id}/cancel` 真实中断当前模型线程，也支持对 `WAITING_APPROVAL` 的运行调用现有审批接口。当前执行线程驻留在应用进程内，MariaDB 会持久化运行状态和事件，但应用重启后的运行恢复仍属于后续工作。
+
 当存在启用的 `execution` 子智能体时，主 Agent 会自动获得 `delegate_to_subagent` 虚拟工具。模型可以提交 `profileId` 和独立 `task`，子任务会复用当前 API Key 和模型路由，结果作为工具消息回传；启用 Run 持久化时会记录父子运行树，并同时校验父、子智能体的最大深度。子智能体内部触发工具审批时，审批会代理回父委派运行，批准父运行即可继续子任务并回到主 Agent。
 
 计划接口为 `GET /api/v1/plans`、`GET /api/v1/plans/{id}`、`POST /api/v1/plans`、`POST /api/v1/plans/{id}/approve`、`POST /api/v1/plans/{id}/execute` 和 `POST /api/v1/plans/{id}/cancel`。Plan 创建时提交有序步骤、`dependsOn` 步骤编号和 `maxConcurrency`；需要人工确认的计划先处于 `draft`，审批后进入 `approved`，执行过程中会持久化每个步骤的 `pending/running/completed/failed/cancelled` 状态，并支持单步骤重试和满足依赖后的并行执行。依赖步骤完成结果会作为后续步骤的证据上下文传入。
@@ -106,7 +108,7 @@ Sub-agent Profile 管理接口为 `GET/POST/PATCH/DELETE /api/v1/sub-agents`。�
 
 记忆接口为 `GET /api/v1/memories`、`GET /api/v1/memories/search`、`POST /api/v1/memories` 和 `DELETE /api/v1/memories/{id}`。记忆按 `namespace + subjectKey` 隔离，当前聊天会以 `conversation + conversationId` 自动检索相关记忆并注入系统上下文；前端 Memory Tab 可以显式添加和删除记忆。设置 `DSH_MEMORY_AUTO_EXTRACT_ENABLED=true` 后，每次完成聊天会用模型提取少量持久化事实/偏好，自动过滤疑似密钥、密码和短期任务信息并去重；提取失败不会影响聊天结果。
 
-运行追踪接口为 `GET /api/v1/runs`、`GET /api/v1/runs/{id}`、`GET /api/v1/runs/{id}/events`、`GET /api/v1/runs/{id}/events/stream` 和 `GET /api/v1/runs/{id}/tree`。聊天响应和流式 `done` 事件会返回 `runId`；计划执行会创建 `plan -> plan_step -> agent/sub_agent` 的父子运行树，可按 `planId` 查询。每个运行会记录模型响应、工具调用、工具结果、重试和终态，启用 MariaDB 时会持久化到 `dsh_run` 与 `dsh_run_event`。事件流会先回放历史事件，再推送实时事件，前端 Plan Inspector 用它显示步骤进度。
+运行追踪接口为 `GET /api/v1/runs`、`GET /api/v1/runs/{id}`、`GET /api/v1/runs/{id}/events`、`GET /api/v1/runs/{id}/events/stream`、`GET /api/v1/runs/{id}/tree` 和 `POST /api/v1/runs/{id}/cancel`。聊天响应和流式 `done` 事件会返回 `runId`；计划执行和后台子智能体会创建父子运行树，可按 `planId` 或 `parentRunId` 查询。每个运行会记录模型响应、工具调用、工具结果、重试和终态，启用 MariaDB 时会持久化到 `dsh_run` 与 `dsh_run_event`。事件流会先回放历史事件，再推送实时事件，前端 Plan Inspector 和 Sub-agent Run Inspector 用它显示步骤进度。
 
 同一个 `conversationId` 会复用最近的历史消息；不传时服务会创建新的会话 ID。工具管理接口为 `GET /api/v1/tools` 和 `PATCH /api/v1/tools/{name}`，请求体示例为 `{"enabled":false}`。
 

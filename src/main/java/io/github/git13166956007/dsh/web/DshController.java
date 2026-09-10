@@ -6,11 +6,13 @@ import java.nio.file.Path;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 import io.github.git13166956007.dsh.agent.AgentLoop;
+import io.github.git13166956007.dsh.agent.AgentRunHandle;
 import io.github.git13166956007.dsh.agent.AgentMode;
 import io.github.git13166956007.dsh.agent.AgentProfile;
 import io.github.git13166956007.dsh.agent.AgentProfileRegistry;
 import io.github.git13166956007.dsh.agent.SubAgentProfile;
 import io.github.git13166956007.dsh.agent.SubAgentProfileRegistry;
+import io.github.git13166956007.dsh.agent.SubAgentRunner;
 import io.github.git13166956007.dsh.agent.AgentStreamListener;
 import io.github.git13166956007.dsh.agent.AgentRunResult;
 import io.github.git13166956007.dsh.agent.ChatMessage;
@@ -78,6 +80,7 @@ public final class DshController {
     private final PlanRegistry planRegistry;
     private final PlanExecutor planExecutor;
     private final SubAgentProfileRegistry subAgentProfileRegistry;
+    private final SubAgentRunner subAgentRunner;
     private final AdaptivePlanService adaptivePlanService;
     private final MemoryManager memoryManager;
     private final RunManager runManager;
@@ -91,7 +94,8 @@ public final class DshController {
                          McpClientManager mcpClientManager, SkillRegistry skillRegistry,
                          ModelRegistry modelRegistry, AgentProfileRegistry agentProfileRegistry,
                          PlanRegistry planRegistry, PlanExecutor planExecutor,
-                         SubAgentProfileRegistry subAgentProfileRegistry, AdaptivePlanService adaptivePlanService,
+                         SubAgentProfileRegistry subAgentProfileRegistry, SubAgentRunner subAgentRunner,
+                         AdaptivePlanService adaptivePlanService,
                          MemoryManager memoryManager, RunManager runManager, ChatModel chatModel,
                          org.springframework.core.env.Environment environment) {
         this.runtime = runtime;
@@ -106,6 +110,7 @@ public final class DshController {
         this.planRegistry = planRegistry;
         this.planExecutor = planExecutor;
         this.subAgentProfileRegistry = subAgentProfileRegistry;
+        this.subAgentRunner = subAgentRunner;
         this.adaptivePlanService = adaptivePlanService;
         this.memoryManager = memoryManager;
         this.runManager = runManager;
@@ -562,6 +567,25 @@ public final class DshController {
         }
     }
 
+    @PostMapping("/sub-agents/{id}/runs")
+    public Run startSubAgentRun(@PathVariable String id, @RequestBody SubAgentRunRequest request) {
+        if (request == null || request.prompt() == null || request.prompt().trim().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "prompt must not be blank");
+        }
+        try {
+            AgentRunHandle handle = subAgentRunner.startForExecution(request.prompt(), request.apiKey(), id);
+            Run run = runManager.find(handle.runId());
+            if (run == null) throw new IllegalStateException("sub-agent run was not persisted");
+            return run;
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
+        } catch (IllegalStateException exception) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, exception.getMessage(), exception);
+        } catch (Exception exception) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, exception.getMessage(), exception);
+        }
+    }
+
     @GetMapping("/memories")
     public java.util.List<MemoryRecord> memories(@RequestParam String namespace,
                                                  @RequestParam String subjectKey,
@@ -685,8 +709,14 @@ public final class DshController {
     public Run cancelRun(@PathVariable String id) throws Exception {
         Run run = runManager.find(id);
         if (run == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown run: " + id);
-        agentLoop.cancelPendingApproval(id);
-        runManager.cancel(id);
+        if (run.kind() == io.github.git13166956007.dsh.run.RunKind.PLAN && run.planId() != null) {
+            planExecutor.cancel(run.planId());
+        } else {
+            agentLoop.cancel(id);
+            agentLoop.cancelPendingApproval(id);
+            if (!run.status().terminal() && runManager.find(id) != null
+                    && !runManager.find(id).status().terminal()) runManager.cancel(id);
+        }
         return runManager.find(id);
     }
 
@@ -1009,6 +1039,9 @@ public final class DshController {
                                          Integer maxTurns, java.util.List<String> allowedToolNames,
                                          java.util.List<String> skillIds, Boolean enabled, Integer maxToolCalls,
                                          Integer timeoutSeconds, Integer maxDepth) {
+    }
+
+    public record SubAgentRunRequest(String prompt, String apiKey) {
     }
 
     public record PlanRequest(String title, String goal, String agentId, String modelId,

@@ -155,6 +155,13 @@ h2 { font-size: 17px; }
 .plan-form-step { margin-top: 15px; padding: 12px; border: 1px solid #29383a; background: #12191b; }
 .plan-form-step-header { display: flex; align-items: center; justify-content: space-between; color: #81908d; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .1em; }
 .model-actions { flex-wrap: wrap; justify-content: flex-end; }
+.sub-agent-run-inspector { margin: 17px 23px 23px; padding: 18px 0 0; border-top: 1px solid #293236; }
+.sub-agent-run-meta { color: #667477; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+.sub-agent-run-actions { margin-top: 8px; }
+.sub-agent-run-output { max-height: 220px; margin-top: 12px; }
+.tool-source.running { border-color: #6ca695; color: #9ce3ca; }
+.tool-source.completed { border-color: #6ca695; color: #9ce3ca; }
+.tool-source.failed, .tool-source.cancelled { border-color: #a15f56; color: #e79487; }
 .mcp-inspector { width: 100%; margin-top: 10px; padding-top: 10px; border-top: 1px solid #273235; }
 .mcp-inspector-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 10px; align-items: start; padding: 8px 0; }
 .mcp-inspector-item span { min-width: 0; }
