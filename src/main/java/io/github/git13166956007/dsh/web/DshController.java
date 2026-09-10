@@ -25,6 +25,7 @@ import io.github.git13166956007.dsh.context.ContextManager;
 import io.github.git13166956007.dsh.context.ContextRequest;
 import io.github.git13166956007.dsh.context.ContextSnapshot;
 import io.github.git13166956007.dsh.context.ContextWindow;
+import io.github.git13166956007.dsh.context.ConversationSearchResult;
 import io.github.git13166956007.dsh.mcp.McpServerInfo;
 import io.github.git13166956007.dsh.mcp.McpServerRegistry;
 import io.github.git13166956007.dsh.mcp.McpClientManager;
@@ -725,6 +726,42 @@ public final class DshController {
                 window.truncated());
     }
 
+    @GetMapping("/conversations/{id}/messages")
+    public java.util.List<ChatMessage> replayConversation(@PathVariable String id) throws Exception {
+        try {
+            return contextManager.replay(id);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
+        }
+    }
+
+    @GetMapping("/conversations/{id}/search")
+    public java.util.List<ConversationSearchResult> searchConversation(@PathVariable String id,
+                                                                         @RequestParam String query,
+                                                                         @RequestParam(defaultValue = "20") int limit)
+            throws Exception {
+        try {
+            return contextManager.search(id, query, limit);
+        } catch (IllegalArgumentException exception) {
+            HttpStatus status = exception.getMessage() != null
+                    && exception.getMessage().startsWith("unknown conversation:")
+                    ? HttpStatus.NOT_FOUND : HttpStatus.BAD_REQUEST;
+            throw new ResponseStatusException(status, exception.getMessage(), exception);
+        }
+    }
+
+    @PostMapping("/conversations/{id}/fork")
+    public java.util.Map<String, String> forkConversation(@PathVariable String id,
+                                                           @RequestBody(required = false) ConversationForkRequest request)
+            throws Exception {
+        try {
+            String forkedId = contextManager.fork(id, request == null ? null : request.title());
+            return java.util.Map.of("conversationId", forkedId, "sourceConversationId", id);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
+        }
+    }
+
     @GetMapping("/context/providers")
     public java.util.List<String> contextProviders() {
         return contextManager.providerIds();
@@ -1235,6 +1272,9 @@ public final class DshController {
     }
 
     public record ResourceSubscriptionRequest(String uri) {
+    }
+
+    public record ConversationForkRequest(String title) {
     }
 
     public record AgentProfileRequest(String name, String mode, String modelId, String systemPrompt,

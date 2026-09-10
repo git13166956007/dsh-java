@@ -10,6 +10,23 @@ public interface ConversationStore {
 
     void append(String conversationId, ChatMessage message) throws Exception;
 
+    default boolean exists(String conversationId) throws Exception {
+        return !load(conversationId, 1).isEmpty();
+    }
+
+    default List<ChatMessage> replay(String conversationId) throws Exception {
+        return load(conversationId, Integer.MAX_VALUE);
+    }
+
+    default String fork(String conversationId, String title) throws Exception {
+        if (!exists(conversationId)) throw new IllegalArgumentException("unknown conversation: " + conversationId);
+        String forkedId = open(null, title);
+        for (ChatMessage message : replay(conversationId)) append(forkedId, message);
+        ConversationSummary summary = loadSummary(conversationId);
+        if (summary != null) saveSummary(forkedId, summary);
+        return forkedId;
+    }
+
     default ConversationSummary loadSummary(String conversationId) throws Exception {
         return null;
     }

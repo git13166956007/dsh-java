@@ -167,4 +167,21 @@ class InMemoryConversationStoreTest {
         }
         assertEquals(List.of("broken"), context.providerIds());
     }
+
+    @Test
+    void forksReplaysAndSearchesAConversation() throws Exception {
+        InMemoryConversationStore store = new InMemoryConversationStore();
+        ContextManager context = new ContextManager(store, 10);
+        String source = context.open(null, "source");
+        context.append(source, ChatMessage.user("The release is Friday."));
+        context.append(source, ChatMessage.assistant("Prepare the migration checklist.", List.of()));
+
+        assertEquals(2, context.replay(source).size());
+        assertEquals(List.of("Prepare the migration checklist."),
+                context.search(source, "migration", 20).stream().map(ConversationSearchResult::content).toList());
+
+        String fork = context.fork(source, "release fork");
+        assertEquals(List.of("The release is Friday.", "Prepare the migration checklist."),
+                context.replay(fork).stream().map(ChatMessage::content).toList());
+    }
 }

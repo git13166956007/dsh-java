@@ -36,6 +36,11 @@ public final class InMemoryConversationStore implements ConversationStore {
     }
 
     @Override
+    public boolean exists(String conversationId) {
+        return conversations.containsKey(conversationId);
+    }
+
+    @Override
     public ConversationSummary loadSummary(String conversationId) {
         return summaries.get(conversationId);
     }

@@ -107,6 +107,32 @@ public final class ContextManager {
         return history(conversationId, 0);
     }
 
+    public List<ChatMessage> replay(String conversationId) throws Exception {
+        if (!store.exists(conversationId)) throw new IllegalArgumentException("unknown conversation: " + conversationId);
+        return store.replay(conversationId);
+    }
+
+    public String fork(String conversationId, String title) throws Exception {
+        return store.fork(conversationId, title == null ? "Fork" : title);
+    }
+
+    public List<ConversationSearchResult> search(String conversationId, String query, int limit) throws Exception {
+        if (!store.exists(conversationId)) throw new IllegalArgumentException("unknown conversation: " + conversationId);
+        String normalizedQuery = query == null ? "" : query.trim().toLowerCase(java.util.Locale.ROOT);
+        if (normalizedQuery.isEmpty()) throw new IllegalArgumentException("query must not be blank");
+        if (limit <= 0) return List.of();
+        List<ConversationSearchResult> result = new ArrayList<ConversationSearchResult>();
+        List<ChatMessage> messages = store.replay(conversationId);
+        for (int index = 0; index < messages.size() && result.size() < limit; index++) {
+            ChatMessage message = messages.get(index);
+            String content = message.content();
+            if (content != null && content.toLowerCase(java.util.Locale.ROOT).contains(normalizedQuery)) {
+                result.add(new ConversationSearchResult(conversationId, index, message.role().value(), content));
+            }
+        }
+        return List.copyOf(result);
+    }
+
     public List<ChatMessage> history(String conversationId, int modelContextWindow) throws Exception {
         return window(conversationId, modelContextWindow).messages();
     }

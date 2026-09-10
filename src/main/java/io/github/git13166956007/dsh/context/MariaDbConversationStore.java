@@ -106,6 +106,18 @@ public final class MariaDbConversationStore implements ConversationStore {
     }
 
     @Override
+    public boolean exists(String conversationId) throws SQLException {
+        try (Connection connection = connection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "SELECT 1 FROM dsh_conversation WHERE id=?")) {
+            statement.setString(1, conversationId);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next();
+            }
+        }
+    }
+
+    @Override
     public ConversationSummary loadSummary(String conversationId) throws SQLException {
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(
