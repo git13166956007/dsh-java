@@ -1,4 +1,4 @@
-package io.github.git13166956007.dsh;
+package io.github.git13166956007.dsh.service;
 
 import java.util.Objects;
 

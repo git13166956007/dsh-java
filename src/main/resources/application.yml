@@ -1,0 +1,6 @@
+spring:
+  application:
+    name: dsh-java
+
+server:
+  port: ${SERVER_PORT:8080}

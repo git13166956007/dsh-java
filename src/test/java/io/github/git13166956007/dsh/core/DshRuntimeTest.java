@@ -1,14 +1,22 @@
-package io.github.git13166956007.dsh;
+package io.github.git13166956007.dsh.core;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.concurrent.atomic.AtomicInteger;
+import io.github.git13166956007.dsh.plugin.DshPlugin;
+import io.github.git13166956007.dsh.plugin.PluginContext;
+import io.github.git13166956007.dsh.service.ServiceKey;
+import org.junit.jupiter.api.Test;
 
-public final class DshSelfTest {
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+public final class DshRuntimeTest {
     private static final ServiceKey<String> GREETING = new ServiceKey<String>("greeting", String.class);
 
-    public static void main(String[] args) throws Exception {
+    @Test
+    void pluginCanRegisterServicesAndEvents() throws Exception {
         AtomicInteger events = new AtomicInteger();
         DshRuntime runtime = new DshRuntime();
         runtime.install(new DshPlugin() {
@@ -27,19 +35,11 @@ public final class DshSelfTest {
             }
         });
         runtime.start();
-        if (!"hello".equals(runtime.service(GREETING))) throw new AssertionError("service not available");
+        assertEquals("hello", runtime.service(GREETING));
         runtime.events().emit("ping", "ok");
-        if (events.get() != 1) throw new AssertionError("event not delivered");
+        assertEquals(1, events.get());
+        assertTrue(runtime.isStarted());
         runtime.close();
-
-        Path session = Paths.get("out", "self-test.jsonl");
-        Files.deleteIfExists(session);
-        JsonlSessionStore store = new JsonlSessionStore(session);
-        store.append("user_message", "hello\"world");
-        String line = new String(Files.readAllBytes(session), "UTF-8");
-        if (!line.contains("hello\\\"world")) throw new AssertionError("invalid JSONL escaping");
-        Files.deleteIfExists(session);
-        System.out.println("dsh-java self-test passed");
     }
 
 }

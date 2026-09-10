@@ -1,4 +1,4 @@
-package io.github.git13166956007.dsh;
+package io.github.git13166956007.dsh.core;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -7,6 +7,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.ServiceLoader;
+import io.github.git13166956007.dsh.event.EventBus;
+import io.github.git13166956007.dsh.plugin.DshPlugin;
+import io.github.git13166956007.dsh.plugin.PluginContext;
+import io.github.git13166956007.dsh.plugin.Registration;
+import io.github.git13166956007.dsh.service.ServiceKey;
 
 public final class DshRuntime implements AutoCloseable {
     private final Map<ServiceKey<?>, Object> services = new HashMap<ServiceKey<?>, Object>();

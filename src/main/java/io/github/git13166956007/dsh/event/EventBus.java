@@ -1,10 +1,11 @@
-package io.github.git13166956007.dsh;
+package io.github.git13166956007.dsh.event;
 
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
+import io.github.git13166956007.dsh.plugin.Registration;
 
 public final class EventBus {
     private final Map<String, CopyOnWriteArrayList<Consumer<Object>>> listeners =
