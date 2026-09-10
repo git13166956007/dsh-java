@@ -134,6 +134,17 @@ CREATE TABLE IF NOT EXISTS dsh_model_profile (
     INDEX idx_dsh_model_active (active, enabled)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS dsh_model_health (
+    model_id VARCHAR(64) NOT NULL PRIMARY KEY,
+    status VARCHAR(16) NOT NULL DEFAULT 'UNKNOWN',
+    success_count BIGINT NOT NULL DEFAULT 0,
+    failure_count BIGINT NOT NULL DEFAULT 0,
+    last_latency_ms BIGINT NULL,
+    last_checked_at TIMESTAMP(3) NULL,
+    last_success_at TIMESTAMP(3) NULL,
+    last_error TEXT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS dsh_agent_profile (
     id VARCHAR(64) NOT NULL PRIMARY KEY,
     name VARCHAR(128) NOT NULL,

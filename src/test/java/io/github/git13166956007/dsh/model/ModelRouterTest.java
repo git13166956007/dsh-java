@@ -44,6 +44,9 @@ class ModelRouterTest {
                     List.of(ChatMessage.user("ping")), List.of(), "request-key", profile.id());
 
             assertEquals("pong", result.content());
+            assertEquals("HEALTHY", registry.health(profile.id()).status());
+            assertEquals(1, registry.health(profile.id()).successCount());
+            org.junit.jupiter.api.Assertions.assertNotNull(registry.health(profile.id()).lastLatencyMs());
             assertEquals("Bearer request-key", authorization.get());
             org.junit.jupiter.api.Assertions.assertTrue(requestBody.get().contains("\"model\":\"test-model\""));
             org.junit.jupiter.api.Assertions.assertTrue(requestBody.get().contains("\"temperature\":0.4"));
@@ -78,5 +81,19 @@ class ModelRouterTest {
                 "https://api.deepseek.com", "test-model", "key", "", 0, true, false,
                 true, true, false, 32768, null, null, null, null, null, 120,
                 "{\"messages\":[]}"));
+    }
+
+    @Test
+    void recordsFailedRequestsWithoutChangingTheOriginalException() {
+        ModelRegistry registry = new ModelRegistry(new InMemoryModelProfileStore(), new InMemoryModelHealthStore(),
+                "http://127.0.0.1:1/v1", "openai_compatible", "fallback", "key", "", 0);
+        ModelProfile profile = registry.create("Unavailable", "openai_compatible", "http://127.0.0.1:1/v1",
+                "test-model", "key", "", 0, true, false);
+
+        assertThrows(Exception.class, () -> new ModelRouter(registry, new ObjectMapper())
+                .complete(List.of(ChatMessage.user("ping")), List.of(), null, profile.id()));
+        assertEquals("UNHEALTHY", registry.health(profile.id()).status());
+        assertEquals(1, registry.health(profile.id()).failureCount());
+        org.junit.jupiter.api.Assertions.assertNotNull(registry.health(profile.id()).lastError());
     }
 }

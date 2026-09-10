@@ -175,7 +175,16 @@ async function refreshModels() {
   try {
     const response = await fetch('/api/v1/models')
     if (!response.ok) throw new Error('模型列表不可用')
-    models.value = await response.json()
+    const profiles = await response.json()
+    models.value = await Promise.all(profiles.map(async (model) => {
+      try {
+        const healthResponse = await fetch(`/api/v1/models/${encodeURIComponent(model.id)}/health`)
+        model.health = healthResponse.ok ? await healthResponse.json() : null
+      } catch {
+        model.health = null
+      }
+      return model
+    }))
     if (!selectedModelId.value || !models.value.some((model) => model.id === selectedModelId.value)) {
       selectedModelId.value = models.value.find((model) => model.active && model.enabled)?.id || models.value.find((model) => model.enabled)?.id || null
     }
@@ -946,11 +955,21 @@ async function testModel(model) {
       body: JSON.stringify({ apiKey: apiKey.value.trim() || null })
     })
     const payload = await response.json().catch(() => ({}))
-    model.health = payload
+    model.lastTest = payload
+    await refreshModelHealth(model)
   } catch (requestError) {
-    model.health = { ok: false, message: requestError.message }
+    model.lastTest = { ok: false, message: requestError.message }
   } finally {
     modelTesting.value = null
+  }
+}
+
+async function refreshModelHealth(model) {
+  try {
+    const response = await fetch(`/api/v1/models/${encodeURIComponent(model.id)}/health`)
+    model.health = response.ok ? await response.json() : null
+  } catch {
+    model.health = null
   }
 }
 
@@ -1573,7 +1592,7 @@ onUnmounted(() => clearTimeout(planPollTimer))
               <strong>{{ model.name }}</strong>
               <span :class="['tool-source', model.active ? 'connected' : '']">{{ model.active ? 'DEFAULT' : model.provider }}</span>
             </div>
-            <p>{{ model.model }} · {{ model.baseUrl }}<br />{{ model.apiKeyConfigured ? 'API key configured' : 'Uses request or environment API key' }} · {{ model.supportsTools ? 'tools' : 'no tools' }} · {{ model.supportsStreaming ? 'streaming' : 'non-streaming' }} · {{ model.contextWindow ? `${model.contextWindow} context` : 'context unknown' }}</p>
+          <p>{{ model.model }} · {{ model.baseUrl }}<br />{{ model.apiKeyConfigured ? 'API key configured' : 'Uses request or environment API key' }} · {{ model.supportsTools ? 'tools' : 'no tools' }} · {{ model.supportsStreaming ? 'streaming' : 'non-streaming' }} · {{ model.contextWindow ? `${model.contextWindow} context` : 'context unknown' }}<br /><span v-if="model.health">health {{ model.health.status.toLowerCase() }} · {{ model.health.successCount }}/{{ model.health.failureCount }} · {{ model.health.lastLatencyMs == null ? 'no latency' : `${model.health.lastLatencyMs}ms` }}</span></p>
           </div>
           <div class="managed-tool-actions model-actions">
             <button v-if="!model.active && model.enabled" class="secondary-button compact" type="button" @click="activateModel(model)">Default</button>
@@ -1585,7 +1604,7 @@ onUnmounted(() => clearTimeout(planPollTimer))
             </label>
             <button v-if="models.length > 1" class="delete-tool-button" type="button" title="Delete model" aria-label="Delete model" @click="deleteModel(model)">×</button>
           </div>
-          <p v-if="model.health" :class="['model-health', model.health.ok ? 'healthy' : 'unhealthy']">{{ model.health.ok ? 'OK' : 'Failed' }} · {{ model.health.message }}<span v-if="model.health.content"> · {{ model.health.content }}</span></p>
+          <p v-if="model.lastTest" :class="['model-health', model.lastTest.ok ? 'healthy' : 'unhealthy']">{{ model.lastTest.ok ? 'OK' : 'Failed' }} · {{ model.lastTest.message }}<span v-if="model.lastTest.content"> · {{ model.lastTest.content }}</span></p>
         </div>
         <p v-if="models.length === 0" class="tool-manager-empty">No models configured.</p>
 

@@ -29,7 +29,15 @@ public final class ModelRouter implements ChatModel {
     public ModelResponse complete(List<ChatMessage> messages, List<ToolDefinition> tools,
                                   String apiKey, String modelId) throws Exception {
         ModelProfileData profile = registry.resolve(modelId);
-        return client(profile).complete(messages, effectiveTools(profile, tools), apiKey);
+        long started = System.nanoTime();
+        try {
+            ModelResponse response = client(profile).complete(messages, effectiveTools(profile, tools), apiKey);
+            registry.recordSuccess(profile.id(), elapsedMs(started));
+            return response;
+        } catch (Exception exception) {
+            registry.recordFailure(profile.id(), elapsedMs(started), exception);
+            throw exception;
+        }
     }
 
     @Override
@@ -37,16 +45,29 @@ public final class ModelRouter implements ChatModel {
                                 String apiKey, String modelId, ModelStreamListener listener) throws Exception {
         ModelProfileData profile = registry.resolve(modelId);
         List<ToolDefinition> effectiveTools = effectiveTools(profile, tools);
-        if (!profile.supportsStreaming()) {
-            ModelResponse response = client(profile).complete(messages, effectiveTools, apiKey);
-            if (response.content() != null && !response.content().isEmpty()) listener.onText(response.content());
+        long started = System.nanoTime();
+        try {
+            if (!profile.supportsStreaming()) {
+                ModelResponse response = client(profile).complete(messages, effectiveTools, apiKey);
+                if (response.content() != null && !response.content().isEmpty()) listener.onText(response.content());
+                registry.recordSuccess(profile.id(), elapsedMs(started));
+                return response;
+            }
+            ModelResponse response = client(profile).stream(messages, effectiveTools, apiKey, listener);
+            registry.recordSuccess(profile.id(), elapsedMs(started));
             return response;
+        } catch (Exception exception) {
+            registry.recordFailure(profile.id(), elapsedMs(started), exception);
+            throw exception;
         }
-        return client(profile).stream(messages, effectiveTools, apiKey, listener);
     }
 
     private static List<ToolDefinition> effectiveTools(ModelProfileData profile, List<ToolDefinition> tools) {
         return profile.supportsTools() ? tools : List.of();
+    }
+
+    private static long elapsedMs(long started) {
+        return Math.max(0, (System.nanoTime() - started) / 1_000_000);
     }
 
     private ChatModel client(ModelProfileData profile) {

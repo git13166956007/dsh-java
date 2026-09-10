@@ -1,6 +1,7 @@
 package io.github.git13166956007.dsh.model;
 
 import java.net.URI;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -12,11 +13,18 @@ import tools.jackson.databind.ObjectMapper;
 
 public final class ModelRegistry {
     private final ModelProfileStore store;
+    private final ModelHealthStore healthStore;
     private final Map<String, ModelProfileData> profiles = new LinkedHashMap<String, ModelProfileData>();
 
     public ModelRegistry(ModelProfileStore store, String baseUrl, String provider, String model,
                          String apiKey, String proxyHost, int proxyPort) {
+        this(store, new InMemoryModelHealthStore(), baseUrl, provider, model, apiKey, proxyHost, proxyPort);
+    }
+
+    public ModelRegistry(ModelProfileStore store, ModelHealthStore healthStore, String baseUrl, String provider,
+                         String model, String apiKey, String proxyHost, int proxyPort) {
         this.store = store;
+        this.healthStore = healthStore;
         try {
             profiles.putAll(index(store.list()));
             if (profiles.isEmpty()) {
@@ -175,6 +183,7 @@ public final class ModelRegistry {
         if (removed == null) return false;
         try {
             store.delete(id);
+            healthStore.delete(id);
             ensureActive();
             return true;
         } catch (Exception exception) {
@@ -191,6 +200,41 @@ public final class ModelRegistry {
         }
         return profiles.values().stream().filter(profile -> profile.active() && profile.enabled()).findFirst()
                 .orElseThrow(() -> new IllegalStateException("no enabled model profile is active"));
+    }
+
+    public synchronized ModelHealth health(String id) {
+        require(id);
+        try {
+            ModelHealthData value = healthStore.find(id);
+            return value == null ? ModelHealth.unknown(id) : ModelHealth.from(value);
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to load model health", exception);
+        }
+    }
+
+    public synchronized void recordSuccess(String id, long latencyMs) {
+        recordHealth(id, true, latencyMs, null);
+    }
+
+    public synchronized void recordFailure(String id, long latencyMs, Throwable failure) {
+        String message = failure == null ? "model request failed" : failure.getMessage();
+        recordHealth(id, false, latencyMs, message == null ? failure.getClass().getSimpleName() : message);
+    }
+
+    private void recordHealth(String id, boolean success, long latencyMs, String error) {
+        try {
+            ModelHealthData previous = healthStore.find(id);
+            long successes = previous == null ? 0 : previous.successCount();
+            long failures = previous == null ? 0 : previous.failureCount();
+            Instant now = Instant.now();
+            ModelHealthData next = new ModelHealthData(id, success ? "HEALTHY" : "UNHEALTHY",
+                    success ? successes + 1 : successes, success ? failures : failures + 1,
+                    Math.max(0, latencyMs), now, success ? now : previous == null ? null : previous.lastSuccessAt(),
+                    success ? null : error);
+            healthStore.save(next);
+        } catch (Exception exception) {
+            // Health telemetry must not turn a successful model request into a failed request.
+        }
     }
 
     private void ensureActive() {
