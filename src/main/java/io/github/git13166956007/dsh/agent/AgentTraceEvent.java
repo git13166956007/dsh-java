@@ -7,9 +7,23 @@ public record AgentTraceEvent(
         String name,
         JsonNode arguments,
         String content,
-        String result) {
+        String result,
+        Integer promptTokens,
+        Integer completionTokens,
+        Integer totalTokens) {
+    public AgentTraceEvent(String type, String name, JsonNode arguments, String content, String result) {
+        this(type, name, arguments, content, result, null, null, null);
+    }
+
     public static AgentTraceEvent model(String content) {
-        return new AgentTraceEvent("model", null, null, content, null);
+        return model(content, null);
+    }
+
+    public static AgentTraceEvent model(String content, ModelResponse response) {
+        return new AgentTraceEvent("model", null, null, content, null,
+                response == null ? null : response.promptTokens(),
+                response == null ? null : response.completionTokens(),
+                response == null ? null : response.totalTokens());
     }
 
     public static AgentTraceEvent tool(String name, JsonNode arguments, String result) {

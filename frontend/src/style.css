@@ -240,6 +240,7 @@ h2 { font-size: 17px; }
 .trace-event-head strong { overflow: hidden; color: #d3ddda; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .trace-event-head span { color: #657275; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; }
 .trace-content { color: #879493; font-size: 11px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.trace-content small { display: block; margin-top: 6px; color: #657275; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; }
 .trace-block-label { margin-top: 12px; color: #667477; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9px; letter-spacing: .12em; }
 pre { max-height: 125px; overflow: auto; margin: 5px 0 0; padding: 9px; border: 1px solid #29383a; background: #101618; color: #b6c8c3; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
 pre.result { color: #d6b98e; }

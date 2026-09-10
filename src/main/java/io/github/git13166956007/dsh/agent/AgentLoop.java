@@ -210,7 +210,7 @@ public final class AgentLoop implements AutoCloseable {
                 recordEvent(runId, "model_response", response.content());
                 messages.add(ChatMessage.assistant(response.content(), response.toolCalls()));
                 if (response.content() != null && !response.content().isEmpty()) {
-                    trace.add(AgentTraceEvent.model(response.content()));
+                    trace.add(AgentTraceEvent.model(response.content(), response));
                 }
                 if (response.toolCalls().isEmpty()) {
                     String answer = response.content() == null ? "" : response.content();
@@ -331,7 +331,7 @@ public final class AgentLoop implements AutoCloseable {
                 recordEvent(runId, "model_response", response.content());
                 messages.add(ChatMessage.assistant(response.content(), response.toolCalls()));
                 if (response.content() != null && !response.content().isEmpty()) {
-                    trace.add(AgentTraceEvent.model(response.content()));
+                    trace.add(AgentTraceEvent.model(response.content(), response));
                 }
                 if (response.toolCalls().isEmpty()) {
                     String answer = response.content() == null ? "" : response.content();
@@ -474,7 +474,7 @@ public final class AgentLoop implements AutoCloseable {
             recordEvent(pending.runId, "model_response", response.content());
             pending.messages.add(ChatMessage.assistant(response.content(), response.toolCalls()));
             if (response.content() != null && !response.content().isEmpty()) {
-                pending.trace.add(AgentTraceEvent.model(response.content()));
+                pending.trace.add(AgentTraceEvent.model(response.content(), response));
             }
             if (response.toolCalls().isEmpty()) {
                 String answer = response.content() == null ? "" : response.content();
@@ -835,6 +835,9 @@ public final class AgentLoop implements AutoCloseable {
             putNullable(node, "name", event.name());
             putNullable(node, "content", event.content());
             putNullable(node, "result", event.result());
+            putNullable(node, "promptTokens", event.promptTokens());
+            putNullable(node, "completionTokens", event.completionTokens());
+            putNullable(node, "totalTokens", event.totalTokens());
             if (event.arguments() != null) node.set("arguments", event.arguments().deepCopy());
         }
         return array;
@@ -845,9 +848,15 @@ public final class AgentLoop implements AutoCloseable {
         for (JsonNode node : array) {
             trace.add(new AgentTraceEvent(node.path("type").asString(null), node.path("name").asString(null),
                     node.has("arguments") ? node.path("arguments").deepCopy() : null,
-                    node.path("content").asString(null), node.path("result").asString(null)));
+                    node.path("content").asString(null), node.path("result").asString(null),
+                    integerValue(node, "promptTokens"), integerValue(node, "completionTokens"),
+                    integerValue(node, "totalTokens")));
         }
         return trace;
+    }
+
+    private static Integer integerValue(JsonNode node, String field) {
+        return node.has(field) && node.path(field).isIntegralNumber() ? node.path(field).asInt() : null;
     }
 
     private ObjectNode writeApproval(PendingToolApproval approval) {
@@ -865,6 +874,11 @@ public final class AgentLoop implements AutoCloseable {
     }
 
     private static void putNullable(ObjectNode node, String name, String value) {
+        if (value == null) node.putNull(name);
+        else node.put(name, value);
+    }
+
+    private static void putNullable(ObjectNode node, String name, Integer value) {
         if (value == null) node.putNull(name);
         else node.put(name, value);
     }

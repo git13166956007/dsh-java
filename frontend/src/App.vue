@@ -1958,7 +1958,7 @@ onUnmounted(() => {
               <strong>{{ event.type === 'tool' ? event.name : 'Model response' }}</strong>
               <span>#{{ index + 1 }}</span>
             </div>
-            <p v-if="event.type === 'model'" class="trace-content">{{ event.content }}</p>
+            <p v-if="event.type === 'model'" class="trace-content">{{ event.content }}<small v-if="event.totalTokens != null">{{ event.promptTokens ?? '?' }} in · {{ event.completionTokens ?? '?' }} out · {{ event.totalTokens }} total tokens</small></p>
             <template v-else>
               <div class="trace-block-label">ARGUMENTS</div>
               <pre>{{ formatArguments(event.arguments) }}</pre>
