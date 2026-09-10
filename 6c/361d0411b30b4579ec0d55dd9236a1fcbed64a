@@ -1,0 +1,46 @@
+README.md
+  h_eb697744b14c1b 91
+docs/runtime-roadmap.md
+  h_eb697744b14c1b 10
+frontend/src/App.vue
+  h_eb697744b14c1b 27,208-211,214,229,505,1231,1773
+src/main/java/io/github/git13166956007/dsh/agent/AgentLoop.java
+  h_eb697744b14c1b 302-305,310-311,322,565,569,575,583,773
+src/main/java/io/github/git13166956007/dsh/core/DshRuntime.java
+  h_eb697744b14c1b 3-7,12-13,15-16,18-20,22,27-28,39-48,50-56,62-70,72-82,84-102,104,125-131,148-254,261-273,277-282,315-316
+src/main/java/io/github/git13166956007/dsh/mcp/McpClientManager.java
+  h_eb697744b14c1b 6,19,28,36-38,80,84,87,125,129,138,144,148,163-164,181,198-199,207-209,218-250,256,258-260,268,270-272,279,281-283,287-326,339,343,361,371,377-381,564
+src/main/java/io/github/git13166956007/dsh/mcp/McpResourceSubscription.java
+  h_eb697744b14c1b 1-6
+src/main/java/io/github/git13166956007/dsh/mcp/McpResourceUpdate.java
+  h_eb697744b14c1b 1-11
+src/main/java/io/github/git13166956007/dsh/model/ModelProvider.java
+  h_eb697744b14c1b 1-11
+src/main/java/io/github/git13166956007/dsh/model/ModelRegistry.java
+  h_eb697744b14c1b 11,19,58-77
+src/main/java/io/github/git13166956007/dsh/model/ModelRouter.java
+  h_eb697744b14c1b 22,90-92,94-140
+src/main/java/io/github/git13166956007/dsh/plan/PlanExecutor.java
+  h_eb697744b14c1b 212-216,224-226,242
+src/main/java/io/github/git13166956007/dsh/plugin/DshPlugin.java
+  h_eb697744b14c1b 3-4,9-16
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 28-29,139-148,247-270,355-359,635-636,902-904,957-960
+src/test/java/io/github/git13166956007/dsh/agent/AgentLoopTest.java
+  h_eb697744b14c1b 18,437-475
+src/test/java/io/github/git13166956007/dsh/core/DshRuntimePluginLoadingTest.java
+  h_eb697744b14c1b 12-13,36-82,93-148
+src/test/java/io/github/git13166956007/dsh/model/ModelProviderTest.java
+  h_eb697744b14c1b 1-72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6c361d0411b30b4579ec0d55dd9236a1fcbed64a",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
