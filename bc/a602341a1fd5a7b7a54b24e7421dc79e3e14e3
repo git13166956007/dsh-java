@@ -1,0 +1,20 @@
+frontend/package-lock.json
+  h_eb697744b14c1b 12,485-493,570-585
+frontend/package.json
+  h_eb697744b14c1b 13
+frontend/src/App.vue
+  h_eb697744b14c1b 4,6,157-183
+frontend/src/style.css
+  h_eb697744b14c1b 87-88
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "bca602341a1fd5a7b7a54b24e7421dc79e3e14e3",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
