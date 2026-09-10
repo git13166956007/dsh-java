@@ -1,0 +1,51 @@
+frontend/index.html
+  s_89c027812d25a3::t_e5acce86038e28 1-14
+frontend/src/style.css
+  s_89c027812d25a3::t_e5acce86038e28 1-126
+frontend/src/App.vue
+  s_89c027812d25a3::t_e5acce86038e28 1-123,125-238
+  s_5f0247805a0da5::t_6e3757d8751bce 124
+frontend/src/main.js
+  s_89c027812d25a3::t_e5acce86038e28 1-5
+frontend/package.json
+  s_89c027812d25a3::t_e5acce86038e28 1-18
+frontend/vite.config.js
+  s_89c027812d25a3::t_e5acce86038e28 1-8,10-12
+  s_5f0247805a0da5::t_8f46c11ab0ba84 9
+frontend/package-lock.json
+  s_5f0247805a0da5::t_20a0a096074ae0 1-1049
+frontend/public/favicon.svg
+  s_5f0247805a0da5::t_f59ab3f2d69b86 1-4
+src/main/java/io/github/git13166956007/dsh/agent/AgentLoop.java
+  s_5f0247805a0da5::t_00ba1a9c1a3538 24-27,33,40-45,54
+src/main/java/io/github/git13166956007/dsh/agent/AgentRunResult.java
+  s_5f0247805a0da5::t_ac7c75753b9871 1-11
+src/main/java/io/github/git13166956007/dsh/agent/AgentTraceEvent.java
+  s_5f0247805a0da5::t_afc7b895643a99 1-18
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  s_5f0247805a0da5::t_53737d0c2d6c4b 6,44-45,57-58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "734043875d176ab7a90aa13d5e394ec13b595d66",
+  "prompts": {},
+  "sessions": {
+    "s_5f0247805a0da5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08906-b39d-77f1-894a-72f28e58decc",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "sherlock <sherlock09271207@gmail.com>"
+    },
+    "s_89c027812d25a3": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f75a2f8d2ffeC1JxWZMepKhg3f",
+        "model": "mimo-v2.5-free"
+      },
+      "human_author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
