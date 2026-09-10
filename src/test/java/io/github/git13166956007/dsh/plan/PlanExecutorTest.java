@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.git13166956007.dsh.agent.AgentLoop;
+import io.github.git13166956007.dsh.agent.InMemoryAgentContinuationStore;
 import io.github.git13166956007.dsh.agent.ChatMessage;
 import io.github.git13166956007.dsh.agent.ChatModel;
 import io.github.git13166956007.dsh.agent.InMemorySubAgentProfileStore;
@@ -19,6 +20,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.ObjectMapper;
 
 class PlanExecutorTest {
     @Test
@@ -115,13 +117,14 @@ class PlanExecutorTest {
         Plan plan = registry.create("Approval plan", "Run one approved step", null, null, false, 1,
                 List.of(new PlanRegistry.PlanStepInput("Approved step", "Use the approval tool", 1)));
         RunManager runs = new RunManager(new InMemoryRunStore());
-        AgentLoop agent = new AgentLoop(model, tools, null, null, null, runs, 2);
+        InMemoryAgentContinuationStore continuations = new InMemoryAgentContinuationStore();
+        AgentLoop agent = new AgentLoop(model, tools, null, null, null, runs, continuations, new ObjectMapper(), 2);
+        Run waiting;
         try (PlanExecutor executor = new PlanExecutor(registry, agent,
                 new io.github.git13166956007.dsh.agent.SubAgentRunner(agent,
                         new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 2)), runs)) {
             executor.execute(plan.id(), null);
             long deadline = System.currentTimeMillis() + 3000;
-            Run waiting;
             do {
                 Thread.sleep(20);
                 waiting = runs.list().stream().filter(run -> run.kind() == RunKind.AGENT).findFirst().orElse(null);
@@ -130,13 +133,20 @@ class PlanExecutorTest {
 
             assertEquals(PlanStatus.WAITING_APPROVAL, registry.find(plan.id()).status());
             assertEquals(0, executions.get());
-            executor.resumeApproval(waiting.id(), true);
+        }
 
+        AgentLoop restartedAgent = new AgentLoop(model, tools, null, null, null, runs,
+                continuations, new ObjectMapper(), 2);
+        try (PlanExecutor restartedExecutor = new PlanExecutor(registry, restartedAgent,
+                new io.github.git13166956007.dsh.agent.SubAgentRunner(restartedAgent,
+                        new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 2)), runs)) {
+            restartedExecutor.resumeApproval(waiting.id(), true);
+            long deadline = System.currentTimeMillis() + 3000;
             do {
                 Thread.sleep(20);
             } while (!registry.find(plan.id()).status().terminal() && System.currentTimeMillis() < deadline);
-            assertEquals(PlanStatus.COMPLETED, registry.find(plan.id()).status());
-            assertEquals(1, executions.get());
         }
+        assertEquals(PlanStatus.COMPLETED, registry.find(plan.id()).status());
+        assertEquals(1, executions.get());
     }
 }

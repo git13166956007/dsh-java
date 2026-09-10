@@ -6,11 +6,13 @@ import io.github.git13166956007.dsh.tool.ToolRegistry;
 import io.github.git13166956007.dsh.run.InMemoryRunStore;
 import io.github.git13166956007.dsh.run.RunManager;
 import io.github.git13166956007.dsh.run.RunStatus;
+import io.github.git13166956007.dsh.run.RunStore;
 import java.util.Collections;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.ObjectMapper;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -200,6 +202,49 @@ class AgentLoopTest {
         assertEquals("finished after approval", result.answer());
         assertEquals(1, executions.get());
         assertEquals(RunStatus.COMPLETED, runs.find(pending.runId()).status());
+    }
+
+    @Test
+    void restoresApprovalContinuationAfterAgentRestart() throws Exception {
+        ToolRegistry tools = new ToolRegistry();
+        AtomicInteger executions = new AtomicInteger();
+        tools.register(new ToolDefinition("restart_approval", "Approval tool.",
+                JsonNodeFactory.instance.objectNode().put("type", "object")), arguments -> {
+            executions.incrementAndGet();
+            return "approved";
+        });
+        tools.setApprovalRequired("restart_approval", true);
+        RunStore runStore = new InMemoryRunStore();
+        RunManager runs = new RunManager(runStore);
+        InMemoryAgentContinuationStore continuations = new InMemoryAgentContinuationStore();
+
+        ChatModel firstModel = new ChatModel() {
+            @Override
+            public ModelResponse complete(List<ChatMessage> messages, List<ToolDefinition> definitions) {
+                return new ModelResponse(null, List.of(new ToolCall("restart-call", "restart_approval",
+                        JsonNodeFactory.instance.objectNode())), "tool_calls");
+            }
+        };
+        AgentLoop firstLoop = new AgentLoop(firstModel, tools, null, null, null, runs,
+                continuations, new ObjectMapper(), 2);
+        AgentRunResult pending = firstLoop.runDetailed("restart", null, List.of());
+        assertNotNull(continuations.load(pending.runId()));
+
+        ChatModel restartedModel = new ChatModel() {
+            @Override
+            public ModelResponse complete(List<ChatMessage> messages, List<ToolDefinition> definitions) {
+                return new ModelResponse("resumed", List.of(), "stop");
+            }
+        };
+        AgentLoop restartedLoop = new AgentLoop(restartedModel, tools, null, null, null, runs,
+                continuations, new ObjectMapper(), 2);
+
+        AgentRunResult result = restartedLoop.resumeApproval(pending.runId(), true);
+
+        assertEquals("resumed", result.answer());
+        assertEquals(1, executions.get());
+        assertEquals(RunStatus.COMPLETED, runs.find(pending.runId()).status());
+        assertEquals(null, continuations.load(pending.runId()));
     }
 
     @Test

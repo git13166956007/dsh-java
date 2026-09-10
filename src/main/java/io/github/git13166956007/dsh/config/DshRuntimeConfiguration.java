@@ -3,6 +3,7 @@ package io.github.git13166956007.dsh.config;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 import io.github.git13166956007.dsh.agent.AgentLoop;
+import io.github.git13166956007.dsh.agent.AgentContinuationStore;
 import io.github.git13166956007.dsh.agent.AgentProfileRegistry;
 import io.github.git13166956007.dsh.agent.AgentProfileStore;
 import io.github.git13166956007.dsh.agent.ChatModel;
@@ -11,6 +12,8 @@ import io.github.git13166956007.dsh.context.ConversationStore;
 import io.github.git13166956007.dsh.context.InMemoryConversationStore;
 import io.github.git13166956007.dsh.context.MariaDbConversationStore;
 import io.github.git13166956007.dsh.agent.InMemoryAgentProfileStore;
+import io.github.git13166956007.dsh.agent.InMemoryAgentContinuationStore;
+import io.github.git13166956007.dsh.agent.MariaDbAgentContinuationStore;
 import io.github.git13166956007.dsh.agent.MariaDbAgentProfileStore;
 import io.github.git13166956007.dsh.agent.InMemorySubAgentProfileStore;
 import io.github.git13166956007.dsh.agent.MariaDbSubAgentProfileStore;
@@ -124,6 +127,16 @@ public class DshRuntimeConfiguration {
     }
 
     @Bean
+    public AgentContinuationStore agentContinuationStore(Environment environment, RunStore runStore) {
+        boolean enabled = Boolean.parseBoolean(environment.getProperty("dsh.persistence.enabled", "false"));
+        if (!enabled) return new InMemoryAgentContinuationStore();
+        return new MariaDbAgentContinuationStore(
+                environment.getProperty("dsh.persistence.jdbc-url"),
+                environment.getProperty("dsh.persistence.username"),
+                environment.getProperty("dsh.persistence.password"));
+    }
+
+    @Bean
     public SubAgentProfileStore subAgentProfileStore(Environment environment) {
         boolean enabled = Boolean.parseBoolean(environment.getProperty("dsh.persistence.enabled", "false"));
         if (!enabled) return new InMemorySubAgentProfileStore();
@@ -191,10 +204,10 @@ public class DshRuntimeConfiguration {
     @Bean
     public AgentLoop agentLoop(ChatModel chatModel, ToolRegistry toolRegistry, SkillRegistry skillRegistry,
                                AgentProfileRegistry agentProfileRegistry, MemoryManager memoryManager,
-                               RunManager runManager,
-                               Environment environment) {
+                               RunManager runManager, AgentContinuationStore continuations,
+                               ObjectMapper objectMapper, Environment environment) {
         return new AgentLoop(chatModel, toolRegistry, skillRegistry, agentProfileRegistry, memoryManager, runManager,
-                Integer.parseInt(environment.getProperty("dsh.agent.max-turns", "8")));
+                continuations, objectMapper, Integer.parseInt(environment.getProperty("dsh.agent.max-turns", "8")));
     }
 
     @Bean

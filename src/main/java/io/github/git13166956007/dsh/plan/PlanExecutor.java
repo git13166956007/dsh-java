@@ -210,6 +210,7 @@ public final class PlanExecutor implements AutoCloseable {
 
     public io.github.git13166956007.dsh.agent.AgentRunResult resumeApproval(String approvalRunId, boolean approved) throws Exception {
         PendingPlan pending = pendingApprovals.get(approvalRunId);
+        if (pending == null) pending = restorePendingPlan(approvalRunId);
         if (pending == null) throw new IllegalArgumentException("plan approval is not pending: " + approvalRunId);
         Plan planBeforeResume = plans.find(pending.planId());
         if (planBeforeResume == null || planBeforeResume.status() == PlanStatus.CANCELLED) {
@@ -231,9 +232,19 @@ public final class PlanExecutor implements AutoCloseable {
                     .findFirst().orElse(null);
             if (step != null) plans.completeStep(plan.id(), step.id(), result.answer());
             plans.resume(plan.id());
-            executor.submit(() -> run(plan.id(), pending.apiKey(), pending.planRunId()));
+            PendingPlan resumed = pending;
+            executor.submit(() -> run(plan.id(), resumed.apiKey(), resumed.planRunId()));
         }
         return result;
+    }
+
+    private PendingPlan restorePendingPlan(String approvalRunId) throws Exception {
+        if (runs == null) return null;
+        io.github.git13166956007.dsh.run.Run approvalRun = runs.find(approvalRunId);
+        if (approvalRun == null || approvalRun.planId() == null || approvalRun.stepId() == null) return null;
+        Plan plan = plans.find(approvalRun.planId());
+        if (plan == null || plan.status().terminal()) return null;
+        return new PendingPlan(plan.id(), null, approvalRun.parentRunId(), approvalRun.stepId());
     }
 
     private static boolean ready(PlanStep step, Plan plan) {

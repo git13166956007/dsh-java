@@ -11,6 +11,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 public final class AgentLoop {
     private final ChatModel model;
@@ -19,29 +23,37 @@ public final class AgentLoop {
     private final AgentProfileRegistry profiles;
     private final MemoryManager memories;
     private final RunManager runs;
+    private final AgentContinuationStore continuations;
+    private final ObjectMapper objectMapper;
     private final int maxTurns;
     private final Map<String, PendingExecution> pendingApprovals = new ConcurrentHashMap<String, PendingExecution>();
 
     public AgentLoop(ChatModel model, ToolRegistry tools, int maxTurns) {
-        this(model, tools, null, null, null, maxTurns);
+        this(model, tools, null, null, null, null, null, null, maxTurns);
     }
 
     public AgentLoop(ChatModel model, ToolRegistry tools, SkillRegistry skills, int maxTurns) {
-        this(model, tools, skills, null, null, maxTurns);
+        this(model, tools, skills, null, null, null, null, null, maxTurns);
     }
 
     public AgentLoop(ChatModel model, ToolRegistry tools, SkillRegistry skills,
                      AgentProfileRegistry profiles, int maxTurns) {
-        this(model, tools, skills, profiles, null, maxTurns);
+        this(model, tools, skills, profiles, null, null, null, null, maxTurns);
     }
 
     public AgentLoop(ChatModel model, ToolRegistry tools, SkillRegistry skills,
                      AgentProfileRegistry profiles, MemoryManager memories, int maxTurns) {
-        this(model, tools, skills, profiles, memories, null, maxTurns);
+        this(model, tools, skills, profiles, memories, null, null, null, maxTurns);
     }
 
     public AgentLoop(ChatModel model, ToolRegistry tools, SkillRegistry skills,
                      AgentProfileRegistry profiles, MemoryManager memories, RunManager runs, int maxTurns) {
+        this(model, tools, skills, profiles, memories, runs, null, null, maxTurns);
+    }
+
+    public AgentLoop(ChatModel model, ToolRegistry tools, SkillRegistry skills,
+                     AgentProfileRegistry profiles, MemoryManager memories, RunManager runs,
+                     AgentContinuationStore continuations, ObjectMapper objectMapper, int maxTurns) {
         if (maxTurns < 1) throw new IllegalArgumentException("maxTurns must be positive");
         this.model = model;
         this.tools = tools;
@@ -49,6 +61,8 @@ public final class AgentLoop {
         this.profiles = profiles;
         this.memories = memories;
         this.runs = runs;
+        this.continuations = continuations;
+        this.objectMapper = objectMapper == null ? new ObjectMapper() : objectMapper;
         this.maxTurns = maxTurns;
     }
 
@@ -270,8 +284,10 @@ public final class AgentLoop {
     public AgentRunResult resumeApproval(String runId, boolean approved) throws Exception {
         if (runId == null || runId.isBlank()) throw new IllegalArgumentException("runId must not be blank");
         PendingExecution pending = pendingApprovals.remove(runId);
+        if (pending == null) pending = restoreContinuation(runId);
         if (pending == null) throw new IllegalArgumentException("run is not awaiting tool approval: " + runId);
         try {
+            deleteContinuation(runId);
             if (runs != null) {
                 if (runs.find(runId) == null) throw new IllegalArgumentException("unknown run: " + runId);
                 runs.resume(runId);
@@ -301,7 +317,14 @@ public final class AgentLoop {
     }
 
     public boolean cancelPendingApproval(String runId) {
-        return runId != null && pendingApprovals.remove(runId) != null;
+        if (runId == null) return false;
+        boolean removed = pendingApprovals.remove(runId) != null;
+        try {
+            deleteContinuation(runId);
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to delete agent continuation", exception);
+        }
+        return removed;
     }
 
     private AgentRunResult continueDetailed(PendingExecution pending) throws Exception {
@@ -346,8 +369,10 @@ public final class AgentLoop {
                                     List<io.github.git13166956007.dsh.tool.ToolDefinition> definitions,
                                     ExecutionBudget budget, PendingToolApproval approval) throws Exception {
         String actualRunId = runId == null ? UUID.randomUUID().toString() : runId;
-        pendingApprovals.put(actualRunId, new PendingExecution(actualRunId, messages, trace, nextTurn, options, apiKey,
-                definitions, budget, approval));
+        PendingExecution pending = new PendingExecution(actualRunId, messages, trace, nextTurn, options, apiKey,
+                definitions, budget, approval);
+        pendingApprovals.put(actualRunId, pending);
+        persistContinuation(pending);
         if (runs != null) {
             runs.waitForApproval(actualRunId, approval.toolName() + " " + approval.arguments());
         }
@@ -406,13 +431,17 @@ public final class AgentLoop {
     }
 
     private void finishRun(String runId, String answer) throws Exception {
-        if (runId != null) runs.complete(runId, answer);
+        if (runId != null) {
+            runs.complete(runId, answer);
+            deleteContinuation(runId);
+        }
     }
 
     private void failRun(String runId, Exception exception) {
         if (runId == null) return;
         try {
             runs.fail(runId, exception.getMessage());
+            deleteContinuation(runId);
         } catch (Exception auditFailure) {
             exception.addSuppressed(auditFailure);
         }
@@ -428,6 +457,173 @@ public final class AgentLoop {
         } catch (Exception exception) {
             throw new IllegalStateException("failed to persist run event", exception);
         }
+    }
+
+    private void persistContinuation(PendingExecution pending) throws Exception {
+        if (continuations != null) continuations.save(pending.runId, serializeContinuation(pending));
+    }
+
+    private PendingExecution restoreContinuation(String runId) throws Exception {
+        if (continuations == null) return null;
+        String payload = continuations.load(runId);
+        if (payload == null || payload.isBlank()) return null;
+        JsonNode root = objectMapper.readTree(payload);
+        RunOptions options = readOptions(root.path("options"));
+        List<ChatMessage> messages = readMessages(root.path("messages"));
+        List<AgentTraceEvent> trace = readTrace(root.path("trace"));
+        PendingToolApproval approval = readApproval(root.path("approval"));
+        List<io.github.git13166956007.dsh.tool.ToolDefinition> definitions = options.mode().toolsEnabled()
+                ? tools.definitions(options.allowedToolNames()) : List.of();
+        ExecutionBudget budget = new ExecutionBudget(options, root.path("toolCalls").asInt(0),
+                root.path("remainingMillis").asLong(Long.MAX_VALUE));
+        return new PendingExecution(runId, messages, trace, root.path("nextTurn").asInt(0), options, null,
+                definitions, budget, approval);
+    }
+
+    private String serializeContinuation(PendingExecution pending) throws Exception {
+        ObjectNode root = objectMapper.createObjectNode();
+        root.put("nextTurn", pending.nextTurn);
+        root.put("toolCalls", pending.budget.toolCalls);
+        root.put("remainingMillis", pending.budget.remainingMillis());
+        root.set("options", writeOptions(pending.options));
+        root.set("messages", writeMessages(pending.messages));
+        root.set("trace", writeTrace(pending.trace));
+        root.set("approval", writeApproval(pending.approval));
+        return objectMapper.writeValueAsString(root);
+    }
+
+    private ObjectNode writeOptions(RunOptions options) {
+        ObjectNode node = objectMapper.createObjectNode();
+        putNullable(node, "modelId", options.modelId());
+        node.put("mode", options.mode().name());
+        node.put("systemPrompt", options.systemPrompt());
+        node.put("maxTurns", options.maxTurns());
+        node.put("maxToolCalls", options.maxToolCalls());
+        node.put("timeoutSeconds", options.timeoutSeconds());
+        node.put("maxDepth", options.maxDepth());
+        putNullable(node, "memoryNamespace", options.memoryNamespace());
+        putNullable(node, "memorySubjectKey", options.memorySubjectKey());
+        putNullable(node, "agentId", options.agentId());
+        writeSet(node, "allowedToolNames", options.allowedToolNames());
+        writeSet(node, "skillIds", options.skillIds());
+        return node;
+    }
+
+    private RunOptions readOptions(JsonNode node) {
+        String modelId = node.path("modelId").asString(null);
+        AgentMode mode = AgentMode.parse(node.path("mode").asString(AgentMode.CHAT.name()));
+        return new RunOptions(modelId, mode, node.path("maxTurns").asInt(maxTurns),
+                node.path("systemPrompt").asString(""), readSet(node.path("allowedToolNames")),
+                readSet(node.path("skillIds")), node.path("maxToolCalls").asInt(64),
+                node.path("timeoutSeconds").asInt(300), node.path("maxDepth").asInt(4),
+                node.path("memoryNamespace").asString(null), node.path("memorySubjectKey").asString(null),
+                node.path("agentId").asString(null));
+    }
+
+    private ArrayNode writeMessages(List<ChatMessage> messages) {
+        ArrayNode array = objectMapper.createArrayNode();
+        for (ChatMessage message : messages) {
+            ObjectNode node = array.addObject();
+            node.put("role", message.role().value());
+            putNullable(node, "content", message.content());
+            putNullable(node, "toolCallId", message.toolCallId());
+            ArrayNode calls = node.putArray("toolCalls");
+            for (ToolCall call : message.toolCalls()) {
+                ObjectNode item = calls.addObject();
+                putNullable(item, "id", call.id());
+                putNullable(item, "name", call.name());
+                item.set("arguments", call.arguments() == null ? objectMapper.createObjectNode() : call.arguments().deepCopy());
+            }
+        }
+        return array;
+    }
+
+    private List<ChatMessage> readMessages(JsonNode array) {
+        List<ChatMessage> messages = new ArrayList<ChatMessage>();
+        for (JsonNode node : array) {
+            String role = node.path("role").asString("user");
+            String content = node.path("content").asString(null);
+            switch (role) {
+                case "system" -> messages.add(ChatMessage.system(content));
+                case "assistant" -> messages.add(ChatMessage.assistant(content, readToolCalls(node.path("toolCalls"))));
+                case "tool" -> messages.add(ChatMessage.tool(node.path("toolCallId").asString(null), content));
+                default -> messages.add(ChatMessage.user(content));
+            }
+        }
+        return messages;
+    }
+
+    private List<ToolCall> readToolCalls(JsonNode array) {
+        List<ToolCall> calls = new ArrayList<ToolCall>();
+        for (JsonNode node : array) {
+            calls.add(new ToolCall(node.path("id").asString(null), node.path("name").asString(null),
+                    node.path("arguments").deepCopy()));
+        }
+        return calls;
+    }
+
+    private ArrayNode writeTrace(List<AgentTraceEvent> trace) {
+        ArrayNode array = objectMapper.createArrayNode();
+        for (AgentTraceEvent event : trace) {
+            ObjectNode node = array.addObject();
+            putNullable(node, "type", event.type());
+            putNullable(node, "name", event.name());
+            putNullable(node, "content", event.content());
+            putNullable(node, "result", event.result());
+            if (event.arguments() != null) node.set("arguments", event.arguments().deepCopy());
+        }
+        return array;
+    }
+
+    private List<AgentTraceEvent> readTrace(JsonNode array) {
+        List<AgentTraceEvent> trace = new ArrayList<AgentTraceEvent>();
+        for (JsonNode node : array) {
+            trace.add(new AgentTraceEvent(node.path("type").asString(null), node.path("name").asString(null),
+                    node.has("arguments") ? node.path("arguments").deepCopy() : null,
+                    node.path("content").asString(null), node.path("result").asString(null)));
+        }
+        return trace;
+    }
+
+    private ObjectNode writeApproval(PendingToolApproval approval) {
+        ObjectNode node = objectMapper.createObjectNode();
+        putNullable(node, "toolCallId", approval.toolCallId());
+        putNullable(node, "toolName", approval.toolName());
+        node.set("arguments", approval.arguments() == null ? objectMapper.createObjectNode() : approval.arguments().deepCopy());
+        return node;
+    }
+
+    private PendingToolApproval readApproval(JsonNode node) {
+        return new PendingToolApproval(node.path("toolCallId").asString(null), node.path("toolName").asString(null),
+                node.path("arguments").deepCopy());
+    }
+
+    private static void putNullable(ObjectNode node, String name, String value) {
+        if (value == null) node.putNull(name);
+        else node.put(name, value);
+    }
+
+    private static void writeSet(ObjectNode node, String name, java.util.Set<String> values) {
+        if (values == null) {
+            node.putNull(name);
+            return;
+        }
+        ArrayNode array = node.putArray(name);
+        values.forEach(array::add);
+    }
+
+    private static java.util.Set<String> readSet(JsonNode array) {
+        if (array == null || array.isNull() || array.isMissingNode()) return null;
+        java.util.Set<String> result = new java.util.LinkedHashSet<String>();
+        for (JsonNode value : array) {
+            String item = value.asString(null);
+            if (item != null) result.add(item);
+        }
+        return result;
+    }
+
+    private void deleteContinuation(String runId) throws Exception {
+        if (continuations != null && runId != null) continuations.delete(runId);
     }
 
         private record RunOptions(String modelId, AgentMode mode, int maxTurns, String systemPrompt,
@@ -472,6 +668,18 @@ public final class AgentLoop {
             this.maxToolCalls = options.maxToolCalls();
             this.deadlineNanos = options.timeoutSeconds() == 0 ? Long.MAX_VALUE
                     : System.nanoTime() + options.timeoutSeconds() * 1_000_000_000L;
+        }
+
+        private ExecutionBudget(RunOptions options, int toolCalls, long remainingMillis) {
+            this.maxToolCalls = options.maxToolCalls();
+            this.toolCalls = Math.max(0, toolCalls);
+            this.deadlineNanos = remainingMillis == Long.MAX_VALUE ? Long.MAX_VALUE
+                    : System.nanoTime() + Math.max(0, remainingMillis) * 1_000_000L;
+        }
+
+        private long remainingMillis() {
+            return deadlineNanos == Long.MAX_VALUE ? Long.MAX_VALUE
+                    : Math.max(0, (deadlineNanos - System.nanoTime()) / 1_000_000L);
         }
 
         private void check() {

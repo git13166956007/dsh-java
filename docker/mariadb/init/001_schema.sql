@@ -100,6 +100,13 @@ CREATE TABLE IF NOT EXISTS dsh_run_event (
     INDEX idx_dsh_run_event_run (run_id, event_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS dsh_agent_continuation (
+    run_id CHAR(36) NOT NULL PRIMARY KEY,
+    payload LONGTEXT NOT NULL,
+    updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    CONSTRAINT fk_dsh_agent_continuation_run FOREIGN KEY (run_id) REFERENCES dsh_run(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS dsh_model_profile (
     id VARCHAR(64) NOT NULL PRIMARY KEY,
     name VARCHAR(128) NOT NULL,
