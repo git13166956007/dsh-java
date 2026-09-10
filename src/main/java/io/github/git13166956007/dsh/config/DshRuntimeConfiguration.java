@@ -1,6 +1,15 @@
 package io.github.git13166956007.dsh.config;
 
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
+import io.github.git13166956007.dsh.agent.AgentLoop;
+import io.github.git13166956007.dsh.agent.ChatModel;
 import io.github.git13166956007.dsh.core.DshRuntime;
+import io.github.git13166956007.dsh.provider.deepseek.DeepSeekChatModel;
+import io.github.git13166956007.dsh.tool.ToolDefinition;
+import io.github.git13166956007.dsh.tool.ToolRegistry;
+import java.time.OffsetDateTime;
+import org.springframework.core.env.Environment;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -11,5 +20,33 @@ public class DshRuntimeConfiguration {
         DshRuntime runtime = new DshRuntime();
         runtime.start();
         return runtime;
+    }
+
+    @Bean
+    public ToolRegistry toolRegistry(ObjectMapper objectMapper) {
+        ToolRegistry registry = new ToolRegistry();
+        ObjectNode noArguments = objectMapper.createObjectNode();
+        noArguments.put("type", "object");
+        registry.register(new ToolDefinition(
+                "time.now",
+                "Get the current server time in ISO-8601 format.",
+                noArguments), arguments -> OffsetDateTime.now().toString());
+        return registry;
+    }
+
+    @Bean
+    public ChatModel chatModel(ObjectMapper objectMapper, Environment environment) {
+        return new DeepSeekChatModel(
+                objectMapper,
+                environment.getProperty("dsh.model.base-url", "https://api.deepseek.com"),
+                environment.getProperty("dsh.model.api-key",
+                        environment.getProperty("DEEPSEEK_API_KEY", "")),
+                environment.getProperty("dsh.model.name",
+                        environment.getProperty("DEEPSEEK_MODEL", "deepseek-flash")));
+    }
+
+    @Bean
+    public AgentLoop agentLoop(ChatModel chatModel, ToolRegistry toolRegistry) {
+        return new AgentLoop(chatModel, toolRegistry, 8);
     }
 }
