@@ -18,6 +18,7 @@ import io.github.git13166956007.dsh.tool.ToolInfo;
 import io.github.git13166956007.dsh.tool.ToolRegistry;
 import io.github.git13166956007.dsh.core.DshRuntime;
 import io.github.git13166956007.dsh.provider.deepseek.ModelConfigurationException;
+import io.github.git13166956007.dsh.provider.deepseek.ModelQuotaException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -218,6 +219,10 @@ public final class DshController {
             contextManager.append(conversationId, ChatMessage.assistant(result.answer(), java.util.List.of()));
             return new ChatResponse(conversationId, result.answer(), result.trace(), result.turns());
         } catch (Exception exception) {
+            if (exception instanceof ModelQuotaException quotaException) {
+                throw new ResponseStatusException(HttpStatus.PAYMENT_REQUIRED,
+                        quotaException.getMessage(), quotaException);
+            }
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, exception.getMessage(), exception);
         }
     }
@@ -285,6 +290,12 @@ public final class DshController {
     @ExceptionHandler(ModelConfigurationException.class)
     public ResponseEntity<ErrorResponse> modelConfigurationError(ModelConfigurationException exception) {
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(new ErrorResponse(exception.getMessage()));
+    }
+
+    @ExceptionHandler(ModelQuotaException.class)
+    public ResponseEntity<ErrorResponse> modelQuotaError(ModelQuotaException exception) {
+        return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED)
                 .body(new ErrorResponse(exception.getMessage()));
     }
 

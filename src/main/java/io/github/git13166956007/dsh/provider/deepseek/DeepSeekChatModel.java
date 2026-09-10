@@ -80,7 +80,7 @@ public final class DeepSeekChatModel implements ChatModel {
                 HttpResponse.BodyHandlers.ofInputStream());
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             String body = new String(response.body().readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
-            throw new IllegalStateException("DeepSeek API returned " + response.statusCode() + ": " + body);
+            ensureSuccess(response.statusCode(), body);
         }
 
         StringBuilder content = new StringBuilder();
@@ -166,6 +166,10 @@ public final class DeepSeekChatModel implements ChatModel {
 
     private static void ensureSuccess(int statusCode, String body) {
         if (statusCode < 200 || statusCode >= 300) {
+            if (statusCode == 402 || body.contains("Insufficient Balance")) {
+                throw new ModelQuotaException(
+                        "DeepSeek API 余额不足，请充值当前账户或更换有余额的 API Key。");
+            }
             throw new IllegalStateException("DeepSeek API returned " + statusCode + ": " + body);
         }
     }
