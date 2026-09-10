@@ -1,0 +1,40 @@
+README.md
+  h_eb697744b14c1b 97-98
+docs/runtime-roadmap.md
+  h_eb697744b14c1b 15
+frontend/src/App.vue
+  h_eb697744b14c1b 44-47,197-240,483,997,1206,1438-1453
+frontend/src/style.css
+  h_eb697744b14c1b 125-126
+src/main/java/io/github/git13166956007/dsh/agent/AgentLoop.java
+  h_eb697744b14c1b 5,14,18,22,27-31,37,64-71,79,90,138-145,150,153,188-192,195,199-200,203,212-218,226-227
+src/main/java/io/github/git13166956007/dsh/config/DshRuntimeConfiguration.java
+  h_eb697744b14c1b 23-26,120-134,148-150
+src/main/java/io/github/git13166956007/dsh/memory/InMemoryMemoryStore.java
+  h_eb697744b14c1b 1-51
+src/main/java/io/github/git13166956007/dsh/memory/MariaDbMemoryStore.java
+  h_eb697744b14c1b 1-137
+src/main/java/io/github/git13166956007/dsh/memory/MemoryManager.java
+  h_eb697744b14c1b 1-51
+src/main/java/io/github/git13166956007/dsh/memory/MemoryRecord.java
+  h_eb697744b14c1b 1-19
+src/main/java/io/github/git13166956007/dsh/memory/MemoryRecordData.java
+  h_eb697744b14c1b 1-15
+src/main/java/io/github/git13166956007/dsh/memory/MemoryStore.java
+  h_eb697744b14c1b 1-13
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 20-21,46,67,74-75,89,358-387,478,513-514,611-614
+src/test/java/io/github/git13166956007/dsh/memory/MemoryManagerTest.java
+  h_eb697744b14c1b 1-19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b19f814a18565149d5051491190ab702d07f5e45",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
