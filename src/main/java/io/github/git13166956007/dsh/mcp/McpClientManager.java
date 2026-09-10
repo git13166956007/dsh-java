@@ -11,6 +11,7 @@ import io.modelcontextprotocol.client.transport.StdioClientTransport;
 import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.time.Duration;
+import java.net.URI;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -46,7 +47,7 @@ public final class McpClientManager implements AutoCloseable {
         } catch (RuntimeException exception) {
             tools.removeBySource(source);
             servers.setStatus(id, "ERROR");
-            throw exception;
+            throw new IllegalStateException(connectionError(server, exception), exception);
         }
     }
 
@@ -83,13 +84,17 @@ public final class McpClientManager implements AutoCloseable {
                     .build();
         }
         if ("sse".equals(server.transport())) {
-            HttpClientSseClientTransport transport = HttpClientSseClientTransport.builder(server.endpoint()).build();
+            ResolvedEndpoint endpoint = resolveEndpoint(server.endpoint(), "/sse");
+            HttpClientSseClientTransport transport = HttpClientSseClientTransport.builder(endpoint.baseUri())
+                    .sseEndpoint(endpoint.endpoint()).build();
             return McpClient.sync(transport).requestTimeout(Duration.ofSeconds(30))
                     .clientInfo(new McpSchema.Implementation("dsh-java", "0.1.0"))
                     .toolsChangeConsumer(updated -> refreshTools(server, updated))
                     .build();
         }
-        HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport.builder(server.endpoint()).build();
+        ResolvedEndpoint endpoint = resolveEndpoint(server.endpoint(), "/mcp");
+        HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport.builder(endpoint.baseUri())
+                .endpoint(endpoint.endpoint()).build();
         return McpClient.sync(transport).requestTimeout(Duration.ofSeconds(30))
                 .clientInfo(new McpSchema.Implementation("dsh-java", "0.1.0"))
                 .toolsChangeConsumer(updated -> refreshTools(server, updated))
@@ -161,6 +166,51 @@ public final class McpClientManager implements AutoCloseable {
     private static String source(String id) {
         return "mcp:" + id;
     }
+
+    static ResolvedEndpoint resolveEndpoint(String endpoint, String defaultPath) {
+        try {
+            URI uri = URI.create(endpoint.trim());
+            if (!uri.isAbsolute() || uri.getHost() == null) {
+                throw new IllegalArgumentException("MCP endpoint must be an absolute URL");
+            }
+            String path = uri.getRawPath();
+            if (path == null || path.isBlank() || "/".equals(path)) path = defaultPath;
+            if (!path.startsWith("/")) path = "/" + path;
+            if (uri.getRawQuery() != null && !uri.getRawQuery().isBlank()) path += "?" + uri.getRawQuery();
+            return new ResolvedEndpoint(uri.getScheme() + "://" + uri.getRawAuthority(), path);
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("invalid MCP endpoint: " + endpoint, exception);
+        }
+    }
+
+    private static String connectionError(McpServerInfo server, RuntimeException exception) {
+        String message = rootMessage(exception);
+        if (message.contains("INVALID_USER_KEY")) {
+            return "MCP server rejected the API key (INVALID_USER_KEY). Check the key and its service permissions."
+                    + (server.endpoint() != null && server.endpoint().contains("amap.com")
+                    ? " For AMap, use transport streamable_http with the full URL https://mcp.amap.com/mcp?key=YOUR_KEY."
+                    : "");
+        }
+        if (message.contains("Invalid SSE response")) {
+            return "MCP endpoint returned a non-SSE response. Check the transport and endpoint path."
+                    + (server.endpoint() != null && server.endpoint().contains("amap.com")
+                    ? " AMap's current MCP endpoint uses Streamable HTTP; select streamable_http and use /mcp?key=YOUR_KEY."
+                    : "");
+        }
+        return "MCP connection failed: " + message;
+    }
+
+    private static String rootMessage(Throwable exception) {
+        Throwable current = exception;
+        String message = exception.getMessage();
+        while (current.getCause() != null) {
+            current = current.getCause();
+            if (current.getMessage() != null) message = current.getMessage();
+        }
+        return message == null ? exception.getClass().getSimpleName() : message;
+    }
+
+    record ResolvedEndpoint(String baseUri, String endpoint) { }
 
     @Override
     public synchronized void close() {

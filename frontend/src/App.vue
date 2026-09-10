@@ -662,9 +662,9 @@ onMounted(() => {
             <label><span>Name</span><input v-model="mcpForm.name" placeholder="filesystem" autocomplete="off" /></label>
             <label><span>Transport</span><select v-model="mcpForm.transport"><option value="stdio">stdio</option><option value="sse">sse</option><option value="streamable_http">streamable_http</option></select></label>
           </div>
-          <label v-if="mcpForm.transport !== 'stdio'"><span>Endpoint</span><input v-model="mcpForm.endpoint" placeholder="http://localhost:3000" autocomplete="off" /></label>
+          <label v-if="mcpForm.transport !== 'stdio'"><span>Endpoint</span><input v-model="mcpForm.endpoint" :placeholder="mcpForm.transport === 'streamable_http' ? 'https://mcp.amap.com/mcp?key=YOUR_KEY' : 'http://localhost:3000/sse'" autocomplete="off" /></label>
           <label v-else><span>Command</span><input v-model="mcpForm.command" placeholder="npx" autocomplete="off" /></label>
-          <label><span>{{ mcpForm.transport === 'stdio' ? 'Arguments' : 'Endpoint hint' }}</span><input v-if="mcpForm.transport === 'stdio'" v-model="mcpForm.arguments" placeholder="-y @modelcontextprotocol/server-filesystem /tmp" autocomplete="off" /><input v-else value="SSE uses /sse; streamable HTTP uses /mcp by default" disabled /></label>
+          <label><span>{{ mcpForm.transport === 'stdio' ? 'Arguments' : 'Endpoint hint' }}</span><input v-if="mcpForm.transport === 'stdio'" v-model="mcpForm.arguments" placeholder="-y @modelcontextprotocol/server-filesystem /tmp" autocomplete="off" /><input v-else :value="mcpForm.transport === 'streamable_http' ? 'AMap: https://mcp.amap.com/mcp?key=YOUR_KEY' : 'Use the server SSE endpoint, for example /sse'" disabled /></label>
           <p v-if="mcpFormError" class="tool-form-error">{{ mcpFormError }}</p>
           <div class="tool-form-footer"><button class="secondary-button" type="button" @click="resetMcpForm">Reset</button><button class="send-button" type="submit" :disabled="mcpSaving"><span>{{ mcpSaving ? 'Adding' : 'Add server' }}</span><span class="send-arrow">↗</span></button></div>
         </form>
