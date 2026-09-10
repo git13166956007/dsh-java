@@ -1,0 +1,30 @@
+docker/mariadb/init/001_schema.sql
+  h_eb697744b14c1b 103-109
+src/main/java/io/github/git13166956007/dsh/agent/AgentContinuationStore.java
+  h_eb697744b14c1b 1-9
+src/main/java/io/github/git13166956007/dsh/agent/AgentLoop.java
+  h_eb697744b14c1b 14-17,26-27,32,36,41,46,51-56,64-65,287,290,320-327,372-375,434-437,444,462-628,673-684
+src/main/java/io/github/git13166956007/dsh/agent/InMemoryAgentContinuationStore.java
+  h_eb697744b14c1b 1-23
+src/main/java/io/github/git13166956007/dsh/agent/MariaDbAgentContinuationStore.java
+  h_eb697744b14c1b 1-73
+src/main/java/io/github/git13166956007/dsh/config/DshRuntimeConfiguration.java
+  h_eb697744b14c1b 6,15-16,129-138,207-208,210
+src/main/java/io/github/git13166956007/dsh/plan/PlanExecutor.java
+  h_eb697744b14c1b 213,235-236,241-249
+src/test/java/io/github/git13166956007/dsh/agent/AgentLoopTest.java
+  h_eb697744b14c1b 9,15,207-249
+src/test/java/io/github/git13166956007/dsh/plan/PlanExecutorTest.java
+  h_eb697744b14c1b 7,23,120-122,136,138-144,149-150
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "07de5b9bbe60d8db38d8dd33c3ec71c189cf468b",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
