@@ -1,0 +1,16 @@
+README.md
+  h_eb697744b14c1b 95
+frontend/src/App.vue
+  h_eb697744b14c1b 67-69,688-690,705-707,732-734,1939,1967-1974
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "115539343b160044e05d6fd6b4ccc444715c746c",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
