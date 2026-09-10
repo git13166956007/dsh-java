@@ -105,7 +105,7 @@ Sub-agent Profile 管理接口为 `GET/POST/PATCH/DELETE /api/v1/sub-agents`。�
 
 计划接口为 `GET /api/v1/plans`、`GET /api/v1/plans/{id}`、`POST /api/v1/plans`、`POST /api/v1/plans/{id}/approve`、`POST /api/v1/plans/{id}/execute` 和 `POST /api/v1/plans/{id}/cancel`。Plan 创建时提交有序步骤、`dependsOn` 步骤编号和 `maxConcurrency`；需要人工确认的计划先处于 `draft`，审批后进入 `approved`，执行过程中会持久化每个步骤的 `pending/running/completed/failed/cancelled` 状态，并支持单步骤重试和满足依赖后的并行执行。依赖步骤完成结果会作为后续步骤的证据上下文传入。应用重启后，仍为 `RUNNING` 的 Plan 会复用根 Run，取消失效的子 Run，将中断中的步骤重新排队并继续执行；已经等待工具审批的步骤会保持等待，不会绕过审批。
 
-自适应计划接口为 `POST /api/v1/plans/adaptive`。它会调用 Planning Agent 生成严格 JSON 步骤，服务端限制最大步骤数、校验结构和步骤依赖，并根据子智能体的名称、说明、工具和 Skill 能力做确定性匹配；匹配不到时回退到父 Agent。生成结果直接进入同一套审批和执行状态机。
+自适应计划接口为 `POST /api/v1/plans/adaptive`。它会调用 Planning Agent 生成严格 JSON 步骤，服务端限制最大步骤数、校验结构和步骤依赖，并根据子智能体的名称、说明、工具和 Skill 能力做确定性匹配；匹配不到时回退到父 Agent。生成结果直接进入同一套审批和执行状态机。调试页面也支持 `POST /api/v1/plans/adaptive/stream`，流式返回 `planning_delta`、`planning_reasoning_delta`、`plan_created` 和 `done` 事件；生成步骤的 `maxAttempts` 会传递给执行器。
 
 自适应计划可以传 `allowDynamicSubAgents: true`。当已有 Worker 都无法匹配时，Planning Agent 可为步骤返回 Worker 描述，服务端会过滤不存在的工具/Skill，校验模型是否启用且支持工具调用，创建并持久化一个带优先级、成本权重、并发上限和能力标签的 `execution` Sub-agent Profile，再将步骤绑定到它。默认关闭，前端 Adaptive Planner 中可显式开启。已有 Worker 会按任务 Token、工具/Skill/能力命中、模型匹配、优先级、模型输入/输出价格、模型健康/成功率/延迟、Worker 成本和当前负载进行可解释评分；引用不存在或已禁用模型的 Worker 会被标记为不可用并保留诊断原因。
 

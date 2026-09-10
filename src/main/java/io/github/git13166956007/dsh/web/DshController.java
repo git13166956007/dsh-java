@@ -935,6 +935,48 @@ public final class DshController {
         }
     }
 
+    @PostMapping(value = "/plans/adaptive/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamAdaptivePlan(@RequestBody AdaptivePlanRequest request) {
+        if (request == null || request.prompt() == null || request.prompt().trim().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "prompt must not be blank");
+        }
+        SseEmitter emitter = new SseEmitter(180_000L);
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            try {
+                send(emitter, "planning_started", Map.of("status", "started"));
+                Plan plan = adaptivePlanService.create(request.prompt(), request.apiKey(), request.agentId(), request.modelId(),
+                        request.approvalRequired() == null || request.approvalRequired(), request.maxSteps(),
+                        request.maxConcurrency(), Boolean.TRUE.equals(request.allowDynamicSubAgents()),
+                        new AgentStreamListener() {
+                            @Override
+                            public void onText(String delta) {
+                                send(emitter, "planning_delta", delta);
+                            }
+
+                            @Override
+                            public void onReasoning(String delta) {
+                                send(emitter, "planning_reasoning_delta", delta);
+                            }
+
+                            @Override
+                            public void onToolCall(ToolCall call) {
+                            }
+
+                            @Override
+                            public void onToolResult(io.github.git13166956007.dsh.agent.AgentTraceEvent result) {
+                            }
+                        });
+                send(emitter, "plan_created", plan);
+                send(emitter, "done", plan);
+                emitter.complete();
+            } catch (Exception exception) {
+                send(emitter, "error", new ErrorResponse(exception.getMessage()));
+                emitter.complete();
+            }
+        });
+        return emitter;
+    }
+
     @PostMapping("/plans/{id}/approve")
     public Plan approvePlan(@PathVariable String id) {
         try {

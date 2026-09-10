@@ -6,8 +6,10 @@ import io.github.git13166956007.dsh.agent.AgentLoop;
 import io.github.git13166956007.dsh.agent.AgentMode;
 import io.github.git13166956007.dsh.agent.ChatMessage;
 import io.github.git13166956007.dsh.agent.ChatModel;
+import io.github.git13166956007.dsh.agent.AgentStreamListener;
 import io.github.git13166956007.dsh.agent.InMemorySubAgentProfileStore;
 import io.github.git13166956007.dsh.agent.ModelResponse;
+import io.github.git13166956007.dsh.agent.ModelStreamListener;
 import io.github.git13166956007.dsh.agent.SubAgentProfileRegistry;
 import io.github.git13166956007.dsh.model.InMemoryModelProfileStore;
 import io.github.git13166956007.dsh.model.ModelRegistry;
@@ -18,10 +20,54 @@ import io.github.git13166956007.dsh.run.RunKind;
 import io.github.git13166956007.dsh.run.RunManager;
 import io.github.git13166956007.dsh.run.RunSpec;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 class AdaptivePlanServiceTest {
+    @Test
+    void streamsPlanningOutputBeforeCreatingThePlan() throws Exception {
+        ChatModel model = new ChatModel() {
+            @Override
+            public ModelResponse complete(List<ChatMessage> messages, List<ToolDefinition> definitions) {
+                return new ModelResponse("{\"title\":\"Streamed\",\"goal\":\"Verify\",\"steps\":[{\"title\":\"Check\",\"instruction\":\"Check it\"}]}",
+                        List.of(), "stop");
+            }
+
+            @Override
+            public ModelResponse stream(List<ChatMessage> messages, List<ToolDefinition> definitions,
+                                        String apiKey, ModelStreamListener listener) {
+                listener.onText("{\"title\":\"Streamed\",");
+                listener.onText("\"goal\":\"Verify\",\"steps\":[{\"title\":\"Check\",\"instruction\":\"Check it\"}]}");
+                return new ModelResponse("{\"title\":\"Streamed\",\"goal\":\"Verify\",\"steps\":[{\"title\":\"Check\",\"instruction\":\"Check it\"}]}",
+                        List.of(), "stop");
+            }
+        };
+        AtomicReference<String> output = new AtomicReference<String>("");
+        AdaptivePlanService service = new AdaptivePlanService(new AgentLoop(model, new ToolRegistry(), 2),
+                new PlanRegistry(new InMemoryPlanStore()),
+                new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 8), new ObjectMapper());
+
+        Plan plan = service.create("Verify", null, null, null, false, 4, 1, false,
+                new AgentStreamListener() {
+                    @Override
+                    public void onText(String delta) {
+                        output.updateAndGet(value -> value + delta);
+                    }
+
+                    @Override
+                    public void onToolCall(io.github.git13166956007.dsh.agent.ToolCall call) {
+                    }
+
+                    @Override
+                    public void onToolResult(io.github.git13166956007.dsh.agent.AgentTraceEvent result) {
+                    }
+                });
+
+        assertEquals("Streamed", plan.title());
+        org.junit.jupiter.api.Assertions.assertTrue(output.get().contains("\"title\":\"Streamed\""));
+    }
+
     @Test
     void convertsPlanningJsonIntoAnApprovedPlanAndSelectsAnExecutionWorker() throws Exception {
         ChatModel model = new ChatModel() {
@@ -94,7 +140,7 @@ class AdaptivePlanServiceTest {
     void preservesDependenciesGeneratedByThePlanningAgent() throws Exception {
         ChatModel model = (messages, definitions) -> new ModelResponse(
                 "{\"title\":\"Build task\",\"goal\":\"Build and verify\",\"steps\":["
-                        + "{\"title\":\"Build\",\"instruction\":\"Build the project\",\"dependsOn\":[]},"
+                        + "{\"title\":\"Build\",\"instruction\":\"Build the project\",\"maxAttempts\":3,\"dependsOn\":[]},"
                         + "{\"title\":\"Verify\",\"instruction\":\"Verify the build\",\"dependsOn\":[1]}]}",
                 List.of(), "stop");
         Plan plan = new AdaptivePlanService(new AgentLoop(model, new ToolRegistry(), 2),
@@ -103,6 +149,7 @@ class AdaptivePlanServiceTest {
                 .create("Build and verify", null, null, null, false, 4, 2);
 
         assertEquals(List.of(1), plan.steps().get(1).dependsOn());
+        assertEquals(3, plan.steps().get(0).maxAttempts());
     }
 
     @Test

@@ -112,6 +112,8 @@ const planForm = ref({
 const planFormError = ref('')
 const planSaving = ref(false)
 const adaptivePlanForm = ref({ prompt: '', maxSteps: 6, maxConcurrency: 1, approvalRequired: true, allowDynamicSubAgents: false })
+const adaptivePlanOutput = ref('')
+const adaptivePlanReasoning = ref('')
 let planPollTimer = null
 let planEventSource = null
 let planEventRunId = null
@@ -864,8 +866,10 @@ async function createAdaptivePlan() {
     return
   }
   planSaving.value = true
+  adaptivePlanOutput.value = ''
+  adaptivePlanReasoning.value = ''
   try {
-    const response = await fetch('/api/v1/plans/adaptive', {
+    const response = await fetch('/api/v1/plans/adaptive/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -879,10 +883,22 @@ async function createAdaptivePlan() {
         allowDynamicSubAgents: adaptivePlanForm.value.allowDynamicSubAgents
       })
     })
-    const payload = await response.json().catch(() => ({}))
-    if (!response.ok) throw new Error(payload.message || payload.error || 'Adaptive plan creation failed')
-    selectedPlanId.value = payload.id
-    planDetail.value = payload
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}))
+      throw new Error(payload.message || payload.error || 'Adaptive plan creation failed')
+    }
+    let streamError = null
+    await consumeSse(response, (event, data) => {
+      if (event === 'planning_delta') adaptivePlanOutput.value += typeof data === 'string' ? data : ''
+      else if (event === 'planning_reasoning_delta') adaptivePlanReasoning.value += typeof data === 'string' ? data : ''
+      else if (event === 'plan_created' || event === 'done') {
+        selectedPlanId.value = data.id
+        planDetail.value = data
+      } else if (event === 'error') {
+        streamError = data?.error || data?.message || String(data)
+      }
+    })
+    if (streamError) throw new Error(streamError)
     await refreshPlans()
     adaptivePlanForm.value.prompt = ''
   } catch (requestError) {
@@ -2632,6 +2648,10 @@ onUnmounted(() => {
           <div class="tool-form-grid"><label><span>Max steps</span><input v-model="adaptivePlanForm.maxSteps" type="number" min="1" max="16" inputmode="numeric" /></label><label><span>Max concurrency</span><input v-model="adaptivePlanForm.maxConcurrency" type="number" min="1" max="16" inputmode="numeric" /></label></div>
           <label class="plan-approval-toggle"><input v-model="adaptivePlanForm.approvalRequired" type="checkbox" /> Require approval</label>
           <label class="plan-approval-toggle"><input v-model="adaptivePlanForm.allowDynamicSubAgents" type="checkbox" /> Allow adaptive worker creation</label>
+          <div v-if="adaptivePlanReasoning || adaptivePlanOutput" class="adaptive-plan-stream">
+            <details v-if="adaptivePlanReasoning" class="reasoning-block" open><summary>Planning reasoning</summary><div class="markdown-content" v-html="renderMarkdown(adaptivePlanReasoning)"></div></details>
+            <pre v-if="adaptivePlanOutput">{{ adaptivePlanOutput }}</pre>
+          </div>
           <div class="tool-form-footer"><button class="send-button" type="submit" :disabled="planSaving"><span>{{ planSaving ? 'Planning' : 'Generate adaptive plan' }}</span><span class="send-arrow">↗</span></button></div>
         </form>
       </div>

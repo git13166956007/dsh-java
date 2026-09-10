@@ -3,6 +3,7 @@ package io.github.git13166956007.dsh.plan;
 import io.github.git13166956007.dsh.agent.AgentLoop;
 import io.github.git13166956007.dsh.agent.AgentMode;
 import io.github.git13166956007.dsh.agent.AgentRunResult;
+import io.github.git13166956007.dsh.agent.AgentStreamListener;
 import io.github.git13166956007.dsh.agent.SubAgentProfile;
 import io.github.git13166956007.dsh.agent.SubAgentProfileRegistry;
 import io.github.git13166956007.dsh.model.ModelProfileData;
@@ -68,20 +69,22 @@ public final class AdaptivePlanService {
     public Plan create(String prompt, String apiKey, String agentId, String modelId,
                        boolean approvalRequired, Integer maxSteps, Integer maxConcurrency,
                        boolean allowDynamicSubAgents) throws Exception {
+        return create(prompt, apiKey, agentId, modelId, approvalRequired, maxSteps, maxConcurrency,
+                allowDynamicSubAgents, null);
+    }
+
+    public Plan create(String prompt, String apiKey, String agentId, String modelId,
+                       boolean approvalRequired, Integer maxSteps, Integer maxConcurrency,
+                       boolean allowDynamicSubAgents, AgentStreamListener listener) throws Exception {
         if (prompt == null || prompt.trim().isEmpty()) throw new IllegalArgumentException("prompt must not be blank");
         int stepLimit = maxSteps == null ? 8 : maxSteps;
         if (stepLimit < 1 || stepLimit > 16) throw new IllegalArgumentException("maxSteps must be between 1 and 16");
 
-        String planningPrompt = "Create an execution plan for the user's task. Return JSON only, with this exact shape: "
-                + "{\"title\":\"short title\",\"goal\":\"goal\",\"steps\":["
-                + "{\"title\":\"step title\",\"instruction\":\"complete instruction\","
-                + "\"dependsOn\":[],"
-                + "\"worker\":{\"name\":\"optional worker name\",\"systemPrompt\":\"optional worker instructions\","
-                + "\"modelId\":\"optional model profile id\",\"maxTurns\":8,\"maxToolCalls\":64,"
-                + "\"timeoutSeconds\":300,\"maxDepth\":4,\"priority\":50,\"costWeight\":1.0,"
-                + "\"maxConcurrentRuns\":4,\"capabilityTags\":[],\"allowedToolNames\":[],\"skillIds\":[]}}]}"
-                + " No Markdown, no code fence, no commentary. Use at most " + stepLimit + " ordered steps.\n\nTask:\n" + prompt.trim();
-        AgentRunResult result = agentLoop.runDetailed(planningPrompt, apiKey, List.of(), modelId, agentId, AgentMode.PLANNING);
+        String planningPrompt = planningPrompt(prompt, stepLimit);
+        AgentRunResult result = listener == null
+                ? agentLoop.runDetailed(planningPrompt, apiKey, List.of(), modelId, agentId, AgentMode.PLANNING)
+                : agentLoop.runStreaming(planningPrompt, apiKey, List.of(), modelId, agentId,
+                        AgentMode.PLANNING, listener);
         JsonNode planJson = parseJson(result.answer());
         String title = required(planJson.path("title").asText(null), "generated plan title");
         String goal = required(planJson.path("goal").asText(null), "generated plan goal");
@@ -99,12 +102,25 @@ public final class AdaptivePlanService {
             if (subAgentId == null && allowDynamicSubAgents) {
                 subAgentId = createDynamicSubAgent(step, stepTitle, instruction, modelId);
             }
-            steps.add(new PlanRegistry.PlanStepInput(stepTitle, instruction, 1, subAgentId,
+            int maxAttempts = boundedInt(step, "maxAttempts", 1, 1, 10);
+            steps.add(new PlanRegistry.PlanStepInput(stepTitle, instruction, maxAttempts, subAgentId,
                     readIntegers(step.path("dependsOn"), stepNo)));
             stepNo++;
         }
         return plans.create(title, goal, agentId, modelId, approvalRequired,
                 maxConcurrency == null ? 1 : maxConcurrency, steps);
+    }
+
+    private static String planningPrompt(String prompt, int stepLimit) {
+        return "Create an execution plan for the user's task. Return JSON only, with this exact shape: "
+                + "{\"title\":\"short title\",\"goal\":\"goal\",\"steps\":["
+                + "{\"title\":\"step title\",\"instruction\":\"complete instruction\",\"maxAttempts\":1,"
+                + "\"dependsOn\":[],"
+                + "\"worker\":{\"name\":\"optional worker name\",\"systemPrompt\":\"optional worker instructions\","
+                + "\"modelId\":\"optional model profile id\",\"maxTurns\":8,\"maxToolCalls\":64,"
+                + "\"timeoutSeconds\":300,\"maxDepth\":4,\"priority\":50,\"costWeight\":1.0,"
+                + "\"maxConcurrentRuns\":4,\"capabilityTags\":[],\"allowedToolNames\":[],\"skillIds\":[]}}]}"
+                + " No Markdown, no code fence, no commentary. Use at most " + stepLimit + " ordered steps.\n\nTask:\n" + prompt.trim();
     }
 
     private String createDynamicSubAgent(JsonNode step, String title, String instruction, String modelId) {
