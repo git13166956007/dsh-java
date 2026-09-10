@@ -71,6 +71,15 @@ h2 { font-size: 17px; }
 .message-content { color: #c8d2d0; font-size: 14px; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
 .message-row.user .message-content { color: #eadfce; }
 .message-row.error .message-content { color: #edaaa0; }
+.message-row.pending { display: none; }
+.message-row.tool .message-avatar { border-color: #a27e53; color: #e2b989; }
+.message-row.tool .message-body { padding: 10px 12px 12px; border: 1px solid #4b4034; background: #181a19; }
+.tool-message-content { color: #c2cbc7; font-size: 12px; line-height: 1.5; }
+.tool-message-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.tool-message-title strong { color: #e2b989; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+.tool-message-title span { color: #9aab9f; font: 10px ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase; }
+.tool-message-label { margin-top: 10px; color: #788580; font: 9px ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; }
+.tool-message-content pre { max-height: 150px; margin-top: 5px; }
 .markdown-content { white-space: normal; }
 .markdown-content :first-child { margin-top: 0; }
 .markdown-content :last-child { margin-bottom: 0; }

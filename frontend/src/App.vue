@@ -244,8 +244,8 @@ async function sendMessage() {
   draft.value = ''
   error.value = ''
   messages.value.push({ role: 'user', content: prompt })
-  const assistantIndex = messages.value.length
-  messages.value.push({ role: 'assistant', content: '' })
+  const assistantMessage = { role: 'assistant', content: '' }
+  messages.value.push(assistantMessage)
   trace.value = []
   sending.value = true
   await scrollTranscript()
@@ -267,16 +267,33 @@ async function sendMessage() {
 
     await consumeSse(response, (event, data) => {
       if (event === 'delta') {
-        messages.value[assistantIndex].content += typeof data === 'string' ? data : ''
+        assistantMessage.content += typeof data === 'string' ? data : ''
       } else if (event === 'tool_call') {
+        const toolMessage = {
+          role: 'tool',
+          id: data.id,
+          name: data.name,
+          arguments: data.arguments,
+          result: null,
+          state: 'running'
+        }
+        const assistantPosition = messages.value.indexOf(assistantMessage)
+        messages.value.splice(assistantPosition, 0, toolMessage)
         trace.value.push({ type: 'tool', name: data.name, arguments: data.arguments, result: null })
+        void scrollTranscript()
       } else if (event === 'tool_result') {
         const pending = [...trace.value].reverse().find((item) => item.type === 'tool' && item.name === data.name && !item.result)
         if (pending) pending.result = data.result
         else trace.value.push(data)
+        const pendingMessage = [...messages.value].reverse().find((item) => item.role === 'tool' && item.name === data.name && item.result === null)
+        if (pendingMessage) {
+          pendingMessage.result = data.result
+          pendingMessage.state = 'complete'
+        }
+        void scrollTranscript()
       } else if (event === 'done') {
         conversationId.value = data.conversationId || conversationId.value
-        messages.value[assistantIndex].content = data.answer || messages.value[assistantIndex].content
+        assistantMessage.content = data.answer || assistantMessage.content
         trace.value = data.trace || trace.value
         history.value.unshift({
           prompt,
@@ -291,7 +308,8 @@ async function sendMessage() {
     })
   } catch (requestError) {
     error.value = requestError.message
-    messages.value.splice(assistantIndex, 1)
+    const assistantPosition = messages.value.indexOf(assistantMessage)
+    if (assistantPosition >= 0) messages.value.splice(assistantPosition, 1)
     messages.value.push({ role: 'error', content: requestError.message })
   } finally {
     sending.value = false
@@ -489,14 +507,23 @@ onMounted(() => {
           <p>Ask a question and inspect every model turn on the right.</p>
         </div>
 
-        <article v-for="(item, index) in messages" :key="`${item.role}-${index}`" class="message-row" :class="item.role">
-          <div class="message-avatar">{{ item.role === 'user' ? 'S' : item.role === 'error' ? '!' : 'D' }}</div>
+        <article v-for="(item, index) in messages" :key="`${item.role}-${index}`" class="message-row" :class="[item.role, { pending: item.role === 'assistant' && !item.content }]">
+          <div class="message-avatar">{{ item.role === 'user' ? 'S' : item.role === 'error' ? '!' : item.role === 'tool' ? 'T' : 'D' }}</div>
           <div class="message-body">
             <div class="message-meta">
-              <strong>{{ item.role === 'user' ? 'You' : item.role === 'error' ? 'Runtime' : 'DSH Agent' }}</strong>
-              <span>{{ item.role === 'user' ? 'prompt' : item.role === 'error' ? 'error' : 'answer' }}</span>
+              <strong>{{ item.role === 'user' ? 'You' : item.role === 'error' ? 'Runtime' : item.role === 'tool' ? 'Tool execution' : 'DSH Agent' }}</strong>
+              <span>{{ item.role === 'user' ? 'prompt' : item.role === 'error' ? 'error' : item.role === 'tool' ? item.state : 'answer' }}</span>
             </div>
             <div v-if="item.role === 'assistant'" class="message-content markdown-content" v-html="renderMarkdown(item.content)"></div>
+            <div v-else-if="item.role === 'tool'" class="tool-message-content">
+              <div class="tool-message-title"><strong>{{ item.name }}</strong><span>{{ item.state === 'running' ? 'Running' : 'Completed' }}</span></div>
+              <div class="tool-message-label">INPUT</div>
+              <pre>{{ formatArguments(item.arguments) }}</pre>
+              <template v-if="item.result !== null">
+                <div class="tool-message-label">OUTPUT</div>
+                <pre class="result">{{ item.result }}</pre>
+              </template>
+            </div>
             <div v-else class="message-content">{{ item.content }}</div>
           </div>
         </article>
