@@ -13,4 +13,13 @@ class McpClientManagerTest {
         assertEquals("https://mcp.amap.com", endpoint.baseUri());
         assertEquals("/mcp?key=debug-key", endpoint.endpoint());
     }
+
+    @Test
+    void exposesRemoteToolNamesUsingDeepSeekCompatibleCharacters() {
+        McpServerInfo server = new McpServerInfo(
+                "12345678-aaaa-bbbb-cccc-dddddddddddd", "demo", "stdio", null, "node", java.util.List.of(), true, "CONNECTED");
+
+        assertEquals("mcp_12345678_weather_lookup",
+                McpClientManager.exposedName(server, "weather.lookup"));
+    }
 }

@@ -155,9 +155,9 @@ public final class McpClientManager implements AutoCloseable {
         return "[" + server.name() + "] " + description;
     }
 
-    private static String exposedName(McpServerInfo server, String remoteName) {
-        String normalized = remoteName.replaceAll("[^A-Za-z0-9_.-]", "_");
-        String prefix = "mcp." + server.id().replace("-", "").substring(0, 8) + ".";
+    static String exposedName(McpServerInfo server, String remoteName) {
+        String normalized = remoteName.replaceAll("[^A-Za-z0-9_-]", "_");
+        String prefix = "mcp_" + server.id().replace("-", "").substring(0, 8) + "_";
         String result = prefix + normalized;
         if (result.length() <= 64) return result;
         return result.substring(0, 55) + "_" + Integer.toHexString(remoteName.hashCode());

@@ -16,7 +16,7 @@ class AgentLoopTest {
     void executesToolThenReturnsFinalAnswer() throws Exception {
         ToolRegistry tools = new ToolRegistry();
         AtomicInteger executions = new AtomicInteger();
-        tools.register(new ToolDefinition("demo.echo", "Echo a value.",
+        tools.register(new ToolDefinition("demo_echo", "Echo a value.",
                 JsonNodeFactory.instance.objectNode().put("type", "object")), arguments -> {
             executions.incrementAndGet();
             return "tool-result";
@@ -32,7 +32,7 @@ class AgentLoopTest {
                 if (calls == 1) {
                     return new ModelResponse(null,
                             Collections.singletonList(new ToolCall(
-                                    "call-1", "demo.echo", JsonNodeFactory.instance.objectNode())),
+                                    "call-1", "demo_echo", JsonNodeFactory.instance.objectNode())),
                             "tool_calls");
                 }
                 return new ModelResponse("done", Collections.emptyList(), "stop");
@@ -46,7 +46,7 @@ class AgentLoopTest {
     @Test
     void streamsTextAndToolLifecycleEvents() throws Exception {
         ToolRegistry tools = new ToolRegistry();
-        tools.register(new ToolDefinition("demo.echo", "Echo a value.",
+        tools.register(new ToolDefinition("demo_echo", "Echo a value.",
                 JsonNodeFactory.instance.objectNode().put("type", "object")), arguments -> "tool-result");
         List<String> text = new ArrayList<>();
         List<String> events = new ArrayList<>();
@@ -66,7 +66,7 @@ class AgentLoopTest {
                 if (calls == 1) {
                     return new ModelResponse(null,
                             Collections.singletonList(new ToolCall(
-                                    "call-1", "demo.echo", JsonNodeFactory.instance.objectNode())),
+                                    "call-1", "demo_echo", JsonNodeFactory.instance.objectNode())),
                             "tool_calls");
                 }
                 listener.onText("done");
@@ -94,6 +94,6 @@ class AgentLoopTest {
 
         assertEquals("done", result.answer());
         assertEquals(Collections.singletonList("done"), text);
-        assertEquals(List.of("call:demo.echo", "result:tool-result"), events);
+        assertEquals(List.of("call:demo_echo", "result:tool-result"), events);
     }
 }

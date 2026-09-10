@@ -14,9 +14,6 @@ public final class ToolRegistry {
     }
 
     public synchronized void registerCustom(ToolDefinition definition, String result) {
-        if (!definition.name().matches("[A-Za-z0-9_.-]{1,64}")) {
-            throw new IllegalArgumentException("custom tool name must match [A-Za-z0-9_.-]{1,64}");
-        }
         if (definition.description().trim().isEmpty()) {
             throw new IllegalArgumentException("custom tool description must not be blank");
         }
@@ -32,6 +29,9 @@ public final class ToolRegistry {
     }
 
     private void register(ToolDefinition definition, ToolHandler handler, String source, boolean removable) {
+        if (!definition.name().matches("[A-Za-z0-9_-]{1,64}")) {
+            throw new IllegalArgumentException("tool name must match [A-Za-z0-9_-]{1,64}");
+        }
         if (tools.containsKey(definition.name())) {
             throw new IllegalArgumentException("duplicate tool: " + definition.name());
         }
