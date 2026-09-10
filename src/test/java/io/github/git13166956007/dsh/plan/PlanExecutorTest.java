@@ -18,6 +18,7 @@ import io.github.git13166956007.dsh.run.RunKind;
 import io.github.git13166956007.dsh.run.RunManager;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.node.JsonNodeFactory;
 import tools.jackson.databind.ObjectMapper;
@@ -89,6 +90,34 @@ class PlanExecutorTest {
         Run agentRun = saved.stream().filter(run -> run.kind() == RunKind.AGENT).findFirst().orElseThrow();
         assertEquals(planRun.id(), stepRun.parentRunId());
         assertEquals(stepRun.id(), agentRun.parentRunId());
+    }
+
+    @Test
+    void passesCompletedDependencyResultsToTheNextStep() throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        AtomicReference<String> dependentPrompt = new AtomicReference<>();
+        ChatModel model = (messages, definitions) -> {
+            if (calls.incrementAndGet() == 1) return new ModelResponse("first step result", List.of(), "stop");
+            dependentPrompt.set(messages.get(messages.size() - 1).content());
+            return new ModelResponse("second step result", List.of(), "stop");
+        };
+        PlanRegistry registry = new PlanRegistry(new InMemoryPlanStore());
+        Plan plan = registry.create("Dependency", "Pass results", null, null, false, 2,
+                List.of(new PlanRegistry.PlanStepInput("First", "Produce evidence", 1),
+                        new PlanRegistry.PlanStepInput("Second", "Use the evidence", 1, null, List.of(1))));
+        try (PlanExecutor executor = new PlanExecutor(registry, new AgentLoop(model, new ToolRegistry(), 1),
+                new io.github.git13166956007.dsh.agent.SubAgentRunner(
+                        new AgentLoop(model, new ToolRegistry(), 1),
+                        new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 1)))) {
+            executor.execute(plan.id(), null);
+            long deadline = System.currentTimeMillis() + 3000;
+            while (!registry.find(plan.id()).status().terminal() && System.currentTimeMillis() < deadline) {
+                Thread.sleep(20);
+            }
+        }
+
+        assertEquals(PlanStatus.COMPLETED, registry.find(plan.id()).status());
+        assertTrue(dependentPrompt.get().contains("first step result"));
     }
 
     @Test
