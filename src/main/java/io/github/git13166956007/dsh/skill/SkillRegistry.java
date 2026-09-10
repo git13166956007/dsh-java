@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public final class SkillRegistry {
     private final Path directory;
@@ -52,9 +53,13 @@ public final class SkillRegistry {
     }
 
     public synchronized String systemPrompt() {
+        return systemPrompt(null);
+    }
+
+    public synchronized String systemPrompt(Set<String> allowedIds) {
         StringBuilder prompt = new StringBuilder("You are a helpful assistant. Use available tools when they are useful, then give a concise final answer.");
         for (SkillInfo skill : skills.values()) {
-            if (!skill.enabled()) continue;
+            if (!skill.enabled() || (allowedIds != null && !allowedIds.contains(skill.id()))) continue;
             prompt.append("\n\n## Skill: ").append(skill.name()).append("\n").append(skill.content());
         }
         return prompt.toString();

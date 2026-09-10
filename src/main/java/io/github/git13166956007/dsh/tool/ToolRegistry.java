@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public final class ToolRegistry {
     private final Map<String, RegisteredTool> tools = new LinkedHashMap<String, RegisteredTool>();
@@ -39,9 +40,15 @@ public final class ToolRegistry {
     }
 
     public synchronized List<ToolDefinition> definitions() {
+        return definitions(null);
+    }
+
+    public synchronized List<ToolDefinition> definitions(Set<String> allowedNames) {
         List<ToolDefinition> definitions = new ArrayList<ToolDefinition>();
         for (RegisteredTool tool : tools.values()) {
-            if (tool.enabled) definitions.add(tool.definition);
+            if (tool.enabled && (allowedNames == null || allowedNames.contains(tool.definition.name()))) {
+                definitions.add(tool.definition);
+            }
         }
         return definitions;
     }
@@ -83,6 +90,13 @@ public final class ToolRegistry {
     }
 
     public synchronized String execute(String name, JsonNode arguments) throws Exception {
+        return execute(name, arguments, null);
+    }
+
+    public synchronized String execute(String name, JsonNode arguments, Set<String> allowedNames) throws Exception {
+        if (allowedNames != null && !allowedNames.contains(name)) {
+            throw new IllegalStateException("tool is not allowed for this agent: " + name);
+        }
         RegisteredTool tool = tools.get(name);
         if (tool == null) throw new IllegalArgumentException("unknown tool: " + name);
         if (!tool.enabled) throw new IllegalStateException("tool is disabled: " + name);
