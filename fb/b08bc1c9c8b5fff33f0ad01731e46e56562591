@@ -1,0 +1,20 @@
+src/main/java/io/github/git13166956007/dsh/model/ModelRouter.java
+  h_eb697744b14c1b 8,12,52-63
+src/main/java/io/github/git13166956007/dsh/provider/deepseek/DeepSeekChatModel.java
+  h_eb697744b14c1b 7,9,13,21-22,27,33,39
+src/main/java/io/github/git13166956007/dsh/provider/openai/OpenAiCompatibleChatModel.java
+  h_eb697744b14c1b 1-230
+src/test/java/io/github/git13166956007/dsh/model/ModelRouterTest.java
+  h_eb697744b14c1b 1-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "fbb08bc1c9c8b5fff33f0ad01731e46e56562591",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
