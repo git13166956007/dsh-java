@@ -426,7 +426,7 @@ public final class DshController {
                     request.supportsTools(), request.supportsStreaming(), request.supportsVision(), request.contextWindow(),
                     request.temperature(), request.topP(), request.maxTokens(), request.frequencyPenalty(),
                     request.presencePenalty(), request.timeoutSeconds(), request.requestOptionsJson(), request.fallbackModelId(),
-                    request.failoverPolicy());
+                    request.failoverPolicy(), request.inputPricePerMillionTokens(), request.outputPricePerMillionTokens());
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
         }
@@ -1102,7 +1102,8 @@ public final class DshController {
                                Boolean supportsTools, Boolean supportsStreaming, Boolean supportsVision,
                                Integer contextWindow, Double temperature, Double topP, Integer maxTokens,
                                Double frequencyPenalty, Double presencePenalty, Integer timeoutSeconds,
-                               String requestOptionsJson, String fallbackModelId, String failoverPolicy) {
+                               String requestOptionsJson, String fallbackModelId, String failoverPolicy,
+                               Double inputPricePerMillionTokens, Double outputPricePerMillionTokens) {
     }
 
     public record ModelTestRequest(String apiKey, String prompt) {

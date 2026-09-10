@@ -141,6 +141,20 @@ public final class ModelRegistry {
                                              Double temperature, Double topP, Integer maxTokens,
                                              Double frequencyPenalty, Double presencePenalty, Integer timeoutSeconds,
                                              String requestOptionsJson, String fallbackModelId, String failoverPolicy) {
+        return create(name, provider, baseUrl, model, apiKey, proxyHost, proxyPort, enabled, active,
+                supportsTools, supportsStreaming, supportsVision, contextWindow, temperature, topP, maxTokens,
+                frequencyPenalty, presencePenalty, timeoutSeconds, requestOptionsJson, fallbackModelId,
+                failoverPolicy, null, null);
+    }
+
+    public synchronized ModelProfile create(String name, String provider, String baseUrl, String model,
+                                             String apiKey, String proxyHost, Integer proxyPort,
+                                             Boolean enabled, Boolean active, Boolean supportsTools,
+                                             Boolean supportsStreaming, Boolean supportsVision, Integer contextWindow,
+                                             Double temperature, Double topP, Integer maxTokens,
+                                             Double frequencyPenalty, Double presencePenalty, Integer timeoutSeconds,
+                                             String requestOptionsJson, String fallbackModelId, String failoverPolicy,
+                                             Double inputPricePerMillionTokens, Double outputPricePerMillionTokens) {
         String id = UUID.randomUUID().toString();
         boolean nextEnabled = enabled == null || enabled;
         boolean nextActive = nextEnabled && (Boolean.TRUE.equals(active)
@@ -154,7 +168,8 @@ public final class ModelRegistry {
                 validPenalty(frequencyPenalty, "frequencyPenalty"), validPenalty(presencePenalty, "presencePenalty"),
                 validTimeoutSeconds(timeoutSeconds == null ? 120 : timeoutSeconds),
                 normalizeRequestOptions(requestOptionsJson), normalizeFallbackId(fallbackModelId),
-                normalizeFailoverPolicy(failoverPolicy));
+                normalizeFailoverPolicy(failoverPolicy), validPrice(inputPricePerMillionTokens, "inputPricePerMillionTokens"),
+                validPrice(outputPricePerMillionTokens, "outputPricePerMillionTokens"));
         validateFallback(profile.id(), profile.fallbackModelId());
         if (nextActive) deactivateAll();
         save(profile);
@@ -206,6 +221,19 @@ public final class ModelRegistry {
                                              Double temperature, Double topP, Integer maxTokens,
                                              Double frequencyPenalty, Double presencePenalty, Integer timeoutSeconds,
                                              String requestOptionsJson, String failoverPolicy) {
+        return update(id, name, provider, baseUrl, model, apiKey, proxyHost, proxyPort, enabled, active,
+                supportsTools, supportsStreaming, supportsVision, contextWindow, temperature, topP, maxTokens,
+                frequencyPenalty, presencePenalty, timeoutSeconds, requestOptionsJson, failoverPolicy, null, null);
+    }
+
+    public synchronized ModelProfile update(String id, String name, String provider, String baseUrl, String model,
+                                             String apiKey, String proxyHost, Integer proxyPort,
+                                             Boolean enabled, Boolean active, Boolean supportsTools,
+                                             Boolean supportsStreaming, Boolean supportsVision, Integer contextWindow,
+                                             Double temperature, Double topP, Integer maxTokens,
+                                             Double frequencyPenalty, Double presencePenalty, Integer timeoutSeconds,
+                                             String requestOptionsJson, String failoverPolicy,
+                                             Double inputPricePerMillionTokens, Double outputPricePerMillionTokens) {
         ModelProfileData current = require(id);
         boolean nextActive = active == null ? current.active() : active;
         boolean nextEnabled = enabled == null ? current.enabled() : enabled;
@@ -230,7 +258,11 @@ public final class ModelRegistry {
                 timeoutSeconds == null ? current.timeoutSeconds() : validTimeoutSeconds(timeoutSeconds),
                 requestOptionsJson == null ? current.requestOptionsJson() : normalizeRequestOptions(requestOptionsJson),
                 current.fallbackModelId(), failoverPolicy == null ? current.failoverPolicy()
-                        : normalizeFailoverPolicy(failoverPolicy));
+                        : normalizeFailoverPolicy(failoverPolicy),
+                inputPricePerMillionTokens == null ? current.inputPricePerMillionTokens()
+                        : validPrice(inputPricePerMillionTokens, "inputPricePerMillionTokens"),
+                outputPricePerMillionTokens == null ? current.outputPricePerMillionTokens()
+                        : validPrice(outputPricePerMillionTokens, "outputPricePerMillionTokens"));
         if (nextActive) deactivateAll();
         save(updated);
         ensureActive();
@@ -272,7 +304,11 @@ public final class ModelRegistry {
                         : current.fallbackModelId(),
                 patch.has("failoverPolicy") && !patch.path("failoverPolicy").isNull()
                         ? normalizeFailoverPolicy(patch.path("failoverPolicy").asText())
-                        : current.failoverPolicy());
+                        : current.failoverPolicy(),
+                doubleValue(patch, "inputPricePerMillionTokens", current.inputPricePerMillionTokens(), 0, 1_000_000,
+                        "inputPricePerMillionTokens"),
+                doubleValue(patch, "outputPricePerMillionTokens", current.outputPricePerMillionTokens(), 0, 1_000_000,
+                        "outputPricePerMillionTokens"));
         validateFallback(updated.id(), updated.fallbackModelId());
         if (nextActive) deactivateAll();
         save(updated);
@@ -289,7 +325,7 @@ public final class ModelRegistry {
                 target.supportsTools(), target.supportsStreaming(), target.supportsVision(), target.contextWindow(),
                 target.temperature(), target.topP(), target.maxTokens(), target.frequencyPenalty(),
                 target.presencePenalty(), target.timeoutSeconds(), target.requestOptionsJson(), target.fallbackModelId(),
-                target.failoverPolicy());
+                target.failoverPolicy(), target.inputPricePerMillionTokens(), target.outputPricePerMillionTokens());
         save(active);
         return ModelProfile.from(active);
     }
@@ -392,7 +428,7 @@ public final class ModelRegistry {
                     profile.supportsTools(), profile.supportsStreaming(), profile.supportsVision(), profile.contextWindow(),
                     profile.temperature(), profile.topP(), profile.maxTokens(), profile.frequencyPenalty(),
                     profile.presencePenalty(), profile.timeoutSeconds(), profile.requestOptionsJson(), profile.fallbackModelId(),
-                    profile.failoverPolicy()));
+                    profile.failoverPolicy(), profile.inputPricePerMillionTokens(), profile.outputPricePerMillionTokens()));
         }
         if (!retained) ensureActive();
     }
@@ -405,7 +441,7 @@ public final class ModelRegistry {
                         profile.supportsTools(), profile.supportsStreaming(), profile.supportsVision(), profile.contextWindow(),
                         profile.temperature(), profile.topP(), profile.maxTokens(), profile.frequencyPenalty(),
                         profile.presencePenalty(), profile.timeoutSeconds(), profile.requestOptionsJson(), profile.fallbackModelId(),
-                        profile.failoverPolicy()));
+                        profile.failoverPolicy(), profile.inputPricePerMillionTokens(), profile.outputPricePerMillionTokens()));
             }
         }
     }
@@ -510,6 +546,14 @@ public final class ModelRegistry {
         if (value == null) return null;
         if (value.isNaN() || value.isInfinite() || value < -2 || value > 2) {
             throw new IllegalArgumentException(field + " must be between -2 and 2");
+        }
+        return value;
+    }
+
+    private static Double validPrice(Double value, String field) {
+        if (value == null) return null;
+        if (value.isNaN() || value.isInfinite() || value < 0 || value > 1_000_000) {
+            throw new IllegalArgumentException(field + " must be between 0 and 1000000");
         }
         return value;
     }

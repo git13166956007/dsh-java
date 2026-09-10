@@ -134,6 +134,8 @@ CREATE TABLE IF NOT EXISTS dsh_model_profile (
     timeout_seconds INT NOT NULL DEFAULT 120,
     request_options_json LONGTEXT NULL,
     failover_policy VARCHAR(32) NOT NULL DEFAULT 'any_failure',
+    input_price_per_million_tokens DOUBLE NULL,
+    output_price_per_million_tokens DOUBLE NULL,
     created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     INDEX idx_dsh_model_active (active, enabled)

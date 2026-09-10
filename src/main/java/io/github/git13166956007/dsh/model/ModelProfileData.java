@@ -23,7 +23,9 @@ public record ModelProfileData(
         int timeoutSeconds,
         String requestOptionsJson,
         String fallbackModelId,
-        String failoverPolicy) {
+        String failoverPolicy,
+        Double inputPricePerMillionTokens,
+        Double outputPricePerMillionTokens) {
     public ModelProfileData(String id, String name, String provider, String baseUrl, String model,
                             String apiKey, String proxyHost, int proxyPort, boolean enabled, boolean active,
                             boolean supportsTools, boolean supportsStreaming, boolean supportsVision,
@@ -45,6 +47,18 @@ public record ModelProfileData(
                 supportsTools, supportsStreaming, supportsVision, contextWindow, temperature, topP, maxTokens,
                 frequencyPenalty, presencePenalty, timeoutSeconds, requestOptionsJson, fallbackModelId,
                 ModelFailoverPolicy.ANY_FAILURE.value());
+    }
+
+    public ModelProfileData(String id, String name, String provider, String baseUrl, String model,
+                            String apiKey, String proxyHost, int proxyPort, boolean enabled, boolean active,
+                            boolean supportsTools, boolean supportsStreaming, boolean supportsVision,
+                            int contextWindow, Double temperature, Double topP, Integer maxTokens,
+                            Double frequencyPenalty, Double presencePenalty, int timeoutSeconds,
+                            String requestOptionsJson, String fallbackModelId, String failoverPolicy) {
+        this(id, name, provider, baseUrl, model, apiKey, proxyHost, proxyPort, enabled, active,
+                supportsTools, supportsStreaming, supportsVision, contextWindow, temperature, topP, maxTokens,
+                frequencyPenalty, presencePenalty, timeoutSeconds, requestOptionsJson, fallbackModelId,
+                failoverPolicy, null, null);
     }
 
     public ModelProfileData(String id, String name, String provider, String baseUrl, String model,

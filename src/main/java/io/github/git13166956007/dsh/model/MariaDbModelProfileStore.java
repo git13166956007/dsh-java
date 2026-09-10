@@ -34,7 +34,7 @@ public final class MariaDbModelProfileStore implements ModelProfileStore {
                      "SELECT id, name, provider, base_url, model_name, api_key, proxy_host, proxy_port, enabled, active, "
                              + "fallback_model_id, supports_tools, supports_streaming, supports_vision, context_window, temperature, top_p, "
                              + "max_tokens, frequency_penalty, presence_penalty, timeout_seconds, request_options_json "
-                             + ", failover_policy "
+                             + ", failover_policy, input_price_per_million_tokens, output_price_per_million_tokens "
                              + "FROM dsh_model_profile ORDER BY created_at, id");
              ResultSet rows = statement.executeQuery()) {
             while (rows.next()) {
@@ -46,7 +46,8 @@ public final class MariaDbModelProfileStore implements ModelProfileStore {
                         getDouble(rows, "temperature"), getDouble(rows, "top_p"), getInteger(rows, "max_tokens"),
                         getDouble(rows, "frequency_penalty"), getDouble(rows, "presence_penalty"), rows.getInt("timeout_seconds"),
                         rows.getString("request_options_json"), rows.getString("fallback_model_id"),
-                        rows.getString("failover_policy")));
+                        rows.getString("failover_policy"), getDouble(rows, "input_price_per_million_tokens"),
+                        getDouble(rows, "output_price_per_million_tokens")));
             }
         }
         return result;
@@ -60,7 +61,8 @@ public final class MariaDbModelProfileStore implements ModelProfileStore {
                              + "(id, name, provider, base_url, model_name, api_key, proxy_host, proxy_port, enabled, active, "
                              + "fallback_model_id, supports_tools, supports_streaming, supports_vision, context_window, temperature, top_p, "
                              + "max_tokens, frequency_penalty, presence_penalty, timeout_seconds, request_options_json, "
-                             + "failover_policy) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                             + "failover_policy, input_price_per_million_tokens, output_price_per_million_tokens) "
+                             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                              + "ON DUPLICATE KEY UPDATE name=VALUES(name), provider=VALUES(provider), "
                              + "base_url=VALUES(base_url), model_name=VALUES(model_name), api_key=VALUES(api_key), "
                              + "proxy_host=VALUES(proxy_host), proxy_port=VALUES(proxy_port), "
@@ -69,7 +71,9 @@ public final class MariaDbModelProfileStore implements ModelProfileStore {
                              + "context_window=VALUES(context_window), temperature=VALUES(temperature), top_p=VALUES(top_p), "
                              + "max_tokens=VALUES(max_tokens), frequency_penalty=VALUES(frequency_penalty), "
                              + "presence_penalty=VALUES(presence_penalty), timeout_seconds=VALUES(timeout_seconds), "
-                             + "request_options_json=VALUES(request_options_json), failover_policy=VALUES(failover_policy)")) {
+                             + "request_options_json=VALUES(request_options_json), failover_policy=VALUES(failover_policy), "
+                             + "input_price_per_million_tokens=VALUES(input_price_per_million_tokens), "
+                             + "output_price_per_million_tokens=VALUES(output_price_per_million_tokens)")) {
             statement.setString(1, profile.id());
             statement.setString(2, profile.name());
             statement.setString(3, profile.provider());
@@ -98,6 +102,10 @@ public final class MariaDbModelProfileStore implements ModelProfileStore {
             statement.setInt(21, profile.timeoutSeconds());
             statement.setString(22, profile.requestOptionsJson());
             statement.setString(23, profile.failoverPolicy());
+            if (profile.inputPricePerMillionTokens() == null) statement.setNull(24, java.sql.Types.DOUBLE);
+            else statement.setDouble(24, profile.inputPricePerMillionTokens());
+            if (profile.outputPricePerMillionTokens() == null) statement.setNull(25, java.sql.Types.DOUBLE);
+            else statement.setDouble(25, profile.outputPricePerMillionTokens());
             statement.executeUpdate();
         }
     }
@@ -126,6 +134,7 @@ public final class MariaDbModelProfileStore implements ModelProfileStore {
                              + "temperature DOUBLE NULL, top_p DOUBLE NULL, max_tokens INT NULL, "
                              + "frequency_penalty DOUBLE NULL, presence_penalty DOUBLE NULL, timeout_seconds INT NOT NULL DEFAULT 120, "
                              + "request_options_json LONGTEXT NULL, failover_policy VARCHAR(32) NOT NULL DEFAULT 'any_failure', "
+                             + "input_price_per_million_tokens DOUBLE NULL, output_price_per_million_tokens DOUBLE NULL, "
                              + "created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), "
                              + "updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3), "
                              + "INDEX idx_dsh_model_active (active, enabled)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4")) {
@@ -155,6 +164,8 @@ public final class MariaDbModelProfileStore implements ModelProfileStore {
             addColumn(connection, "request_options_json LONGTEXT NULL");
             addColumn(connection, "fallback_model_id VARCHAR(64) NULL");
             addColumn(connection, "failover_policy VARCHAR(32) NOT NULL DEFAULT 'any_failure'");
+            addColumn(connection, "input_price_per_million_tokens DOUBLE NULL");
+            addColumn(connection, "output_price_per_million_tokens DOUBLE NULL");
         } catch (SQLException exception) {
             throw new IllegalStateException("failed to initialize model profile schema", exception);
         }

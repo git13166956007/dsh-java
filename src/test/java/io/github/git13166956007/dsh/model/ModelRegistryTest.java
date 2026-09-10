@@ -128,6 +128,36 @@ class ModelRegistryTest {
     }
 
     @Test
+    void persistsModelTokenPricesAndAllowsClearingThem() throws Exception {
+        InMemoryModelProfileStore store = new InMemoryModelProfileStore();
+        ModelRegistry registry = new ModelRegistry(store, "https://api.deepseek.com", "deepseek",
+                "deepseek-v4-flash", "", "", 0);
+        registry.update("default", new ObjectMapper().readTree(
+                "{\"inputPricePerMillionTokens\":0.27,\"outputPricePerMillionTokens\":1.10}"));
+
+        ModelProfile restored = new ModelRegistry(store, "https://api.deepseek.com", "deepseek",
+                "deepseek-v4-flash", "", "", 0).find("default");
+
+        assertEquals(0.27, restored.inputPricePerMillionTokens());
+        assertEquals(1.10, restored.outputPricePerMillionTokens());
+
+        registry.update("default", new ObjectMapper().readTree(
+                "{\"inputPricePerMillionTokens\":null,\"outputPricePerMillionTokens\":null}"));
+        assertEquals(null, registry.find("default").inputPricePerMillionTokens());
+        assertEquals(null, registry.find("default").outputPricePerMillionTokens());
+    }
+
+    @Test
+    void rejectsNegativeModelTokenPrices() throws Exception {
+        ModelRegistry registry = new ModelRegistry(new InMemoryModelProfileStore(),
+                "https://api.deepseek.com", "deepseek", "deepseek-v4-flash", "", "", 0);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> registry.update("default", new ObjectMapper().readTree(
+                        "{\"inputPricePerMillionTokens\":-0.01}")));
+    }
+
+    @Test
     void normalizesPersistedActiveSelectionAndIgnoresDisabledActiveProfiles() {
         InMemoryModelProfileStore store = new InMemoryModelProfileStore();
         store.save(new ModelProfileData("disabled", "Disabled", "deepseek", "https://api.deepseek.com",

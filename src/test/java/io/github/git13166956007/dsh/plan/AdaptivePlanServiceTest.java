@@ -9,6 +9,8 @@ import io.github.git13166956007.dsh.agent.ChatModel;
 import io.github.git13166956007.dsh.agent.InMemorySubAgentProfileStore;
 import io.github.git13166956007.dsh.agent.ModelResponse;
 import io.github.git13166956007.dsh.agent.SubAgentProfileRegistry;
+import io.github.git13166956007.dsh.model.InMemoryModelProfileStore;
+import io.github.git13166956007.dsh.model.ModelRegistry;
 import io.github.git13166956007.dsh.tool.ToolDefinition;
 import io.github.git13166956007.dsh.tool.ToolRegistry;
 import io.github.git13166956007.dsh.run.InMemoryRunStore;
@@ -137,5 +139,37 @@ class AdaptivePlanServiceTest {
         assertEquals(expensive.id(), candidates.get(0).id());
         assertEquals(1, candidates.stream().filter(candidate -> candidate.id().equals(cheap.id())).findFirst().orElseThrow().activeRuns());
         runs.complete(runId, "done");
+    }
+
+    @Test
+    void ranksLowerPricedModelsFirstWhenWorkerPoliciesAreEqual() throws Exception {
+        ModelRegistry models = new ModelRegistry(new InMemoryModelProfileStore(),
+                "https://api.deepseek.com", "deepseek", "deepseek-v4-flash", "", "", 0);
+        ObjectMapper mapper = new ObjectMapper();
+        models.update("default", mapper.readTree(
+                "{\"inputPricePerMillionTokens\":1.0,\"outputPricePerMillionTokens\":1.0}"));
+        var cheapModel = models.create("Cheap model", "deepseek", "https://api.deepseek.com",
+                "deepseek-v4-flash", "", "", 0, true, false);
+        models.update(cheapModel.id(), mapper.readTree(
+                "{\"inputPricePerMillionTokens\":0.01,\"outputPricePerMillionTokens\":0.01}"));
+
+        SubAgentProfileRegistry subAgents = new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 8);
+        var expensive = subAgents.create("Database worker", AgentMode.EXECUTION, "default",
+                "database migration", 4, List.of(), List.of(), true, 64, 300, 4, 50, 1.0, 1,
+                List.of("database"));
+        var cheap = subAgents.create("Database worker", AgentMode.EXECUTION, cheapModel.id(),
+                "database migration", 4, List.of(), List.of(), true, 64, 300, 4, 50, 1.0, 1,
+                List.of("database"));
+        AdaptivePlanService service = new AdaptivePlanService(new AgentLoop((messages, definitions) ->
+                new ModelResponse("ok", List.of(), "stop"), new ToolRegistry(), 2),
+                new PlanRegistry(new InMemoryPlanStore()), subAgents, mapper, null, null, null, models);
+
+        var candidates = service.rankSubAgents("database migration");
+
+        assertEquals(cheap.id(), candidates.get(0).id());
+        assertEquals(1.0, candidates.stream().filter(candidate -> candidate.id().equals(expensive.id()))
+                .findFirst().orElseThrow().inputPricePerMillionTokens());
+        assertEquals(0.01, candidates.stream().filter(candidate -> candidate.id().equals(cheap.id()))
+                .findFirst().orElseThrow().outputPricePerMillionTokens());
     }
 }

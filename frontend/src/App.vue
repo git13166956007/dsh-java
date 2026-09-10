@@ -1317,7 +1317,9 @@ function resetModelForm() {
     timeoutSeconds: 120,
     requestOptionsJson: '',
     fallbackModelId: '',
-    failoverPolicy: 'any_failure'
+    failoverPolicy: 'any_failure',
+    inputPricePerMillionTokens: '',
+    outputPricePerMillionTokens: ''
   }
   modelFormError.value = ''
 }
@@ -1346,7 +1348,9 @@ function editModel(model) {
     timeoutSeconds: model.timeoutSeconds || 120,
     requestOptionsJson: model.requestOptionsJson || '',
     fallbackModelId: model.fallbackModelId || '',
-    failoverPolicy: model.failoverPolicy || 'any_failure'
+    failoverPolicy: model.failoverPolicy || 'any_failure',
+    inputPricePerMillionTokens: model.inputPricePerMillionTokens ?? '',
+    outputPricePerMillionTokens: model.outputPricePerMillionTokens ?? ''
   }
   modelFormError.value = ''
 }
@@ -1385,6 +1389,8 @@ async function saveModel() {
         requestOptionsJson: modelForm.value.requestOptionsJson.trim() || null,
         fallbackModelId: modelForm.value.fallbackModelId || null,
         failoverPolicy: modelForm.value.failoverPolicy,
+        inputPricePerMillionTokens: modelForm.value.inputPricePerMillionTokens === '' ? null : Number(modelForm.value.inputPricePerMillionTokens),
+        outputPricePerMillionTokens: modelForm.value.outputPricePerMillionTokens === '' ? null : Number(modelForm.value.outputPricePerMillionTokens),
         ...(editing && !modelForm.value.apiKey.trim() ? {} : { apiKey: modelForm.value.apiKey.trim() || null })
       })
     })
@@ -2152,7 +2158,7 @@ onUnmounted(() => {
               <strong>{{ model.name }}</strong>
               <span :class="['tool-source', model.active ? 'connected' : '']">{{ model.active ? 'DEFAULT' : model.provider }}</span>
             </div>
-          <p>{{ model.model }} · {{ model.baseUrl }}<br />{{ model.apiKeyConfigured ? 'API key configured' : 'Uses request or environment API key' }} · {{ model.supportsTools ? 'tools' : 'no tools' }} · {{ model.supportsStreaming ? 'streaming' : 'non-streaming' }} · {{ model.contextWindow ? `${model.contextWindow} context` : 'context unknown' }}<br /><span v-if="model.fallbackModelId">fallback: {{ models.find((candidate) => candidate.id === model.fallbackModelId)?.name || model.fallbackModelId }} · {{ model.failoverPolicy || 'any_failure' }}</span><span v-if="model.health">{{ model.fallbackModelId ? ' · ' : '' }}health {{ model.health.status.toLowerCase() }} · {{ model.health.successCount }}/{{ model.health.failureCount }} · {{ model.health.lastLatencyMs == null ? 'no latency' : `${model.health.lastLatencyMs}ms` }}</span></p>
+          <p>{{ model.model }} · {{ model.baseUrl }}<br />{{ model.apiKeyConfigured ? 'API key configured' : 'Uses request or environment API key' }} · {{ model.supportsTools ? 'tools' : 'no tools' }} · {{ model.supportsStreaming ? 'streaming' : 'non-streaming' }} · {{ model.contextWindow ? `${model.contextWindow} context` : 'context unknown' }}<br /><span v-if="model.fallbackModelId">fallback: {{ models.find((candidate) => candidate.id === model.fallbackModelId)?.name || model.fallbackModelId }} · {{ model.failoverPolicy || 'any_failure' }}</span><span v-if="model.inputPricePerMillionTokens != null || model.outputPricePerMillionTokens != null">{{ model.fallbackModelId ? ' · ' : '' }}price ${{ model.inputPricePerMillionTokens ?? '?' }} / ${{ model.outputPricePerMillionTokens ?? '?' }} per 1M tokens</span><span v-if="model.health">{{ model.fallbackModelId || model.inputPricePerMillionTokens != null || model.outputPricePerMillionTokens != null ? ' · ' : '' }}health {{ model.health.status.toLowerCase() }} · {{ model.health.successCount }}/{{ model.health.failureCount }} · {{ model.health.lastLatencyMs == null ? 'no latency' : `${model.health.lastLatencyMs}ms` }}</span></p>
           </div>
           <div class="managed-tool-actions model-actions">
             <button v-if="!model.active && model.enabled" class="secondary-button compact" type="button" @click="activateModel(model)">Default</button>
@@ -2204,6 +2210,10 @@ onUnmounted(() => {
           <div class="tool-form-grid model-capabilities">
             <label><span>Frequency penalty</span><input v-model="modelForm.frequencyPenalty" type="number" min="-2" max="2" step="0.01" placeholder="Provider default" /></label>
             <label><span>Presence penalty</span><input v-model="modelForm.presencePenalty" type="number" min="-2" max="2" step="0.01" placeholder="Provider default" /></label>
+          </div>
+          <div class="tool-form-grid model-capabilities">
+            <label><span>Input price / 1M tokens (USD)</span><input v-model="modelForm.inputPricePerMillionTokens" type="number" min="0" max="1000000" step="0.000001" placeholder="Unknown" /></label>
+            <label><span>Output price / 1M tokens (USD)</span><input v-model="modelForm.outputPricePerMillionTokens" type="number" min="0" max="1000000" step="0.000001" placeholder="Unknown" /></label>
           </div>
           <label><span>Provider request options JSON</span><textarea v-model="modelForm.requestOptionsJson" rows="4" spellcheck="false" placeholder='{"reasoning_effort":"high","response_format":{"type":"text"}}'></textarea></label>
           <p v-if="modelFormError" class="tool-form-error">{{ modelFormError }}</p>
@@ -2287,7 +2297,7 @@ onUnmounted(() => {
           <div class="tool-form-footer"><button class="send-button" type="submit"><span>Rank candidates</span><span class="send-arrow">↗</span></button></div>
           <div v-if="subAgentCandidates.length" class="candidate-list">
             <div v-for="candidate in subAgentCandidates" :key="candidate.id" class="candidate-row">
-              <div><strong>{{ candidate.name }}</strong><small>{{ candidate.reasons.join(' · ') }}</small></div>
+              <div><strong>{{ candidate.name }}</strong><small>{{ candidate.reasons.join(' · ') }}<span v-if="candidate.inputPricePerMillionTokens != null || candidate.outputPricePerMillionTokens != null"> · model ${{ candidate.inputPricePerMillionTokens ?? '?' }} / ${{ candidate.outputPricePerMillionTokens ?? '?' }} per 1M</span></small></div>
               <span :class="['tool-source', candidate.available ? 'connected' : 'unhealthy']">{{ candidate.score }} · {{ candidate.activeRuns }}/{{ candidate.maxConcurrentRuns }}</span>
             </div>
           </div>
