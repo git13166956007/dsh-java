@@ -661,7 +661,8 @@ public final class AgentLoop implements AutoCloseable {
         if (contexts != null) {
             ContextSnapshot snapshot = contexts.collect(new ContextRequest(
                     context == null ? null : context.conversationId(), query, options.modelId(),
-                    options.agentId(), options.mode().name()), null);
+                    options.agentId(), options.mode().name()), model.contextWindow(options.modelId()),
+                    model.tokenizer(options.modelId()));
             String dynamic = snapshot.promptText();
             if (!dynamic.isBlank()) result += "\n\n" + dynamic;
         }

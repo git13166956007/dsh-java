@@ -53,7 +53,12 @@ public final class ContextManager {
     }
 
     public ContextSnapshot collect(ContextRequest request, ModelTokenizer tokenizer) {
+        return collect(request, 0, tokenizer);
+    }
+
+    public ContextSnapshot collect(ContextRequest request, int modelContextWindow, ModelTokenizer tokenizer) {
         ModelTokenizer effectiveTokenizer = tokenizer == null ? ModelTokenizer.approximate() : tokenizer;
+        int budget = modelContextWindow > 0 ? Math.min(maxProviderTokens, modelContextWindow) : maxProviderTokens;
         List<ContextFragment> available = new ArrayList<ContextFragment>();
         List<String> errors = new ArrayList<String>();
         ContextRequest effectiveRequest = request == null ? new ContextRequest(null, "", null, null, null) : request;
@@ -76,14 +81,14 @@ public final class ContextManager {
         boolean truncated = false;
         for (ContextFragment fragment : available) {
             int fragmentTokens = effectiveTokenizer.count(ChatMessage.system(fragment.content()));
-            if (tokens + fragmentTokens > maxProviderTokens) {
+            if (tokens + fragmentTokens > budget) {
                 truncated = true;
                 continue;
             }
             selected.add(fragment);
             tokens += fragmentTokens;
         }
-        return new ContextSnapshot(selected, tokens, maxProviderTokens, truncated, errors);
+        return new ContextSnapshot(selected, tokens, budget, truncated, errors);
     }
 
     public String open(String conversationId, String title) throws Exception {

@@ -92,6 +92,10 @@ public final class ModelRegistry {
         return tokenizer == null ? ModelTokenizer.approximate() : tokenizer;
     }
 
+    public synchronized int contextWindow(String id) {
+        return resolve(id).contextWindow();
+    }
+
     public synchronized ModelProfile create(String name, String provider, String baseUrl, String model,
                                              String apiKey, String proxyHost, Integer proxyPort,
                                              Boolean enabled, Boolean active) {

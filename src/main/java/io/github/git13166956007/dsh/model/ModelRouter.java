@@ -26,8 +26,14 @@ public final class ModelRouter implements ChatModel {
         registerBuiltInProviders();
     }
 
+    @Override
     public ModelTokenizer tokenizer(String modelId) {
         return registry.tokenizer(modelId);
+    }
+
+    @Override
+    public int contextWindow(String modelId) {
+        return registry.contextWindow(modelId);
     }
 
     @Override
