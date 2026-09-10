@@ -21,4 +21,18 @@ class McpServerRegistryTest {
         McpServerInfo updated = registry.update(server.id(), null, null, null, null, null, false);
         assertEquals(false, updated.enabled());
     }
+
+    @Test
+    void serverProfilesSurviveRegistryRecreation() {
+        InMemoryMcpServerStore store = new InMemoryMcpServerStore();
+        McpServerRegistry first = new McpServerRegistry(store);
+        McpServerInfo created = first.create("saved", "stdio", null, "node", List.of("server.js"));
+        first.update(created.id(), null, null, null, null, null, false);
+
+        McpServerRegistry second = new McpServerRegistry(store);
+        McpServerInfo restored = second.find(created.id());
+        assertEquals(false, restored.enabled());
+        assertEquals("DISCONNECTED", restored.status());
+        assertEquals(List.of("server.js"), restored.arguments());
+    }
 }

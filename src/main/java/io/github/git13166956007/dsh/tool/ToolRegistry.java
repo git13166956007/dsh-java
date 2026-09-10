@@ -9,6 +9,26 @@ import java.util.Set;
 
 public final class ToolRegistry {
     private final Map<String, RegisteredTool> tools = new LinkedHashMap<String, RegisteredTool>();
+    private final ToolProfileStore profiles;
+
+    public ToolRegistry() {
+        this(null);
+    }
+
+    public ToolRegistry(ToolProfileStore profiles) {
+        this.profiles = profiles;
+        if (profiles != null) {
+            try {
+                for (ToolProfileData profile : profiles.list()) {
+                    register(new ToolDefinition(profile.name(), profile.description(), profile.parameters()),
+                            new FixedResultHandler(profile.result()), "custom", true);
+                    tools.get(profile.name()).enabled = profile.enabled();
+                }
+            } catch (Exception exception) {
+                throw new IllegalStateException("failed to load custom tool profiles", exception);
+            }
+        }
+    }
 
     public synchronized void register(ToolDefinition definition, ToolHandler handler) {
         register(definition, handler, "builtin", false);
@@ -21,7 +41,8 @@ public final class ToolRegistry {
         if (result == null) {
             throw new IllegalArgumentException("custom tool result must not be null");
         }
-        register(definition, arguments -> result, "custom", true);
+        register(definition, new FixedResultHandler(result), "custom", true);
+        persistCustom(definition, result, true);
     }
 
     public synchronized void registerExternal(ToolDefinition definition, ToolHandler handler, String source) {
@@ -66,6 +87,7 @@ public final class ToolRegistry {
         RegisteredTool tool = tools.get(name);
         if (tool == null || !tool.removable) return false;
         tools.remove(name);
+        deleteProfile(name);
         return true;
     }
 
@@ -86,6 +108,9 @@ public final class ToolRegistry {
         RegisteredTool tool = tools.get(name);
         if (tool == null) return false;
         tool.enabled = enabled;
+        if (tool.removable && "custom".equals(tool.source)) {
+            persistCustom(tool.definition, tool.fixedResult, enabled);
+        }
         return true;
     }
 
@@ -109,12 +134,46 @@ public final class ToolRegistry {
         private final String source;
         private final boolean removable;
         private boolean enabled = true;
+        private final String fixedResult;
 
         private RegisteredTool(ToolDefinition definition, ToolHandler handler, String source, boolean removable) {
             this.definition = definition;
             this.handler = handler;
             this.source = source;
             this.removable = removable;
+            this.fixedResult = handler instanceof FixedResultHandler fixed ? fixed.result : null;
+        }
+    }
+
+    private void persistCustom(ToolDefinition definition, String result, boolean enabled) {
+        if (profiles == null) return;
+        try {
+            profiles.save(new ToolProfileData(definition.name(), definition.description(), definition.parameters(), result, enabled));
+        } catch (Exception exception) {
+            tools.remove(definition.name());
+            throw new IllegalStateException("failed to persist custom tool", exception);
+        }
+    }
+
+    private void deleteProfile(String name) {
+        if (profiles == null) return;
+        try {
+            profiles.delete(name);
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to delete custom tool profile", exception);
+        }
+    }
+
+    private static final class FixedResultHandler implements ToolHandler {
+        private final String result;
+
+        private FixedResultHandler(String result) {
+            this.result = result;
+        }
+
+        @Override
+        public String execute(JsonNode arguments) {
+            return result;
         }
     }
 }

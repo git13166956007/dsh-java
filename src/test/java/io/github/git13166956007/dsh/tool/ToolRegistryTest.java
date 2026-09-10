@@ -31,4 +31,18 @@ class ToolRegistryTest {
         assertEquals(true, registry.list().get(0).removable());
         assertEquals(true, registry.remove("demo_custom"));
     }
+
+    @Test
+    void customToolProfilesSurviveRegistryRecreation() throws Exception {
+        InMemoryToolProfileStore store = new InMemoryToolProfileStore();
+        ToolRegistry first = new ToolRegistry(store);
+        first.registerCustom(new ToolDefinition("persistent_demo", "Persistent tool.",
+                JsonNodeFactory.instance.objectNode().put("type", "object")), "saved-result");
+        first.setEnabled("persistent_demo", false);
+
+        ToolRegistry second = new ToolRegistry(store);
+        assertEquals(false, second.list().get(0).enabled());
+        assertEquals("saved-result", second.list().get(0).name().equals("persistent_demo")
+                ? store.list().get(0).result() : "");
+    }
 }

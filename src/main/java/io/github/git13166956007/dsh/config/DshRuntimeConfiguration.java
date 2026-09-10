@@ -20,6 +20,9 @@ import io.github.git13166956007.dsh.agent.SubAgentRunner;
 import io.github.git13166956007.dsh.core.DshRuntime;
 import io.github.git13166956007.dsh.mcp.McpServerRegistry;
 import io.github.git13166956007.dsh.mcp.McpClientManager;
+import io.github.git13166956007.dsh.mcp.InMemoryMcpServerStore;
+import io.github.git13166956007.dsh.mcp.MariaDbMcpServerStore;
+import io.github.git13166956007.dsh.mcp.McpServerStore;
 import io.github.git13166956007.dsh.memory.InMemoryMemoryStore;
 import io.github.git13166956007.dsh.memory.MariaDbMemoryStore;
 import io.github.git13166956007.dsh.memory.MemoryManager;
@@ -42,6 +45,9 @@ import io.github.git13166956007.dsh.plan.PlanRegistry;
 import io.github.git13166956007.dsh.plan.PlanStore;
 import io.github.git13166956007.dsh.tool.ToolDefinition;
 import io.github.git13166956007.dsh.tool.ToolRegistry;
+import io.github.git13166956007.dsh.tool.InMemoryToolProfileStore;
+import io.github.git13166956007.dsh.tool.MariaDbToolProfileStore;
+import io.github.git13166956007.dsh.tool.ToolProfileStore;
 import java.time.OffsetDateTime;
 import org.springframework.core.env.Environment;
 import org.springframework.context.annotation.Bean;
@@ -57,8 +63,16 @@ public class DshRuntimeConfiguration {
     }
 
     @Bean
-    public ToolRegistry toolRegistry(ObjectMapper objectMapper) {
-        ToolRegistry registry = new ToolRegistry();
+    public ToolProfileStore toolProfileStore(Environment environment, ObjectMapper objectMapper) {
+        boolean enabled = Boolean.parseBoolean(environment.getProperty("dsh.persistence.enabled", "false"));
+        if (!enabled) return new InMemoryToolProfileStore();
+        return new MariaDbToolProfileStore(environment.getProperty("dsh.persistence.jdbc-url"),
+                environment.getProperty("dsh.persistence.username"), environment.getProperty("dsh.persistence.password"), objectMapper);
+    }
+
+    @Bean
+    public ToolRegistry toolRegistry(ObjectMapper objectMapper, ToolProfileStore profiles) {
+        ToolRegistry registry = new ToolRegistry(profiles);
         ObjectNode noArguments = objectMapper.createObjectNode();
         noArguments.put("type", "object");
         registry.register(new ToolDefinition(
@@ -222,8 +236,16 @@ public class DshRuntimeConfiguration {
     }
 
     @Bean
-    public McpServerRegistry mcpServerRegistry() {
-        return new McpServerRegistry();
+    public McpServerStore mcpServerStore(Environment environment, ObjectMapper objectMapper) {
+        boolean enabled = Boolean.parseBoolean(environment.getProperty("dsh.persistence.enabled", "false"));
+        if (!enabled) return new InMemoryMcpServerStore();
+        return new MariaDbMcpServerStore(environment.getProperty("dsh.persistence.jdbc-url"),
+                environment.getProperty("dsh.persistence.username"), environment.getProperty("dsh.persistence.password"), objectMapper);
+    }
+
+    @Bean
+    public McpServerRegistry mcpServerRegistry(McpServerStore store) {
+        return new McpServerRegistry(store);
     }
 
     @Bean(destroyMethod = "close")

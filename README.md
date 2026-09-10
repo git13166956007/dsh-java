@@ -100,6 +100,8 @@ Sub-agent Profile 管理接口为 `GET/POST/PATCH/DELETE /api/v1/sub-agents`。�
 
 同一个 `conversationId` 会复用最近的历史消息；不传时服务会创建新的会话 ID。工具管理接口为 `GET /api/v1/tools` 和 `PATCH /api/v1/tools/{name}`，请求体示例为 `{"enabled":false}`。
 
+自定义调试工具在启用 MariaDB 持久化时会保存名称、描述、JSON Schema、固定返回值和启用状态，重启后自动恢复；内置工具和已连接 MCP 工具仍由运行时负责注册。MCP Server 配置同样会保存，重启后恢复为 `DISCONNECTED`，需要显式调用 `POST /api/v1/mcp/servers/{id}/connect` 才建立远程连接。
+
 上下文窗口同时受 `DSH_MAX_HISTORY_MESSAGES` 和 `DSH_MAX_CONTEXT_TOKENS` 限制，按最新消息优先裁剪；`GET /api/v1/conversations/{id}/context` 可以查看当前消息数、估算 token 数和是否发生裁剪。token 数是运行时估算值，不依赖特定模型 tokenizer。
 
 前端右上角的 `Tools` 可以添加调试工具。自定义工具当前是运行时内存工具：填写名称、描述、JSON Schema 和固定返回值后，模型即可调用；应用重启后需要重新添加，真正的业务执行工具通过插件或 MCP 接入。

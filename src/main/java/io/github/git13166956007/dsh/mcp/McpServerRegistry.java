@@ -9,7 +9,23 @@ import java.util.UUID;
 
 public final class McpServerRegistry {
     private static final List<String> SUPPORTED_TRANSPORTS = List.of("stdio", "sse", "streamable_http");
+    private final McpServerStore store;
     private final Map<String, McpServerInfo> servers = new LinkedHashMap<String, McpServerInfo>();
+
+    public McpServerRegistry() {
+        this(null);
+    }
+
+    public McpServerRegistry(McpServerStore store) {
+        this.store = store;
+        if (store != null) {
+            try {
+                for (McpServerInfo server : store.list()) servers.put(server.id(), server);
+            } catch (Exception exception) {
+                throw new IllegalStateException("failed to load MCP server profiles", exception);
+            }
+        }
+    }
 
     public synchronized McpServerInfo create(String name, String transport, String endpoint,
                                               String command, List<String> arguments) {
@@ -21,7 +37,7 @@ public final class McpServerRegistry {
         }
         McpServerInfo server = new McpServerInfo(UUID.randomUUID().toString(), normalizedName,
                 normalizedTransport, blankToNull(endpoint), blankToNull(command), arguments, true, "DISCONNECTED");
-        servers.put(server.id(), server);
+        save(server);
         return server;
     }
 
@@ -48,20 +64,36 @@ public final class McpServerRegistry {
         McpServerInfo updated = new McpServerInfo(id, nextName, nextTransport, nextEndpoint, nextCommand,
                 arguments == null ? current.arguments() : arguments,
                 enabled == null ? current.enabled() : enabled, "DISCONNECTED");
-        servers.put(id, updated);
+        save(updated);
         return updated;
     }
 
     public synchronized boolean delete(String id) {
-        return servers.remove(id) != null;
+        if (!servers.containsKey(id)) return false;
+        try {
+            if (store != null) store.delete(id);
+            servers.remove(id);
+            return true;
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to delete MCP server profile", exception);
+        }
     }
 
     public synchronized McpServerInfo setStatus(String id, String status) {
         McpServerInfo current = require(id);
         McpServerInfo updated = new McpServerInfo(current.id(), current.name(), current.transport(),
                 current.endpoint(), current.command(), current.arguments(), current.enabled(), status);
-        servers.put(id, updated);
+        save(updated);
         return updated;
+    }
+
+    private void save(McpServerInfo server) {
+        try {
+            if (store != null) store.save(server);
+            servers.put(server.id(), server);
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to save MCP server profile", exception);
+        }
     }
 
     private McpServerInfo require(String id) {
