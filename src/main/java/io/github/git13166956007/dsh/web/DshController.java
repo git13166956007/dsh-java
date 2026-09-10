@@ -2,6 +2,7 @@ package io.github.git13166956007.dsh.web;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 import io.github.git13166956007.dsh.agent.AgentLoop;
 import io.github.git13166956007.dsh.agent.AgentMode;
@@ -295,13 +296,9 @@ public final class DshController {
     }
 
     @PatchMapping("/models/{id}")
-    public ModelProfile updateModel(@PathVariable String id, @RequestBody ModelRequest request) {
+    public ModelProfile updateModel(@PathVariable String id, @RequestBody JsonNode request) {
         try {
-            return modelRegistry.update(id, request.name(), request.provider(), request.baseUrl(), request.model(),
-                    request.apiKey(), request.proxyHost(), request.proxyPort(), request.enabled(), request.active(),
-                    request.supportsTools(), request.supportsStreaming(), request.supportsVision(), request.contextWindow(),
-                    request.temperature(), request.topP(), request.maxTokens(), request.frequencyPenalty(),
-                    request.presencePenalty(), request.timeoutSeconds(), request.requestOptionsJson());
+            return modelRegistry.update(id, request);
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(
                     exception.getMessage() != null && exception.getMessage().startsWith("unknown model:")

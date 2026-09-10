@@ -903,7 +903,6 @@ async function saveModel() {
         provider: modelForm.value.provider.trim(),
         baseUrl: modelForm.value.baseUrl.trim(),
         model: modelForm.value.model.trim(),
-        apiKey: modelForm.value.apiKey.trim() || null,
         proxyHost: modelForm.value.proxyHost.trim() || null,
         proxyPort: Number(modelForm.value.proxyPort) || 0,
         enabled: modelForm.value.enabled,
@@ -918,7 +917,8 @@ async function saveModel() {
         frequencyPenalty: modelForm.value.frequencyPenalty === '' ? null : Number(modelForm.value.frequencyPenalty),
         presencePenalty: modelForm.value.presencePenalty === '' ? null : Number(modelForm.value.presencePenalty),
         timeoutSeconds: Number(modelForm.value.timeoutSeconds) || 120,
-        requestOptionsJson: modelForm.value.requestOptionsJson.trim() || null
+        requestOptionsJson: modelForm.value.requestOptionsJson.trim() || null,
+        ...(editing && !modelForm.value.apiKey.trim() ? {} : { apiKey: modelForm.value.apiKey.trim() || null })
       })
     })
     const payload = await response.json().catch(() => ({}))

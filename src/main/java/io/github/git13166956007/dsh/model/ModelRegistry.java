@@ -165,6 +165,43 @@ public final class ModelRegistry {
         return ModelProfile.from(profiles.get(id));
     }
 
+    public synchronized ModelProfile update(String id, JsonNode patch) {
+        if (patch == null || !patch.isObject()) {
+            throw new IllegalArgumentException("model patch must be a JSON object");
+        }
+        ModelProfileData current = require(id);
+        boolean nextEnabled = booleanValue(patch, "enabled", current.enabled());
+        boolean nextActive = booleanValue(patch, "active", current.active());
+        if (!nextEnabled) nextActive = false;
+        if (nextActive) deactivateAll();
+
+        ModelProfileData updated = new ModelProfileData(id,
+                requiredText(patch, "name", current.name()),
+                normalizeProvider(textValue(patch, "provider", current.provider())),
+                normalizeUrl(requiredText(patch, "baseUrl", current.baseUrl())),
+                requiredText(patch, "model", current.model()),
+                nullableText(patch, "apiKey", current.apiKey()),
+                nullableText(patch, "proxyHost", current.proxyHost()),
+                intValue(patch, "proxyPort", current.proxyPort(), 0, 65535, "proxyPort"),
+                nextEnabled, nextActive,
+                booleanValue(patch, "supportsTools", current.supportsTools()),
+                booleanValue(patch, "supportsStreaming", current.supportsStreaming()),
+                booleanValue(patch, "supportsVision", current.supportsVision()),
+                intValue(patch, "contextWindow", current.contextWindow(), 0, 2_000_000, "contextWindow"),
+                doubleValue(patch, "temperature", current.temperature(), 0, 2, "temperature"),
+                doubleValue(patch, "topP", current.topP(), 0, 1, "topP"),
+                integerValue(patch, "maxTokens", current.maxTokens(), 1, 2_000_000, "maxTokens"),
+                doubleValue(patch, "frequencyPenalty", current.frequencyPenalty(), -2, 2, "frequencyPenalty"),
+                doubleValue(patch, "presencePenalty", current.presencePenalty(), -2, 2, "presencePenalty"),
+                intValue(patch, "timeoutSeconds", current.timeoutSeconds(), 1, 3600, "timeoutSeconds"),
+                patch.has("requestOptionsJson") && !patch.path("requestOptionsJson").isNull()
+                        ? normalizeRequestOptions(patch.path("requestOptionsJson").asText())
+                        : patch.has("requestOptionsJson") ? null : current.requestOptionsJson());
+        save(updated);
+        ensureActive();
+        return ModelProfile.from(profiles.get(id));
+    }
+
     public synchronized ModelProfile activate(String id) {
         ModelProfileData target = require(id);
         if (!target.enabled()) throw new IllegalArgumentException("model is disabled: " + id);
@@ -343,6 +380,66 @@ public final class ModelRegistry {
 
     private static String blankToNull(String value) {
         return value == null || value.trim().isEmpty() ? null : value.trim();
+    }
+
+    private static String textValue(JsonNode patch, String field, String fallback) {
+        return patch.has(field) && !patch.path(field).isNull() ? patch.path(field).asText() : fallback;
+    }
+
+    private static String requiredText(JsonNode patch, String field, String fallback) {
+        return required(textValue(patch, field, fallback), field);
+    }
+
+    private static String nullableText(JsonNode patch, String field, String fallback) {
+        return patch.has(field) && !patch.path(field).isNull() ? blankToNull(patch.path(field).asText())
+                : patch.has(field) ? null : fallback;
+    }
+
+    private static boolean booleanValue(JsonNode patch, String field, boolean fallback) {
+        JsonNode value = patch.path(field);
+        if (!patch.has(field) || value.isNull()) return fallback;
+        if (!value.isBoolean()) throw new IllegalArgumentException(field + " must be boolean");
+        return value.asBoolean();
+    }
+
+    private static int intValue(JsonNode patch, String field, int fallback, int minimum, int maximum, String label) {
+        JsonNode value = patch.path(field);
+        if (!patch.has(field) || value.isNull()) return fallback;
+        if (!value.isIntegralNumber()) throw new IllegalArgumentException(label + " must be an integer");
+        int number = value.asInt();
+        if (number < minimum || number > maximum) {
+            throw new IllegalArgumentException(label + " must be between " + minimum + " and " + maximum);
+        }
+        return number;
+    }
+
+    private static Integer integerValue(JsonNode patch, String field, Integer fallback,
+                                        int minimum, int maximum, String label) {
+        JsonNode value = patch.path(field);
+        if (!patch.has(field)) return fallback;
+        if (value.isNull()) return null;
+        if (!value.isIntegralNumber()) throw new IllegalArgumentException(label + " must be an integer");
+        int number = value.asInt();
+        if (number < minimum || number > maximum) {
+            throw new IllegalArgumentException(label + " must be between " + minimum + " and " + maximum);
+        }
+        return number;
+    }
+
+    private static Double doubleValue(JsonNode patch, String field, Double fallback,
+                                      double minimum, double maximum, String label) {
+        JsonNode value = patch.path(field);
+        if (!patch.has(field)) return fallback;
+        if (value.isNull()) return null;
+        if (!value.isNumber()) throw new IllegalArgumentException(label + " must be a number");
+        double number = value.asDouble();
+        if (Double.isNaN(number) || Double.isInfinite(number) || number < minimum || number > maximum
+                || ("topP".equals(label) && number == 0)) {
+            throw new IllegalArgumentException("topP".equals(label)
+                    ? "topP must be greater than 0 and at most 1"
+                    : label + " must be between " + minimum + " and " + maximum);
+        }
+        return number;
     }
 
     private static String normalizeRequestOptions(String value) {

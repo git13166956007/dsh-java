@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.ObjectMapper;
 
 class ModelRegistryTest {
     @Test
@@ -59,5 +60,28 @@ class ModelRegistryTest {
         assertTrue(!encrypted.contains("api-key-value"));
         assertEquals("api-key-value", cipher.decrypt(encrypted));
         assertEquals("legacy-plain", cipher.decrypt("legacy-plain"));
+    }
+
+    @Test
+    void patchDistinguishesOmittedFieldsFromExplicitNulls() throws Exception {
+        InMemoryModelProfileStore store = new InMemoryModelProfileStore();
+        ModelRegistry registry = new ModelRegistry(store, "https://api.deepseek.com", "deepseek",
+                "deepseek-v4-flash", "stored-key", "", 0);
+        ModelProfile created = registry.create("Configured", "deepseek", "https://api.deepseek.com",
+                "deepseek-v4-flash", "another-key", "", 0, true, false, true, true, false,
+                131072, 0.4, 0.9, 2048, 0.1, 0.2, 60,
+                "{\"reasoning_effort\":\"high\"}");
+
+        ObjectMapper mapper = new ObjectMapper();
+        registry.update(created.id(), mapper.readTree("{\"enabled\":false}"));
+        ModelProfile retained = registry.find(created.id());
+        assertEquals(0.4, retained.temperature());
+        assertEquals("{\"reasoning_effort\":\"high\"}", retained.requestOptionsJson());
+        assertTrue(retained.apiKeyConfigured());
+
+        registry.update(created.id(), mapper.readTree("{\"temperature\":null,\"requestOptionsJson\":null}"));
+        ModelProfile cleared = registry.find(created.id());
+        assertEquals(null, cleared.temperature());
+        assertEquals(null, cleared.requestOptionsJson());
     }
 }
