@@ -1,0 +1,20 @@
+README.md
+  h_eb697744b14c1b 85
+frontend/src/App.vue
+  h_eb697744b14c1b 665,667
+src/main/java/io/github/git13166956007/dsh/mcp/McpClientManager.java
+  h_eb697744b14c1b 14,50,87-89,95-97,170-214
+src/test/java/io/github/git13166956007/dsh/mcp/McpClientManagerTest.java
+  h_eb697744b14c1b 1-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "3a861c4da9578046ce431d402474d482a4908822",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
