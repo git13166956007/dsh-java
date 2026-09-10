@@ -1,0 +1,42 @@
+docker/mariadb/init/001_schema.sql
+  h_eb697744b14c1b 45-47
+frontend/src/App.vue
+  h_eb697744b14c1b 99,696,700-706,723-724,733-736,1459,1461-1464
+src/main/java/io/github/git13166956007/dsh/config/DshRuntimeConfiguration.java
+  h_eb697744b14c1b 257-258
+src/main/java/io/github/git13166956007/dsh/context/ContextManager.java
+  h_eb697744b14c1b 37-41,45-48,50-51,59,67
+src/main/java/io/github/git13166956007/dsh/mcp/InMemoryMcpServerStore.java
+  h_eb697744b14c1b 10,25-35
+src/main/java/io/github/git13166956007/dsh/mcp/MariaDbMcpServerStore.java
+  h_eb697744b14c1b 9,11-12,20,23-27,32,41-42,47,57-60,67-94,113-114,122-123,142-174
+src/main/java/io/github/git13166956007/dsh/mcp/McpClientManager.java
+  h_eb697744b14c1b 78,80-81,91-92,100-101,174-217
+src/main/java/io/github/git13166956007/dsh/mcp/McpServerInfo.java
+  h_eb697744b14c1b 13-21,24-26
+src/main/java/io/github/git13166956007/dsh/mcp/McpServerRegistry.java
+  h_eb697744b14c1b 14,24-28,37-42,50-52,66-72,74-77,87,90-92,101,111-113,117-122,125-126,167-177
+src/main/java/io/github/git13166956007/dsh/mcp/McpServerSecrets.java
+  h_eb697744b14c1b 1-27
+src/main/java/io/github/git13166956007/dsh/mcp/McpServerStore.java
+  h_eb697744b14c1b 11-17
+src/main/java/io/github/git13166956007/dsh/model/SecretCipher.java
+  h_eb697744b14c1b 12,17,30,47
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 167,178-179,583-584,614-615,681-689,770-771
+src/test/java/io/github/git13166956007/dsh/context/InMemoryConversationStoreTest.java
+  h_eb697744b14c1b 39-53
+src/test/java/io/github/git13166956007/dsh/mcp/McpServerRegistryTest.java
+  h_eb697744b14c1b 6,39-57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e93ca078d8aa80d2f5123b4f2056879274600ff1",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
