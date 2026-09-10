@@ -5,7 +5,7 @@
 | Area | Current implementation | Missing for a usable runtime |
 | --- | --- | --- |
 | Tools | In-process `ToolRegistry`, local `time_now` tool | Tool metadata, enable/disable, permissions, reload, management API |
-| MCP | No MCP client yet | Server profiles, stdio/HTTP transports, initialize/list-tools lifecycle, reconnect and timeout policy |
+| MCP | Server configuration registry; connection status is explicit `DISCONNECTED` | MCP client, stdio/HTTP transports, initialize/list-tools lifecycle, reconnect and timeout policy |
 | Context | Per-request `List<ChatMessage>` | Conversation IDs, persisted messages, token budget, truncation, summarization, system/context providers |
 | Memory | JSONL session store exists but is not in the Agent Loop | Explicit memory extraction, durable storage, retrieval policy, user/workspace namespaces, forgetting/update rules |
 | Security | API key can be supplied for debugging | Authentication, tool approval, secret references, execution sandbox and audit trail |
@@ -35,3 +35,5 @@ docker compose ps
 ```
 
 The development schema is initialized from `docker/mariadb/init/001_schema.sql` on the first empty data directory. Do not put model keys or other credentials in the SQL file.
+
+The current MCP management boundary is available at `GET/POST/PATCH/DELETE /api/v1/mcp/servers`. It only manages validated server profiles; actual network/process connections are the next implementation step.
