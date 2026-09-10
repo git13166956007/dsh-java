@@ -338,7 +338,7 @@ public class DshRuntimeConfiguration {
                 toolRegistry, skillRegistry);
     }
 
-    @Bean(destroyMethod = "close")
+    @Bean(initMethod = "recover", destroyMethod = "close")
     public PlanExecutor planExecutor(PlanRegistry planRegistry, AgentLoop agentLoop, SubAgentRunner subAgents,
                                      RunManager runManager) {
         return new PlanExecutor(planRegistry, agentLoop, subAgents, runManager);

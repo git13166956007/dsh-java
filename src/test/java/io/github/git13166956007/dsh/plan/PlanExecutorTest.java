@@ -16,6 +16,7 @@ import io.github.git13166956007.dsh.run.InMemoryRunStore;
 import io.github.git13166956007.dsh.run.Run;
 import io.github.git13166956007.dsh.run.RunKind;
 import io.github.git13166956007.dsh.run.RunManager;
+import io.github.git13166956007.dsh.run.RunSpec;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -177,5 +178,46 @@ class PlanExecutorTest {
         }
         assertEquals(PlanStatus.COMPLETED, registry.find(plan.id()).status());
         assertEquals(1, executions.get());
+    }
+
+    @Test
+    void recoversRunningPlanAndPreservesCompletedDependencySteps() throws Exception {
+        ChatModel model = (messages, definitions) -> new ModelResponse("recovered step", List.of(), "stop");
+        PlanRegistry registry = new PlanRegistry(new InMemoryPlanStore());
+        Plan plan = registry.create("Recover plan", "Continue after restart", null, null, false, 1,
+                List.of(new PlanRegistry.PlanStepInput("First", "first", 1),
+                        new PlanRegistry.PlanStepInput("Second", "second", 1, null, List.of(1))));
+        registry.start(plan.id());
+        registry.startStep(plan.id(), plan.steps().get(0).id());
+        registry.completeStep(plan.id(), plan.steps().get(0).id(), "first was already completed");
+        registry.startStep(plan.id(), plan.steps().get(1).id());
+
+        RunManager runs = new RunManager(new InMemoryRunStore());
+        String planRunId = runs.start(new RunSpec(null, RunKind.PLAN, null, plan.id(), null, null, null));
+        String staleStepRunId = runs.start(new RunSpec(planRunId, RunKind.PLAN_STEP, null, plan.id(),
+                plan.steps().get(1).id(), null, null));
+        String staleAgentRunId = runs.start(new RunSpec(staleStepRunId, RunKind.AGENT, null, plan.id(),
+                plan.steps().get(1).id(), null, null));
+
+        AgentLoop agent = new AgentLoop(model, new ToolRegistry(), null, null, null, runs, 1);
+        SubAgentProfileRegistry profiles = new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 1);
+        try (PlanExecutor executor = new PlanExecutor(registry, agent,
+                new io.github.git13166956007.dsh.agent.SubAgentRunner(agent, profiles), runs)) {
+            executor.recover();
+            long deadline = System.currentTimeMillis() + 3000;
+            while (!registry.find(plan.id()).status().terminal() && System.currentTimeMillis() < deadline) {
+                Thread.sleep(20);
+            }
+        } finally {
+            agent.close();
+        }
+
+        assertEquals(PlanStatus.COMPLETED, registry.find(plan.id()).status());
+        assertEquals("first was already completed", registry.find(plan.id()).steps().get(0).result());
+        assertEquals("recovered step", registry.find(plan.id()).steps().get(1).result());
+        assertEquals(io.github.git13166956007.dsh.run.RunStatus.CANCELLED, runs.find(staleStepRunId).status());
+        assertEquals(io.github.git13166956007.dsh.run.RunStatus.CANCELLED, runs.find(staleAgentRunId).status());
+        assertEquals(io.github.git13166956007.dsh.run.RunStatus.COMPLETED, runs.find(planRunId).status());
+        assertTrue(runs.events(planRunId).stream().anyMatch(event -> "plan_recovered".equals(event.type())));
     }
 }

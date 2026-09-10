@@ -117,6 +117,23 @@ public final class PlanRegistry {
         return savePlan(withStatus(require(id), PlanStatus.COMPLETED));
     }
 
+    public synchronized Plan fail(String id, String reason) {
+        PlanData plan = require(id);
+        List<PlanStepData> planSteps = steps.get(id);
+        for (int index = 0; index < planSteps.size(); index++) {
+            PlanStepData step = planSteps.get(index);
+            if (step.status() == PlanStepStatus.PENDING || step.status() == PlanStepStatus.RUNNING
+                    || step.status() == PlanStepStatus.WAITING_APPROVAL) {
+                PlanStepData failed = new PlanStepData(step.id(), step.planId(), step.stepNo(), step.subAgentId(),
+                        step.dependsOn(), step.title(), step.instruction(), PlanStepStatus.FAILED, reason,
+                        step.attempts(), step.maxAttempts());
+                planSteps.set(index, failed);
+                saveStep(failed);
+            }
+        }
+        return savePlan(withStatus(plan, PlanStatus.FAILED));
+    }
+
     public synchronized Plan waitForApproval(String id) {
         return savePlan(withStatus(require(id), PlanStatus.WAITING_APPROVAL));
     }
@@ -137,6 +154,21 @@ public final class PlanRegistry {
                 step.title(), step.instruction(), PlanStepStatus.WAITING_APPROVAL, result, step.attempts(), step.maxAttempts());
         replaceStep(planSteps, updated);
         saveStep(updated);
+        return view(plan);
+    }
+
+    public synchronized Plan requeueRunningSteps(String id) {
+        PlanData plan = require(id);
+        List<PlanStepData> planSteps = steps.get(id);
+        for (int index = 0; index < planSteps.size(); index++) {
+            PlanStepData step = planSteps.get(index);
+            if (step.status() != PlanStepStatus.RUNNING) continue;
+            PlanStepData pending = new PlanStepData(step.id(), step.planId(), step.stepNo(), step.subAgentId(),
+                    step.dependsOn(), step.title(), step.instruction(), PlanStepStatus.PENDING, step.result(),
+                    step.attempts(), step.maxAttempts());
+            planSteps.set(index, pending);
+            saveStep(pending);
+        }
         return view(plan);
     }
 

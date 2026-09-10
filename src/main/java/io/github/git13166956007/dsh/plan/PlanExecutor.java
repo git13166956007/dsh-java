@@ -5,6 +5,7 @@ import io.github.git13166956007.dsh.agent.AgentMode;
 import io.github.git13166956007.dsh.agent.SubAgentRunner;
 import io.github.git13166956007.dsh.agent.AgentRunContext;
 import io.github.git13166956007.dsh.run.RunKind;
+import io.github.git13166956007.dsh.run.Run;
 import io.github.git13166956007.dsh.run.RunManager;
 import io.github.git13166956007.dsh.run.RunSpec;
 import java.util.List;
@@ -44,6 +45,48 @@ public final class PlanExecutor implements AutoCloseable {
         String runId = startRun(plan);
         executor.submit(() -> run(plan.id(), apiKey, runId));
         return plan;
+    }
+
+    /** Requeues interrupted plan steps and resumes durable plans after an application restart. */
+    public void recover() {
+        if (runs == null) return;
+        List<Run> savedRuns;
+        try {
+            savedRuns = runs.list();
+        } catch (Exception ignored) {
+            return;
+        }
+        for (Plan plan : plans.list()) {
+            try {
+                recoverPlan(plan, savedRuns);
+            } catch (Exception ignored) {
+                // A malformed persisted plan must not prevent other plans from recovering.
+            }
+        }
+    }
+
+    private void recoverPlan(Plan plan, List<Run> savedRuns) {
+        if (plan.status() != PlanStatus.RUNNING) return;
+        Run planRun = savedRuns.stream()
+                .filter(run -> run.kind() == RunKind.PLAN && plan.id().equals(run.planId()))
+                .findFirst().orElse(null);
+        if (planRun == null || planRun.status().terminal()) {
+            plans.fail(plan.id(), "plan was interrupted by application restart and has no running root Run");
+            return;
+        }
+        PlanStep waitingApproval = plan.steps().stream()
+                .filter(step -> step.status() == PlanStepStatus.WAITING_APPROVAL).findFirst().orElse(null);
+        if (waitingApproval != null) {
+            plans.waitForApproval(plan.id());
+            return;
+        }
+        for (Run run : savedRuns) {
+            if (!plan.id().equals(run.planId()) || run.id().equals(planRun.id()) || run.status().terminal()) continue;
+            cancelRun(run.id());
+        }
+        plans.requeueRunningSteps(plan.id());
+        event(planRun.id(), "plan_recovered", "resuming after application restart");
+        executor.submit(() -> run(plan.id(), null, planRun.id()));
     }
 
     public Plan cancel(String id) {
