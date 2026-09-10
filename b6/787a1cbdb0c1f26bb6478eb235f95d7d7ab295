@@ -1,0 +1,44 @@
+README.md
+  h_eb697744b14c1b 101-102
+docker/mariadb/init/001_schema.sql
+  h_eb697744b14c1b 200-210
+docs/runtime-roadmap.md
+  h_eb697744b14c1b 12,28
+frontend/src/App.vue
+  h_eb697744b14c1b 62-66,298-364,874,2199-2210
+frontend/src/style.css
+  h_eb697744b14c1b 162-163
+src/main/java/io/github/git13166956007/dsh/agent/InMemorySubAgentSessionStore.java
+  h_eb697744b14c1b 1-32
+src/main/java/io/github/git13166956007/dsh/agent/MariaDbSubAgentSessionStore.java
+  h_eb697744b14c1b 1-108
+src/main/java/io/github/git13166956007/dsh/agent/SubAgentRunner.java
+  h_eb697744b14c1b 43-52
+src/main/java/io/github/git13166956007/dsh/agent/SubAgentSession.java
+  h_eb697744b14c1b 1-16
+src/main/java/io/github/git13166956007/dsh/agent/SubAgentSessionData.java
+  h_eb697744b14c1b 1-12
+src/main/java/io/github/git13166956007/dsh/agent/SubAgentSessionManager.java
+  h_eb697744b14c1b 1-180
+src/main/java/io/github/git13166956007/dsh/agent/SubAgentSessionStatus.java
+  h_eb697744b14c1b 1-24
+src/main/java/io/github/git13166956007/dsh/agent/SubAgentSessionStore.java
+  h_eb697744b14c1b 1-13
+src/main/java/io/github/git13166956007/dsh/config/DshRuntimeConfiguration.java
+  h_eb697744b14c1b 23-26,228-243
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 16-17,86,101,117,593-652,804,808,811,813-815
+src/test/java/io/github/git13166956007/dsh/agent/SubAgentSessionManagerTest.java
+  h_eb697744b14c1b 1-75
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b6787a1cbdb0c1f26bb6478eb235f95d7d7ab295",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
