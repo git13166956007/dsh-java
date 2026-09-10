@@ -13,6 +13,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -172,10 +174,24 @@ public final class AdaptivePlanService {
 
     private static Set<String> tokens(String value) {
         Set<String> result = new HashSet<String>();
-        for (String token : value.toLowerCase(Locale.ROOT).split("[^a-z0-9_-]+")) {
-            if (token.length() >= 3) result.add(token);
+        Matcher matcher = Pattern.compile("[a-z0-9_-]+|[\\p{IsHan}]+")
+                .matcher(value == null ? "" : value.toLowerCase(Locale.ROOT));
+        while (matcher.find()) {
+            String token = matcher.group();
+            if (token.codePoints().allMatch(AdaptivePlanService::isHan)) {
+                if (token.length() >= 2) result.add(token);
+                for (int index = 0; index + 1 < token.length(); index++) {
+                    result.add(token.substring(index, index + 2));
+                }
+            } else if (token.length() >= 3) {
+                result.add(token);
+            }
         }
         return result;
+    }
+
+    private static boolean isHan(int codePoint) {
+        return Character.UnicodeScript.of(codePoint) == Character.UnicodeScript.HAN;
     }
 
     private static String required(String value, String field) {

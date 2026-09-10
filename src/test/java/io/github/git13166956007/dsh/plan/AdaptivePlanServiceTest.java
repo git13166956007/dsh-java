@@ -76,4 +76,20 @@ class AdaptivePlanServiceTest {
 
         assertEquals(List.of(1), plan.steps().get(1).dependsOn());
     }
+
+    @Test
+    void selectsWorkersForChineseTasks() throws Exception {
+        ChatModel model = (messages, definitions) -> new ModelResponse(
+                "{\"title\":\"迁移任务\",\"goal\":\"完成数据库迁移\",\"steps\":["
+                        + "{\"title\":\"检查数据库\",\"instruction\":\"检查数据库迁移状态\"}]}",
+                List.of(), "stop");
+        SubAgentProfileRegistry subAgents = new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 8);
+        subAgents.create("数据库迁移 Worker", AgentMode.EXECUTION, null, "负责数据库迁移检查", 4,
+                List.of(), List.of(), true);
+        Plan plan = new AdaptivePlanService(new AgentLoop(model, new ToolRegistry(), 2),
+                new PlanRegistry(new InMemoryPlanStore()), subAgents, new ObjectMapper())
+                .create("执行数据库迁移", null, null, null, false, 4, 1);
+
+        assertEquals("数据库迁移 Worker", subAgents.find(plan.steps().get(0).subAgentId()).name());
+    }
 }
