@@ -394,6 +394,13 @@ public final class DshController {
         return modelRegistry.list();
     }
 
+    @GetMapping("/models/{id}")
+    public ModelProfile model(@PathVariable String id) {
+        ModelProfile profile = modelRegistry.find(id);
+        if (profile == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown model: " + id);
+        return profile;
+    }
+
     @GetMapping("/models/providers")
     public java.util.List<String> modelProviders() {
         return modelRegistry.providerIds();
@@ -401,6 +408,9 @@ public final class DshController {
 
     @PostMapping("/models")
     public ModelProfile createModel(@RequestBody ModelRequest request) {
+        if (request == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "model profile must not be null");
+        }
         try {
             return modelRegistry.create(request.name(), request.provider(), request.baseUrl(), request.model(),
                     request.apiKey(), request.proxyHost(), request.proxyPort(), request.enabled(), request.active(),
@@ -415,6 +425,9 @@ public final class DshController {
 
     @PatchMapping("/models/{id}")
     public ModelProfile updateModel(@PathVariable String id, @RequestBody JsonNode request) {
+        if (request == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "model patch must not be null");
+        }
         try {
             return modelRegistry.update(id, request);
         } catch (IllegalArgumentException exception) {

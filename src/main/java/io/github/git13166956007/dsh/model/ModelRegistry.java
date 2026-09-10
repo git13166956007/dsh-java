@@ -36,9 +36,8 @@ public final class ModelRegistry {
                         true, true, false, 0, null, null, null, null, null, 120, null, null);
                 profiles.put(fallback.id(), fallback);
                 store.save(fallback);
-            } else if (profiles.values().stream().noneMatch(ModelProfileData::active)) {
-                ModelProfileData first = profiles.values().iterator().next();
-                activate(first.id());
+            } else {
+                normalizeActiveSelection();
             }
             validateFallbackConfiguration();
         } catch (Exception exception) {
@@ -379,6 +378,23 @@ public final class ModelRegistry {
         profiles.values().stream().filter(ModelProfileData::enabled).findFirst().ifPresent(profile -> {
             try { activate(profile.id()); } catch (Exception exception) { throw new IllegalStateException(exception); }
         });
+    }
+
+    private void normalizeActiveSelection() {
+        boolean retained = false;
+        for (ModelProfileData profile : new ArrayList<ModelProfileData>(profiles.values())) {
+            if (!profile.active() || (profile.enabled() && !retained)) {
+                if (profile.active() && profile.enabled()) retained = true;
+                continue;
+            }
+            save(new ModelProfileData(profile.id(), profile.name(), profile.provider(), profile.baseUrl(),
+                    profile.model(), profile.apiKey(), profile.proxyHost(), profile.proxyPort(), profile.enabled(), false,
+                    profile.supportsTools(), profile.supportsStreaming(), profile.supportsVision(), profile.contextWindow(),
+                    profile.temperature(), profile.topP(), profile.maxTokens(), profile.frequencyPenalty(),
+                    profile.presencePenalty(), profile.timeoutSeconds(), profile.requestOptionsJson(), profile.fallbackModelId(),
+                    profile.failoverPolicy()));
+        }
+        if (!retained) ensureActive();
     }
 
     private void deactivateAll() {

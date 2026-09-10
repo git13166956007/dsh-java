@@ -126,4 +126,36 @@ class ModelRegistryTest {
 
         assertEquals("transient_failure", restored.failoverPolicy());
     }
+
+    @Test
+    void normalizesPersistedActiveSelectionAndIgnoresDisabledActiveProfiles() {
+        InMemoryModelProfileStore store = new InMemoryModelProfileStore();
+        store.save(new ModelProfileData("disabled", "Disabled", "deepseek", "https://api.deepseek.com",
+                "disabled-model", "", "", 0, false, true));
+        store.save(new ModelProfileData("first", "First", "deepseek", "https://api.deepseek.com",
+                "first-model", "", "", 0, true, true));
+        store.save(new ModelProfileData("second", "Second", "deepseek", "https://api.deepseek.com",
+                "second-model", "", "", 0, true, true));
+
+        ModelRegistry registry = new ModelRegistry(store, "https://api.deepseek.com", "deepseek",
+                "deepseek-v4-flash", "", "", 0);
+
+        assertTrue(registry.find("first").active());
+        assertFalse(registry.find("disabled").active());
+        assertFalse(registry.find("second").active());
+        assertEquals("first", registry.resolve(null).id());
+    }
+
+    @Test
+    void startsWithAllModelsDisabledSoTheyCanBeReenabledFromManagement() {
+        InMemoryModelProfileStore store = new InMemoryModelProfileStore();
+        store.save(new ModelProfileData("disabled", "Disabled", "deepseek", "https://api.deepseek.com",
+                "disabled-model", "", "", 0, false, false));
+
+        ModelRegistry registry = new ModelRegistry(store, "https://api.deepseek.com", "deepseek",
+                "deepseek-v4-flash", "", "", 0);
+
+        assertFalse(registry.find("disabled").active());
+        assertThrows(IllegalStateException.class, () -> registry.resolve(null));
+    }
 }
