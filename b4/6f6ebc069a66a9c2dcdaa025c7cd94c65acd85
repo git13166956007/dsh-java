@@ -1,0 +1,32 @@
+README.md
+  h_eb697744b14c1b 127
+docker/mariadb/init/001_schema.sql
+  h_eb697744b14c1b 7-8
+docs/runtime-roadmap.md
+  h_eb697744b14c1b 14
+src/main/java/io/github/git13166956007/dsh/context/ContextManager.java
+  h_eb697744b14c1b 4-6,56-61,68,76-80,88-130,139-152
+src/main/java/io/github/git13166956007/dsh/context/ConversationStore.java
+  h_eb697744b14c1b 12-19
+src/main/java/io/github/git13166956007/dsh/context/ConversationSummary.java
+  h_eb697744b14c1b 1-8
+src/main/java/io/github/git13166956007/dsh/context/InMemoryConversationStore.java
+  h_eb697744b14c1b 13-14,37-46
+src/main/java/io/github/git13166956007/dsh/context/MariaDbConversationStore.java
+  h_eb697744b14c1b 23,94-118,123-144
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 466-482,661,693,770-778,886-892
+src/test/java/io/github/git13166956007/dsh/context/InMemoryConversationStoreTest.java
+  h_eb697744b14c1b 7-9,12,58-85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "b46f6ebc069a66a9c2dcdaa025c7cd94c65acd85",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
