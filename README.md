@@ -100,6 +100,8 @@ Sub-agent Profile 管理接口为 `GET/POST/PATCH/DELETE /api/v1/sub-agents`。�
 
 同一个 `conversationId` 会复用最近的历史消息；不传时服务会创建新的会话 ID。工具管理接口为 `GET /api/v1/tools` 和 `PATCH /api/v1/tools/{name}`，请求体示例为 `{"enabled":false}`。
 
+上下文窗口同时受 `DSH_MAX_HISTORY_MESSAGES` 和 `DSH_MAX_CONTEXT_TOKENS` 限制，按最新消息优先裁剪；`GET /api/v1/conversations/{id}/context` 可以查看当前消息数、估算 token 数和是否发生裁剪。token 数是运行时估算值，不依赖特定模型 tokenizer。
+
 前端右上角的 `Tools` 可以添加调试工具。自定义工具当前是运行时内存工具：填写名称、描述、JSON Schema 和固定返回值后，模型即可调用；应用重启后需要重新添加，真正的业务执行工具通过插件或 MCP 接入。
 
 MCP Server 管理已经接入官方 Java SDK `0.17.0`，支持 `stdio`、`sse` 和 `streamable_http`。HTTP endpoint 可以填写完整 URL，包含 path 和 query 参数，例如高德 MCP 使用 `https://mcp.amap.com/mcp?key=YOUR_KEY`，transport 选择 `streamable_http`。配置后通过 `POST /api/v1/mcp/servers/{id}/connect` 建立会话，工具会自动同步进统一的 ToolRegistry；`refresh`、`disconnect` 分别用于刷新工具和释放连接。MCP 工具会以 `mcp_<server-id>_<tool-name>` 暴露，名称只使用模型兼容的字母、数字、下划线和连字符，避免不同 Server 同名冲突。

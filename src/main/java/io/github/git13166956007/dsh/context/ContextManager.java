@@ -7,11 +7,18 @@ import java.util.UUID;
 public final class ContextManager {
     private final ConversationStore store;
     private final int maxHistoryMessages;
+    private final int maxContextTokens;
 
     public ContextManager(ConversationStore store, int maxHistoryMessages) {
+        this(store, maxHistoryMessages, 12000);
+    }
+
+    public ContextManager(ConversationStore store, int maxHistoryMessages, int maxContextTokens) {
         if (maxHistoryMessages < 1) throw new IllegalArgumentException("maxHistoryMessages must be positive");
+        if (maxContextTokens < 1) throw new IllegalArgumentException("maxContextTokens must be positive");
         this.store = store;
         this.maxHistoryMessages = maxHistoryMessages;
+        this.maxContextTokens = maxContextTokens;
     }
 
     public String open(String conversationId, String title) throws Exception {
@@ -27,10 +34,40 @@ public final class ContextManager {
     }
 
     public List<ChatMessage> history(String conversationId) throws Exception {
-        return store.load(conversationId, maxHistoryMessages);
+        return window(conversationId).messages();
+    }
+
+    public ContextWindow window(String conversationId) throws Exception {
+        List<ChatMessage> loaded = store.load(conversationId, maxHistoryMessages);
+        if (loaded.isEmpty()) return new ContextWindow(List.of(), 0, maxContextTokens, false);
+
+        List<ChatMessage> selected = new java.util.ArrayList<ChatMessage>();
+        int tokens = 0;
+        boolean truncated = false;
+        for (int index = loaded.size() - 1; index >= 0; index--) {
+            ChatMessage message = loaded.get(index);
+            int messageTokens = estimateTokens(message);
+            if (!selected.isEmpty() && tokens + messageTokens > maxContextTokens) {
+                truncated = true;
+                break;
+            }
+            selected.add(0, message);
+            tokens += messageTokens;
+        }
+        if (selected.size() < loaded.size()) truncated = true;
+        return new ContextWindow(selected, tokens, maxContextTokens, truncated);
     }
 
     public void append(String conversationId, ChatMessage message) throws Exception {
         store.append(conversationId, message);
+    }
+
+    private static int estimateTokens(ChatMessage message) {
+        int characters = message.content() == null ? 0 : message.content().codePointCount(0, message.content().length());
+        for (io.github.git13166956007.dsh.agent.ToolCall call : message.toolCalls()) {
+            characters += call.name() == null ? 0 : call.name().length();
+            characters += call.arguments() == null ? 0 : call.arguments().toString().length();
+        }
+        return Math.max(1, (characters + 3) / 4);
     }
 }

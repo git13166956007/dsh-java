@@ -14,6 +14,7 @@ import io.github.git13166956007.dsh.agent.AgentRunResult;
 import io.github.git13166956007.dsh.agent.ChatMessage;
 import io.github.git13166956007.dsh.agent.ToolCall;
 import io.github.git13166956007.dsh.context.ContextManager;
+import io.github.git13166956007.dsh.context.ContextWindow;
 import io.github.git13166956007.dsh.mcp.McpServerInfo;
 import io.github.git13166956007.dsh.mcp.McpServerRegistry;
 import io.github.git13166956007.dsh.mcp.McpClientManager;
@@ -367,6 +368,13 @@ public final class DshController {
         return memoryManager.list(namespace, subjectKey, limit);
     }
 
+    @GetMapping("/conversations/{id}/context")
+    public ContextResponse conversationContext(@PathVariable String id) throws Exception {
+        ContextWindow window = contextManager.window(id);
+        return new ContextResponse(id, window.messages().size(), window.estimatedTokens(), window.maxTokens(),
+                window.truncated());
+    }
+
     @GetMapping("/memories/search")
     public java.util.List<MemoryRecord> searchMemories(@RequestParam String namespace,
                                                        @RequestParam String subjectKey,
@@ -681,5 +689,9 @@ public final class DshController {
     }
 
     public record ErrorResponse(String error) {
+    }
+
+    public record ContextResponse(String conversationId, int messageCount, int estimatedTokens,
+                                  int maxTokens, boolean truncated) {
     }
 }

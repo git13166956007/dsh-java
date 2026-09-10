@@ -217,7 +217,8 @@ public class DshRuntimeConfiguration {
     @Bean
     public ContextManager contextManager(ConversationStore conversationStore, Environment environment) {
         return new ContextManager(conversationStore, Integer.parseInt(
-                environment.getProperty("dsh.persistence.max-history-messages", "24")));
+                environment.getProperty("dsh.persistence.max-history-messages", "24")), Integer.parseInt(
+                environment.getProperty("dsh.persistence.max-context-tokens", "12000")));
     }
 
     @Bean
