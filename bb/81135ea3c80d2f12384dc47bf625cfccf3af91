@@ -1,0 +1,28 @@
+docker/mariadb/init/001_schema.sql
+  h_eb697744b14c1b 172-174
+src/main/java/io/github/git13166956007/dsh/agent/AgentLoop.java
+  h_eb697744b14c1b 526
+src/main/java/io/github/git13166956007/dsh/agent/AgentProfile.java
+  h_eb697744b14c1b 10-12,15-19,22-23
+src/main/java/io/github/git13166956007/dsh/agent/AgentProfileData.java
+  h_eb697744b14c1b 10-12,15-18
+src/main/java/io/github/git13166956007/dsh/agent/AgentProfileRegistry.java
+  h_eb697744b14c1b 55-60,68-70,77-82,93-96,107,134-135,166-180
+src/main/java/io/github/git13166956007/dsh/agent/MariaDbAgentProfileStore.java
+  h_eb697744b14c1b 28,35,47-48,51-53,60-64,86-87,93-95,104-110
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 484-485,495-496,980-981
+src/test/java/io/github/git13166956007/dsh/agent/AgentProfileRegistryTest.java
+  h_eb697744b14c1b 22-24,48-60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "bb81135ea3c80d2f12384dc47bf625cfccf3af91",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
