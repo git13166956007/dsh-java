@@ -1,0 +1,20 @@
+README.md
+  h_eb697744b14c1b 109
+docs/runtime-roadmap.md
+  h_eb697744b14c1b 12
+src/main/java/io/github/git13166956007/dsh/plan/AdaptivePlanService.java
+  h_eb697744b14c1b 9,216-217,223-230,234-235,248-257,263-264,269-273,280-283,375,382,386-387
+src/test/java/io/github/git13166956007/dsh/plan/AdaptivePlanServiceTest.java
+  h_eb697744b14c1b 175-221
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "96c802894c707f0eed40d63aec35991b24342dc1",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
