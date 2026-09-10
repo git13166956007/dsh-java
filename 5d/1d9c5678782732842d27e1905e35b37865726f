@@ -1,0 +1,26 @@
+README.md
+  h_eb697744b14c1b 95-96
+docs/runtime-roadmap.md
+  h_eb697744b14c1b 11-12,28-29
+src/main/java/io/github/git13166956007/dsh/agent/AgentLoop.java
+  h_eb697744b14c1b 18,21,31,72-75,151,172,240,265,355,387-464,558
+src/main/java/io/github/git13166956007/dsh/agent/SubAgentProfileRegistry.java
+  h_eb697744b14c1b 38-44
+src/main/java/io/github/git13166956007/dsh/agent/SubAgentRunner.java
+  h_eb697744b14c1b 29-36
+src/main/java/io/github/git13166956007/dsh/config/DshRuntimeConfiguration.java
+  h_eb697744b14c1b 228-230
+src/test/java/io/github/git13166956007/dsh/agent/AgentLoopTest.java
+  h_eb697744b14c1b 20,54-184
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5d1d9c5678782732842d27e1905e35b37865726f",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
