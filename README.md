@@ -124,7 +124,7 @@ export DSH_WORKSPACE_MAX_WRITE_BYTES=1000000
 
 工作区工具不允许通过 HTTP 直接绕过 Agent 审批执行；插件和 MCP 工具也继续复用统一的 `ToolRegistry`、白名单、审批和 Run Trace 边界。
 
-上下文窗口同时受 `DSH_MAX_HISTORY_MESSAGES` 和 `DSH_MAX_CONTEXT_TOKENS` 限制，按最新消息优先裁剪；`GET /api/v1/conversations/{id}/context` 可以查看当前消息数、估算 token 数和是否发生裁剪。token 数是运行时估算值，不依赖特定模型 tokenizer。
+上下文窗口同时受 `DSH_MAX_HISTORY_MESSAGES` 和 `DSH_MAX_CONTEXT_TOKENS` 限制，按最新消息优先裁剪；长对话会在聊天前尝试生成滚动摘要，摘要独立保存于会话记录并在读取上下文时临时注入，不会改写原始消息。`POST /api/v1/conversations/{id}/compact` 可以手动触发压缩，`GET /api/v1/conversations/{id}/context` 可以查看当前消息数、估算 token 数和是否发生裁剪。摘要模型不可用时会回退到原有裁剪策略；token 数是运行时估算值，不依赖特定模型 tokenizer。
 
 前端右上角的 `Tools` 可以添加调试工具。启用 MariaDB 持久化后，自定义工具的名称、描述、JSON Schema、固定返回值、启用状态和审批策略会保存并在重启后恢复；真正的业务执行工具通过插件或 MCP 接入。
 

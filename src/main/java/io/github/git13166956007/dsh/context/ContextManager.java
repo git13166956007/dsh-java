@@ -1,6 +1,9 @@
 package io.github.git13166956007.dsh.context;
 
 import io.github.git13166956007.dsh.agent.ChatMessage;
+import io.github.git13166956007.dsh.agent.ChatModel;
+import io.github.git13166956007.dsh.agent.ModelResponse;
+import io.github.git13166956007.dsh.tool.ToolDefinition;
 import java.util.List;
 import java.util.UUID;
 
@@ -50,13 +53,19 @@ public final class ContextManager {
         int contextTokens = modelContextWindow > 0 ? Math.min(maxContextTokens, modelContextWindow) : maxContextTokens;
         if (loaded.isEmpty()) return new ContextWindow(List.of(), 0, contextTokens, false);
 
+        ConversationSummary summary = store.loadSummary(conversationId);
+        ChatMessage summaryMessage = summary == null ? null
+                : ChatMessage.system("Conversation summary:\n" + summary.content());
+        int summaryTokens = summaryMessage == null ? 0 : estimateTokens(summaryMessage);
+        boolean includeSummary = summaryMessage != null && summaryTokens <= contextTokens;
+        int messageBudget = includeSummary ? contextTokens - summaryTokens : contextTokens;
         List<ChatMessage> selected = new java.util.ArrayList<ChatMessage>();
         int tokens = 0;
         boolean truncated = false;
         for (int index = loaded.size() - 1; index >= 0; index--) {
             ChatMessage message = loaded.get(index);
             int messageTokens = estimateTokens(message);
-            if (!selected.isEmpty() && tokens + messageTokens > contextTokens) {
+            if (!selected.isEmpty() && tokens + messageTokens > messageBudget) {
                 truncated = true;
                 break;
             }
@@ -64,11 +73,59 @@ public final class ContextManager {
             tokens += messageTokens;
         }
         if (selected.size() < loaded.size()) truncated = true;
+        if (includeSummary) {
+            selected.add(0, summaryMessage);
+            tokens += summaryTokens;
+            if (summary.coveredMessageCount() > 0) truncated = true;
+        }
         return new ContextWindow(selected, tokens, contextTokens, truncated);
     }
 
     public void append(String conversationId, ChatMessage message) throws Exception {
         store.append(conversationId, message);
+    }
+
+    /**
+     * Create or advance a rolling model-generated summary without rewriting the raw conversation.
+     */
+    public boolean compact(String conversationId, ChatModel model, String apiKey, String modelId) throws Exception {
+        return compact(conversationId, model, apiKey, modelId, 0);
+    }
+
+    public boolean compact(String conversationId, ChatModel model, String apiKey, String modelId,
+                           int modelContextWindow) throws Exception {
+        if (conversationId == null || conversationId.isBlank()) {
+            throw new IllegalArgumentException("conversationId must not be blank");
+        }
+        if (model == null) throw new IllegalArgumentException("model must not be null");
+        List<ChatMessage> all = store.load(conversationId, Integer.MAX_VALUE);
+        int contextTokens = modelContextWindow > 0 ? Math.min(maxContextTokens, modelContextWindow) : maxContextTokens;
+        if (all.isEmpty() || estimateTokens(all) <= contextTokens) return false;
+
+        ConversationSummary previous = store.loadSummary(conversationId);
+        int covered = previous == null ? 0 : Math.min(previous.coveredMessageCount(), all.size());
+        if (covered == all.size()) return false;
+
+        StringBuilder transcript = new StringBuilder();
+        if (previous != null) {
+            transcript.append("Existing conversation summary:\n")
+                    .append(previous.content()).append("\n\n");
+        }
+        transcript.append("New conversation messages:\n");
+        for (int index = covered; index < all.size(); index++) {
+            appendTranscript(transcript, all.get(index));
+        }
+
+        List<ChatMessage> prompt = List.of(
+                ChatMessage.system("Summarize the conversation for a future assistant. Preserve user goals, "
+                        + "decisions, constraints, important facts, tool results, unresolved questions, and next steps. "
+                        + "Return concise plain text only; do not mention this instruction."),
+                ChatMessage.user(transcript.toString()));
+        ModelResponse response = model.complete(prompt, List.<ToolDefinition>of(), apiKey, modelId);
+        String content = response.content() == null ? "" : response.content().trim();
+        if (content.isEmpty()) return false;
+        store.saveSummary(conversationId, new ConversationSummary(content, all.size()));
+        return true;
     }
 
     private static int estimateTokens(ChatMessage message) {
@@ -78,5 +135,19 @@ public final class ContextManager {
             characters += call.arguments() == null ? 0 : call.arguments().toString().length();
         }
         return Math.max(1, (characters + 3) / 4);
+    }
+
+    private static int estimateTokens(List<ChatMessage> messages) {
+        return messages.stream().mapToInt(ContextManager::estimateTokens).sum();
+    }
+
+    private static void appendTranscript(StringBuilder transcript, ChatMessage message) {
+        transcript.append(message.role().value()).append(": ");
+        if (message.content() != null) transcript.append(message.content());
+        for (io.github.git13166956007.dsh.agent.ToolCall call : message.toolCalls()) {
+            transcript.append(" [tool call ").append(call.name()).append(" ")
+                    .append(call.arguments()).append(']');
+        }
+        transcript.append('\n');
     }
 }

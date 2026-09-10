@@ -4,8 +4,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.github.git13166956007.dsh.agent.ChatMessage;
+import io.github.git13166956007.dsh.agent.ChatModel;
+import io.github.git13166956007.dsh.agent.ModelResponse;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.ObjectMapper;
 
 class InMemoryConversationStoreTest {
     @Test
@@ -50,5 +54,33 @@ class InMemoryConversationStoreTest {
 
         assertEquals(4, window.maxTokens());
         assertEquals(List.of("old", "new"), window.messages().stream().map(ChatMessage::content).toList());
+    }
+
+    @Test
+    void compactsHistoryIntoAnIndependentRollingSummary() throws Exception {
+        InMemoryConversationStore store = new InMemoryConversationStore();
+        ContextManager context = new ContextManager(store, 10, 16);
+        String id = context.open(null, "summary");
+        context.append(id, ChatMessage.user("The release is Friday."));
+        context.append(id, ChatMessage.assistant("Remember the migration checklist.", List.of()));
+        context.append(id, ChatMessage.user("The database backup is required."));
+        AtomicReference<String> prompt = new AtomicReference<String>();
+        ChatModel summarizer = (messages, tools) -> {
+            prompt.set(messages.get(1).content());
+            return new ModelResponse("Release Friday; database backup required.",
+                    List.of(), "stop");
+        };
+
+        assertEquals(true, context.compact(id, summarizer, null, null));
+        ConversationSummary summary = store.loadSummary(id);
+        assertEquals(3, summary.coveredMessageCount());
+        assertTrue(prompt.get().contains("The release is Friday."));
+        assertTrue(context.window(id).messages().get(0).content().startsWith("Conversation summary:"));
+        assertEquals(false, context.compact(id, summarizer, null, null));
+
+        context.append(id, ChatMessage.user("Use the staging environment first."));
+        assertEquals(true, context.compact(id, summarizer, null, null));
+        assertEquals(4, store.loadSummary(id).coveredMessageCount());
+        assertTrue(prompt.get().contains("Existing conversation summary:"));
     }
 }

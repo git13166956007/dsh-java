@@ -11,7 +11,7 @@
 | Agent modes | Persisted Agent Profiles with chat, planning and execution modes; profile-specific model, prompt and turn budget; active runs can delegate through a virtual tool with approval propagation | Streaming plan events and richer delegation policies |
 | Sub-agents | Persisted sub-agent profiles with independent model/mode/prompt, tool and Skill allowlists; plan steps and active Agents can dispatch enabled execution workers; adaptive planner selects or explicitly creates workers | Richer adaptive delegation policies |
 | Plans | Persisted Plan/PlanStep state, approval, dependency-aware asynchronous execution, bounded parallelism, retries and cancellation API | Streaming plan events, durable run IDs and richer dependency policies |
-| Context | Conversation IDs, persisted messages, configurable message/token budgets, newest-first truncation and context inspection API | Summarization, system/context providers and provider-specific tokenizers |
+| Context | Conversation IDs, persisted messages, configurable message/token budgets, newest-first truncation, rolling model-generated summaries and context inspection/compaction APIs | System/context providers and provider-specific tokenizers |
 | Memory | MariaDB/in-memory explicit memories, namespace isolation, keyword retrieval and conversation-context injection | Automatic extraction, user/workspace namespaces, forgetting/update rules and semantic retrieval |
 | Security | API key can be supplied for debugging | Authentication, tool approval, secret references, execution sandbox and audit trail |
 | Operations | Health endpoint, durable Run IDs, parent-child run tree and persisted audit events | Structured logs, metrics, timeout and failure replay |

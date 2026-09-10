@@ -20,6 +20,7 @@ public final class MariaDbConversationStore implements ConversationStore {
         this.jdbcUrl = jdbcUrl;
         this.username = username;
         this.password = password;
+        ensureSchema();
     }
 
     @Override
@@ -90,8 +91,55 @@ public final class MariaDbConversationStore implements ConversationStore {
         }
     }
 
+    @Override
+    public ConversationSummary loadSummary(String conversationId) throws SQLException {
+        try (Connection connection = connection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "SELECT summary_text, summary_message_count FROM dsh_conversation WHERE id=?")) {
+            statement.setString(1, conversationId);
+            try (ResultSet result = statement.executeQuery()) {
+                if (!result.next() || result.getString("summary_text") == null) return null;
+                return new ConversationSummary(result.getString("summary_text"), result.getInt("summary_message_count"));
+            }
+        }
+    }
+
+    @Override
+    public void saveSummary(String conversationId, ConversationSummary summary) throws SQLException {
+        try (Connection connection = connection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "UPDATE dsh_conversation SET summary_text=?, summary_message_count=? WHERE id=?")) {
+            statement.setString(1, summary.content());
+            statement.setInt(2, summary.coveredMessageCount());
+            statement.setString(3, conversationId);
+            statement.executeUpdate();
+        }
+    }
+
     private Connection connection() throws SQLException {
         return DriverManager.getConnection(jdbcUrl, username, password);
+    }
+
+    private void ensureSchema() {
+        try (Connection connection = connection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "CREATE TABLE IF NOT EXISTS dsh_conversation ("
+                             + "id CHAR(36) NOT NULL PRIMARY KEY, title VARCHAR(255) NOT NULL, "
+                             + "created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), "
+                             + "updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) "
+                             + "ON UPDATE CURRENT_TIMESTAMP(3)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4")) {
+            statement.executeUpdate();
+            try (PreparedStatement alter = connection.prepareStatement(
+                    "ALTER TABLE dsh_conversation ADD COLUMN IF NOT EXISTS summary_text LONGTEXT NULL")) {
+                alter.executeUpdate();
+            }
+            try (PreparedStatement alter = connection.prepareStatement(
+                    "ALTER TABLE dsh_conversation ADD COLUMN IF NOT EXISTS summary_message_count INT NOT NULL DEFAULT 0")) {
+                alter.executeUpdate();
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException("failed to initialize conversation summary schema", exception);
+        }
     }
 
     private static ChatMessage readMessage(String role, String content, String toolCallId) {

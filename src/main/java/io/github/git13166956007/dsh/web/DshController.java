@@ -463,6 +463,23 @@ public final class DshController {
                 window.truncated());
     }
 
+    @PostMapping("/conversations/{id}/compact")
+    public ContextCompactResponse compactConversation(@PathVariable String id,
+                                                      @RequestBody(required = false) ContextCompactRequest request)
+            throws Exception {
+        String apiKey = request == null ? null : request.apiKey();
+        String modelId = request == null ? null : request.modelId();
+        try {
+            boolean compacted = contextManager.compact(id, chatModel, apiKey, modelId,
+                    modelContextWindow(modelId, null));
+            ContextWindow window = contextManager.window(id, modelContextWindow(modelId, null));
+            return new ContextCompactResponse(id, compacted, window.messages().size(), window.estimatedTokens(),
+                    window.maxTokens(), window.truncated());
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
+        }
+    }
+
     @GetMapping("/memories/search")
     public java.util.List<MemoryRecord> searchMemories(@RequestParam String namespace,
                                                        @RequestParam String subjectKey,
@@ -641,6 +658,7 @@ public final class DshController {
         AgentMode mode = requestedMode(request.mode());
         try {
             String conversationId = contextManager.open(request.conversationId(), request.message());
+            compactConversationIfNeeded(conversationId, request);
             java.util.List<ChatMessage> history = contextManager.history(conversationId,
                     modelContextWindow(request.modelId(), request.agentId()));
             contextManager.append(conversationId, ChatMessage.user(request.message()));
@@ -672,6 +690,7 @@ public final class DshController {
         AgentMode mode = requestedMode(request.mode());
         try {
             conversationId = contextManager.open(request.conversationId(), request.message());
+            compactConversationIfNeeded(conversationId, request);
             history = contextManager.history(conversationId,
                     modelContextWindow(request.modelId(), request.agentId()));
             contextManager.append(conversationId, ChatMessage.user(request.message()));
@@ -746,6 +765,15 @@ public final class DshController {
             if (profile != null) selectedModelId = profile.modelId();
         }
         return modelRegistry.resolve(selectedModelId).contextWindow();
+    }
+
+    private void compactConversationIfNeeded(String conversationId, ChatRequest request) {
+        try {
+            contextManager.compact(conversationId, chatModel, request.apiKey(), request.modelId(),
+                    modelContextWindow(request.modelId(), request.agentId()));
+        } catch (Exception ignored) {
+            // Context compaction is best effort; truncation remains the fallback when the model is unavailable.
+        }
     }
 
     private static boolean isDescendant(Run run, String rootId, java.util.Map<String, Run> byId) {
@@ -854,5 +882,12 @@ public final class DshController {
 
     public record ContextResponse(String conversationId, int messageCount, int estimatedTokens,
                                   int maxTokens, boolean truncated) {
+    }
+
+    public record ContextCompactRequest(String apiKey, String modelId) {
+    }
+
+    public record ContextCompactResponse(String conversationId, boolean compacted, int messageCount,
+                                         int estimatedTokens, int maxTokens, boolean truncated) {
     }
 }

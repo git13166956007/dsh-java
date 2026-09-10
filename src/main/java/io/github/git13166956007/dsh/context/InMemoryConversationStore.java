@@ -10,6 +10,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 public final class InMemoryConversationStore implements ConversationStore {
     private final ConcurrentHashMap<String, CopyOnWriteArrayList<ChatMessage>> conversations =
             new ConcurrentHashMap<String, CopyOnWriteArrayList<ChatMessage>>();
+    private final ConcurrentHashMap<String, ConversationSummary> summaries =
+            new ConcurrentHashMap<String, ConversationSummary>();
 
     @Override
     public String open(String conversationId, String title) {
@@ -31,5 +33,15 @@ public final class InMemoryConversationStore implements ConversationStore {
     public void append(String conversationId, ChatMessage message) {
         conversations.computeIfAbsent(conversationId, ignored -> new CopyOnWriteArrayList<ChatMessage>())
                 .add(message);
+    }
+
+    @Override
+    public ConversationSummary loadSummary(String conversationId) {
+        return summaries.get(conversationId);
+    }
+
+    @Override
+    public void saveSummary(String conversationId, ConversationSummary summary) {
+        summaries.put(conversationId, summary);
     }
 }
