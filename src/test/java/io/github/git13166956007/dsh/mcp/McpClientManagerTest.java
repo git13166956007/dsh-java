@@ -1,7 +1,10 @@
 package io.github.git13166956007.dsh.mcp;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.time.Instant;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class McpClientManagerTest {
@@ -43,5 +46,34 @@ class McpClientManagerTest {
         } finally {
             manager.close();
         }
+    }
+
+    @Test
+    void restoresPersistedResourceSubscriptionsWhenManagerIsRecreated() {
+        InMemoryMcpServerStore serverStore = new InMemoryMcpServerStore();
+        McpServerRegistry servers = new McpServerRegistry(serverStore);
+        McpServerInfo server = servers.create("resources", "stdio", null, "node", List.of("server.js"));
+        InMemoryMcpResourceSubscriptionStore subscriptions = new InMemoryMcpResourceSubscriptionStore();
+        subscriptions.save(new McpResourceSubscription(server.id(), "file:///workspace/README.md", Instant.now()));
+
+        McpClientManager first = new McpClientManager(servers, new io.github.git13166956007.dsh.tool.ToolRegistry(),
+                new tools.jackson.databind.ObjectMapper(), new InMemoryMcpHealthStore(), subscriptions,
+                1_000, 5_000, 0);
+        try {
+            assertEquals(List.of("file:///workspace/README.md"), first.subscriptions(server.id()));
+        } finally {
+            first.close();
+        }
+
+        McpClientManager restored = new McpClientManager(servers, new io.github.git13166956007.dsh.tool.ToolRegistry(),
+                new tools.jackson.databind.ObjectMapper(), new InMemoryMcpHealthStore(), subscriptions,
+                1_000, 5_000, 0);
+        try {
+            assertEquals(List.of("file:///workspace/README.md"), restored.subscriptions(server.id()));
+        } finally {
+            restored.close();
+        }
+        subscriptions.delete(server.id(), "file:///workspace/README.md");
+        assertTrue(subscriptions.list(server.id()).isEmpty());
     }
 }

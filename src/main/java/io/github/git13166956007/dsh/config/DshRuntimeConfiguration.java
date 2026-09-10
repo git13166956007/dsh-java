@@ -34,6 +34,9 @@ import io.github.git13166956007.dsh.mcp.InMemoryMcpHealthStore;
 import io.github.git13166956007.dsh.mcp.MariaDbMcpHealthStore;
 import io.github.git13166956007.dsh.mcp.McpHealthStore;
 import io.github.git13166956007.dsh.mcp.McpServerStore;
+import io.github.git13166956007.dsh.mcp.InMemoryMcpResourceSubscriptionStore;
+import io.github.git13166956007.dsh.mcp.MariaDbMcpResourceSubscriptionStore;
+import io.github.git13166956007.dsh.mcp.McpResourceSubscriptionStore;
 import io.github.git13166956007.dsh.memory.InMemoryMemoryStore;
 import io.github.git13166956007.dsh.memory.MariaDbMemoryStore;
 import io.github.git13166956007.dsh.memory.MemoryManager;
@@ -402,11 +405,21 @@ public class DshRuntimeConfiguration {
                 environment.getProperty("dsh.persistence.username"), environment.getProperty("dsh.persistence.password"));
     }
 
+    @Bean
+    public McpResourceSubscriptionStore mcpResourceSubscriptionStore(Environment environment) {
+        boolean enabled = Boolean.parseBoolean(environment.getProperty("dsh.persistence.enabled", "false"));
+        if (!enabled) return new InMemoryMcpResourceSubscriptionStore();
+        return new MariaDbMcpResourceSubscriptionStore(environment.getProperty("dsh.persistence.jdbc-url"),
+                environment.getProperty("dsh.persistence.username"), environment.getProperty("dsh.persistence.password"));
+    }
+
     @Bean(destroyMethod = "close")
     public McpClientManager mcpClientManager(McpServerRegistry mcpServerRegistry, ToolRegistry toolRegistry,
                                              ObjectMapper objectMapper, McpHealthStore mcpHealthStore,
+                                             McpResourceSubscriptionStore mcpResourceSubscriptionStore,
                                              Environment environment) {
         McpClientManager manager = new McpClientManager(mcpServerRegistry, toolRegistry, objectMapper, mcpHealthStore,
+                mcpResourceSubscriptionStore,
                 Long.parseLong(environment.getProperty("dsh.mcp.reconnect.initial-delay-ms", "1000")),
                 Long.parseLong(environment.getProperty("dsh.mcp.reconnect.max-delay-ms", "60000")),
                 Integer.parseInt(environment.getProperty("dsh.mcp.reconnect.max-attempts", "8")));

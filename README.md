@@ -142,7 +142,7 @@ export DSH_WORKSPACE_PROCESS_MAX_OUTPUT_BYTES=1000000
 
 前端右上角的 `Tools` 可以添加调试工具。启用 MariaDB 持久化后，自定义工具的名称、描述、JSON Schema、固定返回值、启用状态和审批策略会保存并在重启后恢复；真正的业务执行工具通过插件或 MCP 接入。
 
-MCP Server 管理已经接入官方 Java SDK `0.17.0`，支持 `stdio`、`sse` 和 `streamable_http`。HTTP endpoint 填写服务地址，敏感参数使用 Credential Reference 或加密 Header/Environment 保存，不要把 Key 放进 URL。配置后通过 `POST /api/v1/mcp/servers/{id}/connect` 建立会话，工具会自动同步进统一的 ToolRegistry；`refresh`、`disconnect` 分别用于刷新工具和释放连接。MCP 还提供资源列表/读取、Prompt 列表/加载和 `GET /api/v1/mcp/servers/{id}/health` 健康接口，前端 MCP 面板可直接调试。MCP 工具会以 `mcp_<server-id>_<tool-name>` 暴露，名称只使用模型兼容的字母、数字、下划线和连字符，避免不同 Server 同名冲突；Server 级审批策略会持久化并应用到同步工具。
+MCP Server 管理已经接入官方 Java SDK `0.17.0`，支持 `stdio`、`sse` 和 `streamable_http`。HTTP endpoint 填写服务地址，敏感参数使用 Credential Reference 或加密 Header/Environment 保存，不要把 Key 放进 URL。配置后通过 `POST /api/v1/mcp/servers/{id}/connect` 建立会话，工具会自动同步进统一的 ToolRegistry；`refresh`、`disconnect` 分别用于刷新工具和释放连接。MCP 还提供资源列表/读取、Prompt 列表/加载和 `GET /api/v1/mcp/servers/{id}/health` 健康接口，前端 MCP 面板可直接调试。资源订阅会保存到 `dsh_mcp_resource_subscription`，重启后连接恢复时会重新订阅；删除 Server 会级联清理订阅。MCP 工具会以 `mcp_<server-id>_<tool-name>` 暴露，名称只使用模型兼容的字母、数字、下划线和连字符，避免不同 Server 同名冲突；Server 级审批策略会持久化并应用到同步工具。
 
 Skills 使用文件系统目录，默认扫描项目根目录 `skills/`，也可以通过 `DSH_SKILLS_DIR` 指定目录。每个 Skill 的入口文件是 `skills/<name>/SKILL.md`，支持简单 front matter；`version` 默认是 `0.1.0`，入口文件旁的普通文件会作为相对资源索引返回：
 

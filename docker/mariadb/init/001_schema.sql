@@ -175,6 +175,16 @@ CREATE TABLE IF NOT EXISTS dsh_mcp_health (
     last_error TEXT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS dsh_mcp_resource_subscription (
+    server_id VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+    uri TEXT NOT NULL,
+    uri_hash BINARY(32) NOT NULL,
+    subscribed_at TIMESTAMP(3) NOT NULL,
+    PRIMARY KEY (server_id, uri_hash),
+    CONSTRAINT fk_dsh_mcp_subscription_server FOREIGN KEY (server_id)
+        REFERENCES dsh_mcp_server(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS dsh_agent_profile (
     id VARCHAR(64) NOT NULL PRIMARY KEY,
     name VARCHAR(128) NOT NULL,

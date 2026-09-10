@@ -32,6 +32,7 @@ public final class McpClientManager implements AutoCloseable {
     private final ToolRegistry tools;
     private final ObjectMapper objectMapper;
     private final McpHealthStore healthStore;
+    private final McpResourceSubscriptionStore subscriptionStore;
     private final Map<String, ConnectedServer> connected = new ConcurrentHashMap<String, ConnectedServer>();
     private final Map<String, Set<String>> subscriptions = new ConcurrentHashMap<String, Set<String>>();
     private final Map<String, Map<String, McpResourceUpdate>> resourceUpdates = new ConcurrentHashMap<String, Map<String, McpResourceUpdate>>();
@@ -45,7 +46,8 @@ public final class McpClientManager implements AutoCloseable {
     private volatile boolean closed;
 
     public McpClientManager(McpServerRegistry servers, ToolRegistry tools, ObjectMapper objectMapper) {
-        this(servers, tools, objectMapper, new InMemoryMcpHealthStore(), 1_000, 60_000, 8);
+        this(servers, tools, objectMapper, new InMemoryMcpHealthStore(), new InMemoryMcpResourceSubscriptionStore(),
+                1_000, 60_000, 8);
     }
 
     public McpClientManager(McpServerRegistry servers, ToolRegistry tools, ObjectMapper objectMapper,
@@ -57,6 +59,13 @@ public final class McpClientManager implements AutoCloseable {
     public McpClientManager(McpServerRegistry servers, ToolRegistry tools, ObjectMapper objectMapper,
                             McpHealthStore healthStore, long reconnectInitialDelayMs, long reconnectMaxDelayMs,
                             int reconnectMaxAttempts) {
+        this(servers, tools, objectMapper, healthStore, new InMemoryMcpResourceSubscriptionStore(),
+                reconnectInitialDelayMs, reconnectMaxDelayMs, reconnectMaxAttempts);
+    }
+
+    public McpClientManager(McpServerRegistry servers, ToolRegistry tools, ObjectMapper objectMapper,
+                            McpHealthStore healthStore, McpResourceSubscriptionStore subscriptionStore,
+                            long reconnectInitialDelayMs, long reconnectMaxDelayMs, int reconnectMaxAttempts) {
         if (reconnectInitialDelayMs < 1 || reconnectMaxDelayMs < reconnectInitialDelayMs) {
             throw new IllegalArgumentException("invalid MCP reconnect delay configuration");
         }
@@ -65,9 +74,11 @@ public final class McpClientManager implements AutoCloseable {
         this.tools = tools;
         this.objectMapper = objectMapper;
         this.healthStore = healthStore;
+        this.subscriptionStore = subscriptionStore;
         this.reconnectInitialDelayMs = reconnectInitialDelayMs;
         this.reconnectMaxDelayMs = reconnectMaxDelayMs;
         this.reconnectMaxAttempts = reconnectMaxAttempts;
+        restoreSubscriptionState();
     }
 
     public synchronized McpServerInfo connect(String id) {
@@ -205,6 +216,11 @@ public final class McpClientManager implements AutoCloseable {
     public synchronized void remove(String id) {
         if (servers.find(id) != null) disconnect(id);
         subscriptions.remove(id);
+        try {
+            subscriptionStore.deleteServer(id);
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to delete MCP resource subscriptions", exception);
+        }
         resourceUpdates.remove(id);
         resourceCatalog.remove(id);
         servers.delete(id);
@@ -220,14 +236,25 @@ public final class McpClientManager implements AutoCloseable {
         String normalizedUri = requiredUri(uri);
         McpAsyncClient client = requireClient(id);
         client.subscribeResource(new McpSchema.SubscribeRequest(normalizedUri)).block();
+        McpResourceSubscription subscription = new McpResourceSubscription(id, normalizedUri, java.time.Instant.now());
+        try {
+            subscriptionStore.save(subscription);
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to persist MCP resource subscription", exception);
+        }
         subscriptions.computeIfAbsent(id, ignored -> ConcurrentHashMap.newKeySet()).add(normalizedUri);
-        return new McpResourceSubscription(id, normalizedUri, java.time.Instant.now());
+        return subscription;
     }
 
     public synchronized McpResourceSubscription unsubscribeResource(String id, String uri) {
         requireServer(id);
         String normalizedUri = requiredUri(uri);
         requireClient(id).unsubscribeResource(new McpSchema.UnsubscribeRequest(normalizedUri)).block();
+        try {
+            subscriptionStore.delete(id, normalizedUri);
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to delete MCP resource subscription", exception);
+        }
         Set<String> values = subscriptions.get(id);
         if (values != null) {
             values.remove(normalizedUri);
@@ -292,6 +319,24 @@ public final class McpClientManager implements AutoCloseable {
     private void restoreSubscriptions(String id, McpAsyncClient client) {
         for (String uri : subscriptions.getOrDefault(id, Set.of())) {
             client.subscribeResource(new McpSchema.SubscribeRequest(uri)).block();
+        }
+    }
+
+    private void restoreSubscriptionState() {
+        for (McpServerInfo server : servers.list()) {
+            loadSubscriptions(server.id());
+        }
+    }
+
+    private void loadSubscriptions(String id) {
+        try {
+            Set<String> values = subscriptions.computeIfAbsent(id, ignored -> ConcurrentHashMap.newKeySet());
+            for (McpResourceSubscription subscription : subscriptionStore.list(id)) {
+                if (subscription.uri() != null && !subscription.uri().isBlank()) values.add(subscription.uri());
+            }
+            if (values.isEmpty()) subscriptions.remove(id);
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to load MCP resource subscriptions", exception);
         }
     }
 
