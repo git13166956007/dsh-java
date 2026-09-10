@@ -9,12 +9,12 @@ import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 
-final class SecretCipher {
+public final class SecretCipher {
     private static final String PREFIX = "enc:v1:";
     private final SecretKeySpec key;
     private final SecureRandom random = new SecureRandom();
 
-    SecretCipher(String masterKey) {
+    public SecretCipher(String masterKey) {
         if (masterKey == null || masterKey.isBlank()) {
             key = null;
         } else {
@@ -27,7 +27,7 @@ final class SecretCipher {
         }
     }
 
-    String encrypt(String value) {
+    public String encrypt(String value) {
         if (value == null || value.isBlank() || key == null || value.startsWith(PREFIX)) return value;
         try {
             byte[] nonce = new byte[12];
@@ -44,7 +44,7 @@ final class SecretCipher {
         }
     }
 
-    String decrypt(String value) {
+    public String decrypt(String value) {
         if (value == null || !value.startsWith(PREFIX)) return value;
         if (key == null) throw new IllegalStateException("DSH_SECRET_KEY is required to read encrypted model keys");
         try {

@@ -42,7 +42,9 @@ CREATE TABLE IF NOT EXISTS dsh_mcp_server (
     endpoint VARCHAR(1000) NULL,
     command VARCHAR(1000) NULL,
     arguments_json TEXT NULL,
-    environment_json TEXT NULL,
+    headers_json LONGTEXT NULL,
+    environment_json LONGTEXT NULL,
+    credential_ref VARCHAR(255) NULL,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)

@@ -75,8 +75,10 @@ public final class McpClientManager implements AutoCloseable {
     }
 
     private McpSyncClient buildClient(McpServerInfo server) {
+        McpServerSecrets credentials = servers.credentials(server.id());
         if ("stdio".equals(server.transport())) {
-            ServerParameters parameters = ServerParameters.builder(server.command()).args(server.arguments()).build();
+            ServerParameters parameters = ServerParameters.builder(server.command()).args(server.arguments())
+                    .env(resolveEnvironment(server, credentials)).build();
             StdioClientTransport transport = new StdioClientTransport(parameters, McpJsonMapper.getDefault());
             return McpClient.sync(transport).requestTimeout(Duration.ofSeconds(30))
                     .clientInfo(new McpSchema.Implementation("dsh-java", "0.1.0"))
@@ -86,7 +88,8 @@ public final class McpClientManager implements AutoCloseable {
         if ("sse".equals(server.transport())) {
             ResolvedEndpoint endpoint = resolveEndpoint(server.endpoint(), "/sse");
             HttpClientSseClientTransport transport = HttpClientSseClientTransport.builder(endpoint.baseUri())
-                    .sseEndpoint(endpoint.endpoint()).build();
+                    .sseEndpoint(endpoint.endpoint())
+                    .customizeRequest(builder -> applyHeaders(builder, resolveHeaders(server, credentials))).build();
             return McpClient.sync(transport).requestTimeout(Duration.ofSeconds(30))
                     .clientInfo(new McpSchema.Implementation("dsh-java", "0.1.0"))
                     .toolsChangeConsumer(updated -> refreshTools(server, updated))
@@ -94,7 +97,8 @@ public final class McpClientManager implements AutoCloseable {
         }
         ResolvedEndpoint endpoint = resolveEndpoint(server.endpoint(), "/mcp");
         HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport.builder(endpoint.baseUri())
-                .endpoint(endpoint.endpoint()).build();
+                .endpoint(endpoint.endpoint())
+                .customizeRequest(builder -> applyHeaders(builder, resolveHeaders(server, credentials))).build();
         return McpClient.sync(transport).requestTimeout(Duration.ofSeconds(30))
                 .clientInfo(new McpSchema.Implementation("dsh-java", "0.1.0"))
                 .toolsChangeConsumer(updated -> refreshTools(server, updated))
@@ -165,6 +169,50 @@ public final class McpClientManager implements AutoCloseable {
 
     private static String source(String id) {
         return "mcp:" + id;
+    }
+
+    private Map<String, String> resolveHeaders(McpServerInfo server, McpServerSecrets credentials) {
+        Map<String, String> result = new LinkedHashMap<String, String>();
+        credentials.headers().forEach((name, value) -> result.put(name, resolveValue(value)));
+        if (server.credentialRef() != null && !result.keySet().stream()
+                .anyMatch(name -> "authorization".equalsIgnoreCase(name))) {
+            result.put("Authorization", "Bearer " + resolveReference(server.credentialRef()));
+        }
+        return result;
+    }
+
+    private Map<String, String> resolveEnvironment(McpServerInfo server, McpServerSecrets credentials) {
+        Map<String, String> result = new LinkedHashMap<String, String>();
+        credentials.environment().forEach((name, value) -> result.put(name, resolveValue(value)));
+        if (server.credentialRef() != null && !result.containsKey("MCP_API_KEY")) {
+            result.put("MCP_API_KEY", resolveReference(server.credentialRef()));
+        }
+        return result;
+    }
+
+    private static void applyHeaders(java.net.http.HttpRequest.Builder builder, Map<String, String> headers) {
+        headers.forEach(builder::header);
+    }
+
+    private static String resolveValue(String value) {
+        if (value == null) return null;
+        String trimmed = value.trim();
+        if (trimmed.startsWith("env:")) return resolveReference(trimmed.substring(4));
+        if (trimmed.startsWith("${") && trimmed.endsWith("}")) {
+            return resolveReference(trimmed.substring(2, trimmed.length() - 1));
+        }
+        return value;
+    }
+
+    private static String resolveReference(String reference) {
+        String name = reference == null ? "" : reference.trim();
+        if (name.isEmpty()) throw new IllegalArgumentException("MCP credential reference must not be blank");
+        String value = System.getenv(name);
+        if (value == null || value.isBlank()) value = System.getProperty(name);
+        if (value == null || value.isBlank()) {
+            throw new IllegalStateException("MCP credential reference is not configured: " + name);
+        }
+        return value;
     }
 
     static ResolvedEndpoint resolveEndpoint(String endpoint, String defaultPath) {

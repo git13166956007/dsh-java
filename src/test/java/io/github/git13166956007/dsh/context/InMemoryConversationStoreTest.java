@@ -36,4 +36,19 @@ class InMemoryConversationStoreTest {
         assertTrue(window.truncated());
         assertTrue(window.estimatedTokens() <= 4);
     }
+
+    @Test
+    void modelContextWindowNarrowsGlobalBudget() throws Exception {
+        InMemoryConversationStore store = new InMemoryConversationStore();
+        ContextManager context = new ContextManager(store, 10, 100);
+        String id = context.open(null, "model budget");
+        context.append(id, ChatMessage.user("1234567890"));
+        context.append(id, ChatMessage.assistant("old", List.of()));
+        context.append(id, ChatMessage.user("new"));
+
+        ContextWindow window = context.window(id, 4);
+
+        assertEquals(4, window.maxTokens());
+        assertEquals(List.of("old", "new"), window.messages().stream().map(ChatMessage::content).toList());
+    }
 }

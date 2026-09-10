@@ -34,12 +34,21 @@ public final class ContextManager {
     }
 
     public List<ChatMessage> history(String conversationId) throws Exception {
-        return window(conversationId).messages();
+        return history(conversationId, 0);
+    }
+
+    public List<ChatMessage> history(String conversationId, int modelContextWindow) throws Exception {
+        return window(conversationId, modelContextWindow).messages();
     }
 
     public ContextWindow window(String conversationId) throws Exception {
+        return window(conversationId, 0);
+    }
+
+    public ContextWindow window(String conversationId, int modelContextWindow) throws Exception {
         List<ChatMessage> loaded = store.load(conversationId, maxHistoryMessages);
-        if (loaded.isEmpty()) return new ContextWindow(List.of(), 0, maxContextTokens, false);
+        int contextTokens = modelContextWindow > 0 ? Math.min(maxContextTokens, modelContextWindow) : maxContextTokens;
+        if (loaded.isEmpty()) return new ContextWindow(List.of(), 0, contextTokens, false);
 
         List<ChatMessage> selected = new java.util.ArrayList<ChatMessage>();
         int tokens = 0;
@@ -47,7 +56,7 @@ public final class ContextManager {
         for (int index = loaded.size() - 1; index >= 0; index--) {
             ChatMessage message = loaded.get(index);
             int messageTokens = estimateTokens(message);
-            if (!selected.isEmpty() && tokens + messageTokens > maxContextTokens) {
+            if (!selected.isEmpty() && tokens + messageTokens > contextTokens) {
                 truncated = true;
                 break;
             }
@@ -55,7 +64,7 @@ public final class ContextManager {
             tokens += messageTokens;
         }
         if (selected.size() < loaded.size()) truncated = true;
-        return new ContextWindow(selected, tokens, maxContextTokens, truncated);
+        return new ContextWindow(selected, tokens, contextTokens, truncated);
     }
 
     public void append(String conversationId, ChatMessage message) throws Exception {

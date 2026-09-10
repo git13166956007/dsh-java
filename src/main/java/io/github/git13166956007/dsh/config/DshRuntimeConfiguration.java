@@ -254,7 +254,8 @@ public class DshRuntimeConfiguration {
         boolean enabled = Boolean.parseBoolean(environment.getProperty("dsh.persistence.enabled", "false"));
         if (!enabled) return new InMemoryMcpServerStore();
         return new MariaDbMcpServerStore(environment.getProperty("dsh.persistence.jdbc-url"),
-                environment.getProperty("dsh.persistence.username"), environment.getProperty("dsh.persistence.password"), objectMapper);
+                environment.getProperty("dsh.persistence.username"), environment.getProperty("dsh.persistence.password"),
+                objectMapper, environment.getProperty("dsh.security.secret-key", environment.getProperty("DSH_SECRET_KEY", "")));
     }
 
     @Bean

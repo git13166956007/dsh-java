@@ -96,7 +96,7 @@ const modelForm = ref({
 const modelFormError = ref('')
 const modelSaving = ref(false)
 const modelTesting = ref(null)
-const mcpForm = ref({ name: '', transport: 'stdio', endpoint: '', command: '', arguments: '' })
+const mcpForm = ref({ name: '', transport: 'stdio', endpoint: '', command: '', arguments: '', credentialRef: '', headers: '{}', environment: '{}' })
 const mcpFormError = ref('')
 const mcpSaving = ref(false)
 const toolForm = ref({
@@ -693,8 +693,15 @@ async function deleteTool(tool) {
 }
 
 function resetMcpForm() {
-  mcpForm.value = { name: '', transport: 'stdio', endpoint: '', command: '', arguments: '' }
+  mcpForm.value = { name: '', transport: 'stdio', endpoint: '', command: '', arguments: '', credentialRef: '', headers: '{}', environment: '{}' }
   mcpFormError.value = ''
+}
+
+function parseMcpMap(value, label) {
+  if (!value.trim()) return {}
+  const parsed = JSON.parse(value)
+  if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') throw new Error(`${label} must be a JSON object`)
+  return Object.fromEntries(Object.entries(parsed).map(([key, item]) => [key, String(item)]))
 }
 
 async function createMcpServer() {
@@ -713,6 +720,8 @@ async function createMcpServer() {
   }
   mcpSaving.value = true
   try {
+    const headers = parseMcpMap(mcpForm.value.headers, 'Headers')
+    const environment = parseMcpMap(mcpForm.value.environment, 'Environment')
     const response = await fetch('/api/v1/mcp/servers', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -721,7 +730,10 @@ async function createMcpServer() {
         transport: mcpForm.value.transport,
         endpoint: mcpForm.value.endpoint.trim() || null,
         command: mcpForm.value.command.trim() || null,
-        arguments: mcpForm.value.arguments.split(/\s+/).filter(Boolean)
+        arguments: mcpForm.value.arguments.split(/\s+/).filter(Boolean),
+        credentialRef: mcpForm.value.credentialRef.trim() || null,
+        headers,
+        environment
       })
     })
     const payload = await response.json().catch(() => ({}))
@@ -1444,9 +1456,12 @@ onUnmounted(() => clearTimeout(planPollTimer))
             <label><span>Name</span><input v-model="mcpForm.name" placeholder="filesystem" autocomplete="off" /></label>
             <label><span>Transport</span><select v-model="mcpForm.transport"><option value="stdio">stdio</option><option value="sse">sse</option><option value="streamable_http">streamable_http</option></select></label>
           </div>
-          <label v-if="mcpForm.transport !== 'stdio'"><span>Endpoint</span><input v-model="mcpForm.endpoint" :placeholder="mcpForm.transport === 'streamable_http' ? 'https://mcp.amap.com/mcp?key=YOUR_KEY' : 'http://localhost:3000/sse'" autocomplete="off" /></label>
+          <label v-if="mcpForm.transport !== 'stdio'"><span>Endpoint</span><input v-model="mcpForm.endpoint" :placeholder="mcpForm.transport === 'streamable_http' ? 'https://mcp.amap.com/mcp' : 'http://localhost:3000/sse'" autocomplete="off" /></label>
           <label v-else><span>Command</span><input v-model="mcpForm.command" placeholder="npx" autocomplete="off" /></label>
-          <label><span>{{ mcpForm.transport === 'stdio' ? 'Arguments' : 'Endpoint hint' }}</span><input v-if="mcpForm.transport === 'stdio'" v-model="mcpForm.arguments" placeholder="-y @modelcontextprotocol/server-filesystem /tmp" autocomplete="off" /><input v-else :value="mcpForm.transport === 'streamable_http' ? 'AMap: https://mcp.amap.com/mcp?key=YOUR_KEY' : 'Use the server SSE endpoint, for example /sse'" disabled /></label>
+          <label><span>{{ mcpForm.transport === 'stdio' ? 'Arguments' : 'Endpoint hint' }}</span><input v-if="mcpForm.transport === 'stdio'" v-model="mcpForm.arguments" placeholder="-y @modelcontextprotocol/server-filesystem /tmp" autocomplete="off" /><input v-else :value="mcpForm.transport === 'streamable_http' ? 'Use Credential reference for API key' : 'Use the server SSE endpoint, for example /sse'" disabled /></label>
+          <label><span>Credential reference</span><input v-model="mcpForm.credentialRef" placeholder="AMAP_API_KEY" autocomplete="off" /></label>
+          <label><span>Headers JSON</span><textarea v-model="mcpForm.headers" rows="3" spellcheck="false" placeholder='{"X-Tenant": "demo"}'></textarea></label>
+          <label><span>Environment JSON</span><textarea v-model="mcpForm.environment" rows="3" spellcheck="false" placeholder='{"API_KEY": "env:AMAP_API_KEY"}'></textarea></label>
           <p v-if="mcpFormError" class="tool-form-error">{{ mcpFormError }}</p>
           <div class="tool-form-footer"><button class="secondary-button" type="button" @click="resetMcpForm">Reset</button><button class="send-button" type="submit" :disabled="mcpSaving"><span>{{ mcpSaving ? 'Adding' : 'Add server' }}</span><span class="send-arrow">↗</span></button></div>
         </form>

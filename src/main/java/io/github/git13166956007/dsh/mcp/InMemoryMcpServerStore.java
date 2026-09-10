@@ -7,6 +7,7 @@ import java.util.Map;
 
 public final class InMemoryMcpServerStore implements McpServerStore {
     private final Map<String, McpServerInfo> servers = new LinkedHashMap<String, McpServerInfo>();
+    private final Map<String, McpServerSecrets> secrets = new LinkedHashMap<String, McpServerSecrets>();
 
     @Override
     public synchronized List<McpServerInfo> list() {
@@ -21,5 +22,16 @@ public final class InMemoryMcpServerStore implements McpServerStore {
     @Override
     public synchronized void delete(String id) {
         servers.remove(id);
+        secrets.remove(id);
+    }
+
+    @Override
+    public synchronized McpServerSecrets loadSecrets(String id) {
+        return secrets.getOrDefault(id, McpServerSecrets.empty());
+    }
+
+    @Override
+    public synchronized void saveSecrets(String id, McpServerSecrets value) {
+        secrets.put(id, value == null ? McpServerSecrets.empty() : value);
     }
 }

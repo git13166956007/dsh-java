@@ -11,6 +11,7 @@ public final class McpServerRegistry {
     private static final List<String> SUPPORTED_TRANSPORTS = List.of("stdio", "sse", "streamable_http");
     private final McpServerStore store;
     private final Map<String, McpServerInfo> servers = new LinkedHashMap<String, McpServerInfo>();
+    private final Map<String, McpServerSecrets> secrets = new LinkedHashMap<String, McpServerSecrets>();
 
     public McpServerRegistry() {
         this(null);
@@ -20,7 +21,11 @@ public final class McpServerRegistry {
         this.store = store;
         if (store != null) {
             try {
-                for (McpServerInfo server : store.list()) servers.put(server.id(), server);
+                for (McpServerInfo server : store.list()) {
+                    McpServerSecrets value = store.loadSecrets(server.id());
+                    secrets.put(server.id(), value);
+                    servers.put(server.id(), withSecretMetadata(server, value));
+                }
             } catch (Exception exception) {
                 throw new IllegalStateException("failed to load MCP server profiles", exception);
             }
@@ -29,6 +34,12 @@ public final class McpServerRegistry {
 
     public synchronized McpServerInfo create(String name, String transport, String endpoint,
                                               String command, List<String> arguments) {
+        return create(name, transport, endpoint, command, arguments, null, Map.of(), Map.of());
+    }
+
+    public synchronized McpServerInfo create(String name, String transport, String endpoint,
+                                              String command, List<String> arguments, String credentialRef,
+                                              Map<String, String> headers, Map<String, String> environment) {
         String normalizedName = required(name, "name");
         String normalizedTransport = normalizeTransport(transport);
         validateTransport(normalizedTransport, endpoint, command);
@@ -36,8 +47,9 @@ public final class McpServerRegistry {
             throw new IllegalArgumentException("duplicate MCP server: " + normalizedName);
         }
         McpServerInfo server = new McpServerInfo(UUID.randomUUID().toString(), normalizedName,
-                normalizedTransport, blankToNull(endpoint), blankToNull(command), arguments, true, "DISCONNECTED");
-        save(server);
+                normalizedTransport, blankToNull(endpoint), blankToNull(command), arguments, true, "DISCONNECTED",
+                blankToNull(credentialRef), names(headers), names(environment));
+        save(server, new McpServerSecrets(headers, environment));
         return server;
     }
 
@@ -51,7 +63,18 @@ public final class McpServerRegistry {
 
     public synchronized McpServerInfo update(String id, String name, String transport, String endpoint,
                                               String command, List<String> arguments, Boolean enabled) {
+        return update(id, name, transport, endpoint, command, arguments, enabled, null, null, null);
+    }
+
+    public synchronized McpServerInfo update(String id, String name, String transport, String endpoint,
+                                              String command, List<String> arguments, Boolean enabled,
+                                              String credentialRef, Map<String, String> headers,
+                                              Map<String, String> environment) {
         McpServerInfo current = require(id);
+        McpServerSecrets currentSecrets = secrets.getOrDefault(id, McpServerSecrets.empty());
+        McpServerSecrets nextSecrets = new McpServerSecrets(
+                headers == null ? currentSecrets.headers() : headers,
+                environment == null ? currentSecrets.environment() : environment);
         String nextName = name == null ? current.name() : required(name, "name");
         String nextTransport = transport == null ? current.transport() : normalizeTransport(transport);
         String nextEndpoint = endpoint == null ? current.endpoint() : blankToNull(endpoint);
@@ -61,10 +84,12 @@ public final class McpServerRegistry {
                 && server.name().equalsIgnoreCase(nextName))) {
             throw new IllegalArgumentException("duplicate MCP server: " + nextName);
         }
+        String nextCredentialRef = credentialRef == null ? current.credentialRef() : blankToNull(credentialRef);
         McpServerInfo updated = new McpServerInfo(id, nextName, nextTransport, nextEndpoint, nextCommand,
                 arguments == null ? current.arguments() : arguments,
-                enabled == null ? current.enabled() : enabled, "DISCONNECTED");
-        save(updated);
+                enabled == null ? current.enabled() : enabled, "DISCONNECTED", nextCredentialRef,
+                names(nextSecrets.headers()), names(nextSecrets.environment()));
+        save(updated, nextSecrets);
         return updated;
     }
 
@@ -73,6 +98,7 @@ public final class McpServerRegistry {
         try {
             if (store != null) store.delete(id);
             servers.remove(id);
+            secrets.remove(id);
             return true;
         } catch (Exception exception) {
             throw new IllegalStateException("failed to delete MCP server profile", exception);
@@ -82,14 +108,22 @@ public final class McpServerRegistry {
     public synchronized McpServerInfo setStatus(String id, String status) {
         McpServerInfo current = require(id);
         McpServerInfo updated = new McpServerInfo(current.id(), current.name(), current.transport(),
-                current.endpoint(), current.command(), current.arguments(), current.enabled(), status);
-        save(updated);
+                current.endpoint(), current.command(), current.arguments(), current.enabled(), status,
+                current.credentialRef(), current.headerNames(), current.environmentNames());
+        save(updated, secrets.getOrDefault(id, McpServerSecrets.empty()));
         return updated;
     }
 
-    private void save(McpServerInfo server) {
+    public synchronized McpServerSecrets credentials(String id) {
+        require(id);
+        return secrets.getOrDefault(id, McpServerSecrets.empty());
+    }
+
+    private void save(McpServerInfo server, McpServerSecrets serverSecrets) {
         try {
             if (store != null) store.save(server);
+            if (store != null) store.saveSecrets(server.id(), serverSecrets);
+            secrets.put(server.id(), serverSecrets);
             servers.put(server.id(), server);
         } catch (Exception exception) {
             throw new IllegalStateException("failed to save MCP server profile", exception);
@@ -129,5 +163,16 @@ public final class McpServerRegistry {
     private static String blankToNull(String value) {
         if (value == null || value.trim().isEmpty()) return null;
         return value.trim();
+    }
+
+    private static List<String> names(Map<String, String> values) {
+        return values == null ? List.of() : values.keySet().stream()
+                .filter(key -> key != null && !key.isBlank()).map(String::trim).distinct().toList();
+    }
+
+    private static McpServerInfo withSecretMetadata(McpServerInfo server, McpServerSecrets value) {
+        return new McpServerInfo(server.id(), server.name(), server.transport(), server.endpoint(), server.command(),
+                server.arguments(), server.enabled(), server.status(), server.credentialRef(),
+                names(value.headers()), names(value.environment()));
     }
 }

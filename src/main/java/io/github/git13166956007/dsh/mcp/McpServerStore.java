@@ -8,4 +8,11 @@ public interface McpServerStore {
     void save(McpServerInfo server) throws Exception;
 
     void delete(String id) throws Exception;
+
+    default McpServerSecrets loadSecrets(String id) throws Exception {
+        return McpServerSecrets.empty();
+    }
+
+    default void saveSecrets(String id, McpServerSecrets secrets) throws Exception {
+    }
 }

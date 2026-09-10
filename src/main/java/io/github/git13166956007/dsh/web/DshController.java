@@ -164,7 +164,7 @@ public final class DshController {
     public McpServerInfo createMcpServer(@RequestBody McpServerRequest request) {
         try {
             return mcpServerRegistry.create(request.name(), request.transport(), request.endpoint(),
-                    request.command(), request.arguments());
+                    request.command(), request.arguments(), request.credentialRef(), request.headers(), request.environment());
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
         }
@@ -175,7 +175,8 @@ public final class DshController {
         try {
             mcpClientManager.disconnect(id);
             McpServerInfo updated = mcpServerRegistry.update(id, request.name(), request.transport(), request.endpoint(),
-                    request.command(), request.arguments(), request.enabled());
+                    request.command(), request.arguments(), request.enabled(), request.credentialRef(),
+                    request.headers(), request.environment());
             return updated.enabled() ? mcpClientManager.connect(id) : updated;
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
@@ -579,7 +580,8 @@ public final class DshController {
         AgentMode mode = requestedMode(request.mode());
         try {
             String conversationId = contextManager.open(request.conversationId(), request.message());
-            java.util.List<ChatMessage> history = contextManager.history(conversationId);
+            java.util.List<ChatMessage> history = contextManager.history(conversationId,
+                    modelContextWindow(request.modelId(), request.agentId()));
             contextManager.append(conversationId, ChatMessage.user(request.message()));
             AgentRunResult result = agentLoop.runDetailed(request.message(), request.apiKey(), history, request.modelId(),
                     request.agentId(), mode, "conversation", conversationId,
@@ -609,7 +611,8 @@ public final class DshController {
         AgentMode mode = requestedMode(request.mode());
         try {
             conversationId = contextManager.open(request.conversationId(), request.message());
-            history = contextManager.history(conversationId);
+            history = contextManager.history(conversationId,
+                    modelContextWindow(request.modelId(), request.agentId()));
             contextManager.append(conversationId, ChatMessage.user(request.message()));
         } catch (Exception exception) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, exception.getMessage(), exception);
@@ -673,6 +676,15 @@ public final class DshController {
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
         }
+    }
+
+    private int modelContextWindow(String modelId, String agentId) {
+        String selectedModelId = modelId;
+        if ((selectedModelId == null || selectedModelId.isBlank()) && agentId != null && !agentId.isBlank()) {
+            AgentProfile profile = agentProfileRegistry.find(agentId);
+            if (profile != null) selectedModelId = profile.modelId();
+        }
+        return modelRegistry.resolve(selectedModelId).contextWindow();
     }
 
     private static boolean isDescendant(Run run, String rootId, java.util.Map<String, Run> byId) {
@@ -755,7 +767,8 @@ public final class DshController {
     }
 
     public record McpServerRequest(String name, String transport, String endpoint, String command,
-                                   java.util.List<String> arguments, Boolean enabled) {
+                                   java.util.List<String> arguments, Boolean enabled, String credentialRef,
+                                   Map<String, String> headers, Map<String, String> environment) {
     }
 
     public record ChatResponse(String conversationId, String message,
