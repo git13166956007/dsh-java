@@ -1,0 +1,22 @@
+frontend/src/App.vue
+  h_eb697744b14c1b 173-187,1492-1495
+frontend/src/style.css
+  h_eb697744b14c1b 28
+src/main/java/io/github/git13166956007/dsh/core/DshRuntime.java
+  h_eb697744b14c1b 134-138,288-289
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 133-137,158-162
+src/test/java/io/github/git13166956007/dsh/core/DshRuntimePluginLoadingTest.java
+  h_eb697744b14c1b 33-34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "274d839a4d94d3493c5bcd77ef03d9f42ce38476",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
