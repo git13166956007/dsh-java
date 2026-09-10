@@ -15,8 +15,10 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
+import io.github.git13166956007.dsh.tool.ToolDefinition;
 
 public final class AgentLoop {
+    private static final String DELEGATE_TOOL = "delegate_to_subagent";
     private final ChatModel model;
     private final ToolRegistry tools;
     private final SkillRegistry skills;
@@ -26,6 +28,7 @@ public final class AgentLoop {
     private final AgentContinuationStore continuations;
     private final ObjectMapper objectMapper;
     private final int maxTurns;
+    private volatile SubAgentRunner subAgents;
     private final Map<String, PendingExecution> pendingApprovals = new ConcurrentHashMap<String, PendingExecution>();
 
     public AgentLoop(ChatModel model, ToolRegistry tools, int maxTurns) {
@@ -64,6 +67,10 @@ public final class AgentLoop {
         this.continuations = continuations;
         this.objectMapper = objectMapper == null ? new ObjectMapper() : objectMapper;
         this.maxTurns = maxTurns;
+    }
+
+    public void setSubAgentRunner(SubAgentRunner subAgents) {
+        this.subAgents = subAgents;
     }
 
     public String run(String prompt) throws Exception {
@@ -141,8 +148,7 @@ public final class AgentLoop {
             messages.add(ChatMessage.system(systemPrompt(options, prompt)));
             messages.addAll(history);
             messages.add(ChatMessage.user(prompt));
-            List<io.github.git13166956007.dsh.tool.ToolDefinition> definitions = options.mode().toolsEnabled()
-                    ? tools.definitions(options.allowedToolNames()) : List.of();
+            List<ToolDefinition> definitions = definitions(options);
 
             for (int turn = 0; turn < options.maxTurns(); turn++) {
                 budget.check();
@@ -163,7 +169,7 @@ public final class AgentLoop {
                     recordEvent(runId, "tool_call", call.name() + " " + call.arguments());
                     String result;
                     try {
-                        result = tools.execute(call.name(), call.arguments(), options.allowedToolNames());
+                        result = executeTool(call, options, apiKey, runId, budget);
                     } catch (ToolApprovalRequiredException exception) {
                         PendingToolApproval approval = new PendingToolApproval(call.id(), call.name(), call.arguments());
                         String approvalRunId = pauseForApproval(runId, messages, trace, turn + 1, options, apiKey,
@@ -231,8 +237,7 @@ public final class AgentLoop {
             messages.add(ChatMessage.system(systemPrompt(options, prompt)));
             messages.addAll(history);
             messages.add(ChatMessage.user(prompt));
-            List<io.github.git13166956007.dsh.tool.ToolDefinition> definitions = options.mode().toolsEnabled()
-                    ? tools.definitions(options.allowedToolNames()) : List.of();
+            List<ToolDefinition> definitions = definitions(options);
 
             for (int turn = 0; turn < options.maxTurns(); turn++) {
                 budget.check();
@@ -257,7 +262,7 @@ public final class AgentLoop {
                     listener.onToolCall(call);
                     String result;
                     try {
-                        result = tools.execute(call.name(), call.arguments(), options.allowedToolNames());
+                        result = executeTool(call, options, apiKey, runId, budget);
                     } catch (ToolApprovalRequiredException exception) {
                         PendingToolApproval approval = new PendingToolApproval(call.id(), call.name(), call.arguments());
                         String approvalRunId = pauseForApproval(runId, messages, trace, turn + 1, options, apiKey,
@@ -347,7 +352,7 @@ public final class AgentLoop {
                 recordEvent(pending.runId, "tool_call", call.name() + " " + call.arguments());
                 String result;
                 try {
-                    result = tools.execute(call.name(), call.arguments(), pending.options.allowedToolNames());
+                    result = executeTool(call, pending.options, pending.apiKey, pending.runId, pending.budget);
                 } catch (ToolApprovalRequiredException exception) {
                     PendingToolApproval approval = new PendingToolApproval(call.id(), call.name(), call.arguments());
                     pauseForApproval(pending.runId, pending.messages, pending.trace, turn + 1, pending.options,
@@ -377,6 +382,84 @@ public final class AgentLoop {
             runs.waitForApproval(actualRunId, approval.toolName() + " " + approval.arguments());
         }
         return actualRunId;
+    }
+
+    private List<ToolDefinition> definitions(RunOptions options) {
+        if (!options.mode().toolsEnabled()) return List.of();
+        List<ToolDefinition> result = new ArrayList<ToolDefinition>(tools.definitions(options.allowedToolNames()));
+        if (delegationAllowed(options)) result.add(delegationDefinition());
+        return result;
+    }
+
+    private boolean delegationAllowed(RunOptions options) {
+        return subAgents != null
+                && (options.allowedToolNames() == null || options.allowedToolNames().contains(DELEGATE_TOOL))
+                && !subAgents.delegableProfiles().isEmpty();
+    }
+
+    private ToolDefinition delegationDefinition() {
+        ObjectNode schema = objectMapper.createObjectNode();
+        schema.put("type", "object");
+        ObjectNode properties = schema.putObject("properties");
+        properties.putObject("profileId").put("type", "string")
+                .put("description", "The execution sub-agent profile ID.");
+        properties.putObject("task").put("type", "string")
+                .put("description", "A self-contained task for the sub-agent to complete.");
+        schema.putArray("required").add("profileId").add("task");
+
+        StringBuilder description = new StringBuilder("Delegate a self-contained task to an enabled execution sub-agent. Available profiles: ");
+        boolean first = true;
+        for (SubAgentProfile profile : subAgents.delegableProfiles()) {
+            if (!first) description.append("; ");
+            description.append(profile.id()).append(" (").append(profile.name())
+                    .append(", tools=").append(profile.allowedToolNames())
+                    .append(", skills=").append(profile.skillIds()).append(')');
+            first = false;
+        }
+        return new ToolDefinition(DELEGATE_TOOL, description.toString(), schema);
+    }
+
+    private String executeTool(ToolCall call, RunOptions options, String apiKey, String runId,
+                               ExecutionBudget budget) throws Exception {
+        if (!DELEGATE_TOOL.equals(call.name())) {
+            return tools.execute(call.name(), call.arguments(), options.allowedToolNames());
+        }
+        if (!delegationAllowed(options)) {
+            throw new IllegalStateException("sub-agent delegation is not allowed for this agent");
+        }
+        JsonNode arguments = call.arguments() == null ? objectMapper.createObjectNode() : call.arguments();
+        String profileId = arguments.path("profileId").asString(null);
+        String task = arguments.path("task").asString(null);
+        if (profileId == null || profileId.isBlank()) {
+            throw new IllegalArgumentException("delegate_to_subagent requires profileId");
+        }
+        if (task == null || task.isBlank()) {
+            throw new IllegalArgumentException("delegate_to_subagent requires task");
+        }
+        if (!subAgents.canDelegate(profileId.trim())) {
+            throw new IllegalArgumentException("unknown or non-execution sub-agent profile: " + profileId);
+        }
+        String normalizedProfileId = profileId.trim();
+        String normalizedTask = task.trim();
+        recordEvent(runId, "sub_agent_started", normalizedProfileId + " " + normalizedTask);
+        try {
+            if (runs != null && runId != null && runs.subAgentDepth(runId) + 1 > options.maxDepth()) {
+                throw new AgentBudgetExceededException("maximum sub-agent depth exceeded: " + options.maxDepth());
+            }
+            AgentRunResult child = subAgents.runForExecution(normalizedTask, apiKey, normalizedProfileId,
+                    runId, null, null);
+            budget.check();
+            String answer = child.answer() == null ? "" : child.answer();
+            String runLabel = child.runId() == null ? "" : " (run " + child.runId() + ")";
+            String result = child.pendingApproval() == null
+                    ? "Sub-agent " + normalizedProfileId + " completed" + runLabel + ":\n" + answer
+                    : "Sub-agent " + normalizedProfileId + " is waiting for approval" + runLabel;
+            recordEvent(runId, "sub_agent_completed", normalizedProfileId + " " + result);
+            return result;
+        } catch (Exception exception) {
+            recordEvent(runId, "sub_agent_failed", normalizedProfileId + " " + exception.getMessage());
+            throw exception;
+        }
     }
 
     private RunOptions options(String modelId, String agentId, AgentMode modeOverride) {
@@ -472,8 +555,7 @@ public final class AgentLoop {
         List<ChatMessage> messages = readMessages(root.path("messages"));
         List<AgentTraceEvent> trace = readTrace(root.path("trace"));
         PendingToolApproval approval = readApproval(root.path("approval"));
-        List<io.github.git13166956007.dsh.tool.ToolDefinition> definitions = options.mode().toolsEnabled()
-                ? tools.definitions(options.allowedToolNames()) : List.of();
+        List<ToolDefinition> definitions = definitions(options);
         ExecutionBudget budget = new ExecutionBudget(options, root.path("toolCalls").asInt(0),
                 root.path("remainingMillis").asLong(Long.MAX_VALUE));
         return new PendingExecution(runId, messages, trace, root.path("nextTurn").asInt(0), options, null,

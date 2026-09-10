@@ -26,6 +26,14 @@ public final class SubAgentRunner {
         return run(prompt, apiKey, profileId, AgentMode.EXECUTION, parentRunId, planId, stepId);
     }
 
+    public List<SubAgentProfile> delegableProfiles() {
+        return profiles.delegableProfiles();
+    }
+
+    public boolean canDelegate(String profileId) {
+        return delegableProfiles().stream().anyMatch(profile -> profile.id().equals(profileId));
+    }
+
     private AgentRunResult run(String prompt, String apiKey, String profileId, AgentMode modeOverride) throws Exception {
         return run(prompt, apiKey, profileId, modeOverride, null, null, null);
     }

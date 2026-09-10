@@ -17,6 +17,7 @@ import tools.jackson.databind.ObjectMapper;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AgentLoopTest {
     @Test
@@ -48,6 +49,137 @@ class AgentLoopTest {
 
         assertEquals("done", new AgentLoop(model, tools, 2).run("hello"));
         assertEquals(1, executions.get());
+    }
+
+    @Test
+    void delegatesToExecutionSubAgentAndReturnsItsResultToParent() throws Exception {
+        ToolRegistry tools = new ToolRegistry();
+        SubAgentProfileRegistry profiles = new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 8);
+        SubAgentProfile worker = profiles.create("Research worker", AgentMode.EXECUTION, null, "", 2,
+                List.of(), List.of(), true);
+        RunManager runs = new RunManager(new InMemoryRunStore());
+        ChatModel model = new ChatModel() {
+            private int calls;
+
+            @Override
+            public ModelResponse complete(List<ChatMessage> messages, List<ToolDefinition> definitions) {
+                calls++;
+                if (calls == 1) {
+                    assertTrue(definitions.stream().anyMatch(definition ->
+                            "delegate_to_subagent".equals(definition.name())));
+                    return new ModelResponse(null, List.of(new ToolCall("delegate-1", "delegate_to_subagent",
+                            new ObjectMapper().createObjectNode().put("profileId", worker.id())
+                                    .put("task", "delegate task"))), "tool_calls");
+                }
+                if (messages.get(messages.size() - 1).role() == ChatMessage.Role.USER) {
+                    return new ModelResponse("child answer", List.of(), "stop");
+                }
+                return new ModelResponse("parent answer", List.of(), "stop");
+            }
+        };
+
+        AgentLoop loop = new AgentLoop(model, tools, null, null, null, runs, null,
+                new ObjectMapper(), 4);
+        loop.setSubAgentRunner(new SubAgentRunner(loop, profiles));
+
+        AgentRunResult result = loop.runDetailed("parent task", null, List.of());
+
+        assertEquals("parent answer", result.answer());
+        assertTrue(result.trace().stream().anyMatch(event ->
+                "delegate_to_subagent".equals(event.name()) && event.result().contains("child answer")));
+        assertEquals(1, runs.list().stream().filter(run -> run.kind() == io.github.git13166956007.dsh.run.RunKind.SUB_AGENT).count());
+        assertTrue(runs.events(result.runId()).stream().anyMatch(event ->
+                "sub_agent_completed".equals(event.type())));
+    }
+
+    @Test
+    void streamsDelegationThroughTheNormalToolLifecycle() throws Exception {
+        ToolRegistry tools = new ToolRegistry();
+        SubAgentProfileRegistry profiles = new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 8);
+        SubAgentProfile worker = profiles.create("Streaming worker", AgentMode.EXECUTION, null, "", 2,
+                List.of(), List.of(), true);
+        ChatModel model = new ChatModel() {
+            private int completeCalls;
+            private int streamCalls;
+
+            @Override
+            public ModelResponse complete(List<ChatMessage> messages, List<ToolDefinition> definitions) {
+                completeCalls++;
+                return new ModelResponse("child streamed result", List.of(), "stop");
+            }
+
+            @Override
+            public ModelResponse stream(List<ChatMessage> messages, List<ToolDefinition> definitions,
+                                        String apiKey, ModelStreamListener listener) {
+                streamCalls++;
+                if (streamCalls == 1) {
+                    return new ModelResponse(null, List.of(new ToolCall("delegate-stream", "delegate_to_subagent",
+                            new ObjectMapper().createObjectNode().put("profileId", worker.id())
+                                    .put("task", "stream task"))), "tool_calls");
+                }
+                listener.onText("parent streamed answer");
+                return new ModelResponse("parent streamed answer", List.of(), "stop");
+            }
+        };
+        AgentLoop loop = new AgentLoop(model, tools, null, null, null, null, null,
+                new ObjectMapper(), 4);
+        loop.setSubAgentRunner(new SubAgentRunner(loop, profiles));
+        List<String> events = new ArrayList<>();
+
+        AgentRunResult result = loop.runStreaming("parent task", null, List.of(),
+                new AgentStreamListener() {
+                    @Override
+                    public void onText(String delta) {
+                        events.add("text:" + delta);
+                    }
+
+                    @Override
+                    public void onToolCall(ToolCall call) {
+                        events.add("call:" + call.name());
+                    }
+
+                    @Override
+                    public void onToolResult(AgentTraceEvent event) {
+                        events.add("result:" + event.result());
+                    }
+                });
+
+        assertEquals("parent streamed answer", result.answer());
+        assertEquals(List.of("call:delegate_to_subagent", "result:Sub-agent " + worker.id()
+                + " completed:\nchild streamed result", "text:parent streamed answer"), events);
+    }
+
+    @Test
+    void rejectsDelegationWhenParentSubAgentDepthLimitIsZero() throws Exception {
+        ToolRegistry tools = new ToolRegistry();
+        SubAgentProfileRegistry profiles = new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 8);
+        SubAgentProfile worker = profiles.create("Depth limited", AgentMode.EXECUTION, null, "", 2,
+                List.of(), List.of(), true, 64, 300, 4);
+        RunManager runs = new RunManager(new InMemoryRunStore());
+        ChatModel model = new ChatModel() {
+            private int calls;
+
+            @Override
+            public ModelResponse complete(List<ChatMessage> messages, List<ToolDefinition> definitions) {
+                if (calls++ == 0) {
+                    return new ModelResponse(null, List.of(new ToolCall("delegate-depth", "delegate_to_subagent",
+                            new ObjectMapper().createObjectNode().put("profileId", worker.id())
+                                    .put("task", "should be rejected"))), "tool_calls");
+                }
+                return new ModelResponse("parent recovered", List.of(), "stop");
+            }
+        };
+        AgentLoop loop = new AgentLoop(model, tools, null, null, null, runs, null,
+                new ObjectMapper(), 4);
+        loop.setSubAgentRunner(new SubAgentRunner(loop, profiles));
+
+        AgentRunResult result = loop.runDetailed("parent task", null, List.of(),
+                new AgentExecutionOptions(null, AgentMode.CHAT, "", 4, null, null, 64, 300, 0));
+
+        assertEquals("parent recovered", result.answer());
+        assertEquals(0, runs.list().stream().filter(run -> run.kind() == io.github.git13166956007.dsh.run.RunKind.SUB_AGENT).count());
+        assertTrue(runs.events(result.runId()).stream().anyMatch(event ->
+                "sub_agent_failed".equals(event.type())));
     }
 
     @Test

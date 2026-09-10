@@ -92,6 +92,8 @@ Agent Profile 管理接口为 `GET/POST/PATCH/DELETE /api/v1/agents`，以及 `P
 
 Sub-agent Profile 管理接口为 `GET/POST/PATCH/DELETE /api/v1/sub-agents`。每个子智能体可以独立配置 `mode`、`modelId`、`systemPrompt`、`maxTurns`、工具白名单 `allowedToolNames`、Skill 白名单 `skillIds` 和 `enabled`。白名单会在模型请求和实际工具执行两处生效。计划步骤可以填写 `subAgentId`，执行时由对应子智能体完成。
 
+当存在启用的 `execution` 子智能体时，主 Agent 会自动获得 `delegate_to_subagent` 虚拟工具。模型可以提交 `profileId` 和独立 `task`，子任务会复用当前 API Key 和模型路由，结果作为工具消息回传；启用 Run 持久化时会记录父子运行树，并同时校验父、子智能体的最大深度。
+
 计划接口为 `GET /api/v1/plans`、`GET /api/v1/plans/{id}`、`POST /api/v1/plans`、`POST /api/v1/plans/{id}/approve`、`POST /api/v1/plans/{id}/execute` 和 `POST /api/v1/plans/{id}/cancel`。Plan 创建时提交有序步骤、`dependsOn` 步骤编号和 `maxConcurrency`；需要人工确认的计划先处于 `draft`，审批后进入 `approved`，执行过程中会持久化每个步骤的 `pending/running/completed/failed/cancelled` 状态，并支持单步骤重试和满足依赖后的并行执行。
 
 自适应计划接口为 `POST /api/v1/plans/adaptive`。它会调用 Planning Agent 生成严格 JSON 步骤，服务端限制最大步骤数、校验结构，并根据子智能体的名称、说明、工具和 Skill 能力做确定性匹配；匹配不到时回退到父 Agent。生成结果直接进入同一套审批和执行状态机。

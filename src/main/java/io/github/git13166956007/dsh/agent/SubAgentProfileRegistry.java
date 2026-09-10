@@ -35,6 +35,13 @@ public final class SubAgentProfileRegistry {
         return profile;
     }
 
+    public synchronized List<SubAgentProfile> delegableProfiles() {
+        return profiles.values().stream()
+                .filter(profile -> profile.enabled() && profile.mode() == AgentMode.EXECUTION)
+                .map(SubAgentProfile::from)
+                .toList();
+    }
+
     public synchronized SubAgentProfile create(String name, AgentMode mode, String modelId, String systemPrompt,
                                                 Integer maxTurns, List<String> allowedToolNames, List<String> skillIds,
                                                 Boolean enabled) {

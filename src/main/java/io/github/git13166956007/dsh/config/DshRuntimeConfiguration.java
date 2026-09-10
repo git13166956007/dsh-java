@@ -225,7 +225,9 @@ public class DshRuntimeConfiguration {
 
     @Bean
     public SubAgentRunner subAgentRunner(AgentLoop agentLoop, SubAgentProfileRegistry profiles) {
-        return new SubAgentRunner(agentLoop, profiles);
+        SubAgentRunner runner = new SubAgentRunner(agentLoop, profiles);
+        agentLoop.setSubAgentRunner(runner);
+        return runner;
     }
 
     @Bean
