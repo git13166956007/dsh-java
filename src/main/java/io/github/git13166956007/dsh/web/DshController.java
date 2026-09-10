@@ -2,6 +2,7 @@ package io.github.git13166956007.dsh.web;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.nio.file.Path;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 import io.github.git13166956007.dsh.agent.AgentLoop;
@@ -78,6 +79,7 @@ public final class DshController {
     private final MemoryManager memoryManager;
     private final RunManager runManager;
     private final ChatModel chatModel;
+    private final Path pluginDirectory;
 
     public DshController(DshRuntime runtime, AgentLoop agentLoop, ContextManager contextManager,
                          ToolRegistry toolRegistry, McpServerRegistry mcpServerRegistry,
@@ -85,7 +87,8 @@ public final class DshController {
                          ModelRegistry modelRegistry, AgentProfileRegistry agentProfileRegistry,
                          PlanRegistry planRegistry, PlanExecutor planExecutor,
                          SubAgentProfileRegistry subAgentProfileRegistry, AdaptivePlanService adaptivePlanService,
-                         MemoryManager memoryManager, RunManager runManager, ChatModel chatModel) {
+                         MemoryManager memoryManager, RunManager runManager, ChatModel chatModel,
+                         org.springframework.core.env.Environment environment) {
         this.runtime = runtime;
         this.agentLoop = agentLoop;
         this.contextManager = contextManager;
@@ -102,6 +105,7 @@ public final class DshController {
         this.memoryManager = memoryManager;
         this.runManager = runManager;
         this.chatModel = chatModel;
+        this.pluginDirectory = Path.of(environment.getProperty("dsh.plugins.directory", "plugins"));
     }
 
     @GetMapping("/health")
@@ -112,6 +116,21 @@ public final class DshController {
         result.put("pluginCount", runtime.pluginCount());
         result.put("plugins", runtime.pluginIds());
         return result;
+    }
+
+    @GetMapping("/plugins")
+    public java.util.List<String> plugins() {
+        return runtime.pluginIds();
+    }
+
+    @PostMapping("/plugins/load")
+    public java.util.List<String> loadPlugins() {
+        try {
+            runtime.loadPlugins(pluginDirectory);
+            return runtime.pluginIds();
+        } catch (Exception exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, exception.getMessage(), exception);
+        }
     }
 
     @GetMapping("/tools")

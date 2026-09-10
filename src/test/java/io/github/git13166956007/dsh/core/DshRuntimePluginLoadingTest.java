@@ -26,6 +26,7 @@ class DshRuntimePluginLoadingTest {
         DshRuntime runtime = new DshRuntime();
         runtime.start();
         assertEquals(java.util.List.of("jar-demo"), runtime.loadPlugins(directory));
+        assertEquals(java.util.List.of(), runtime.loadPlugins(directory));
         assertEquals(java.util.List.of("jar-demo"), runtime.pluginIds());
         runtime.close();
     }

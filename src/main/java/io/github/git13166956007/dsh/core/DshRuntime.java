@@ -12,6 +12,8 @@ import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.HashSet;
+import java.util.Set;
 import io.github.git13166956007.dsh.event.EventBus;
 import io.github.git13166956007.dsh.plugin.DshPlugin;
 import io.github.git13166956007.dsh.plugin.PluginContext;
@@ -24,6 +26,7 @@ public final class DshRuntime implements AutoCloseable {
     private final Deque<AutoCloseable> effects = new ArrayDeque<AutoCloseable>();
     private final List<DshPlugin> plugins = new ArrayList<DshPlugin>();
     private final List<URLClassLoader> pluginLoaders = new ArrayList<URLClassLoader>();
+    private final Set<Path> loadedPluginJars = new HashSet<Path>();
     private boolean started;
 
     public static DshRuntime load(ClassLoader loader) throws Exception {
@@ -53,6 +56,8 @@ public final class DshRuntime implements AutoCloseable {
                     .toList();
         }
         for (Path jar : jars) {
+            Path absoluteJar = jar.toAbsolutePath().normalize();
+            if (loadedPluginJars.contains(absoluteJar)) continue;
             URLClassLoader loader = new URLClassLoader(new URL[]{jar.toUri().toURL()}, DshRuntime.class.getClassLoader());
             try {
                 for (DshPlugin plugin : ServiceLoader.load(DshPlugin.class, loader)) {
@@ -60,6 +65,7 @@ public final class DshRuntime implements AutoCloseable {
                     loaded.add(plugin.id());
                 }
                 pluginLoaders.add(loader);
+                loadedPluginJars.add(absoluteJar);
             } catch (Exception exception) {
                 loader.close();
                 throw new IllegalStateException("failed to load plugin jar: " + jar.getFileName(), exception);
@@ -119,6 +125,7 @@ public final class DshRuntime implements AutoCloseable {
             }
         }
         pluginLoaders.clear();
+        loadedPluginJars.clear();
         services.clear();
         started = false;
     }
