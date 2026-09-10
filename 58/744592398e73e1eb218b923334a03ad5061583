@@ -1,0 +1,18 @@
+src/main/java/io/github/git13166956007/dsh/provider/deepseek/DeepSeekChatModel.java
+  h_eb697744b14c1b 83,169-172
+src/main/java/io/github/git13166956007/dsh/provider/deepseek/ModelQuotaException.java
+  h_eb697744b14c1b 1-7
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 21,222-225,296-301
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "58744592398e73e1eb218b923334a03ad5061583",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
