@@ -50,7 +50,10 @@ import io.github.git13166956007.dsh.model.InMemoryModelProfileStore;
 import io.github.git13166956007.dsh.model.MariaDbModelProfileStore;
 import io.github.git13166956007.dsh.model.MariaDbModelHealthStore;
 import io.github.git13166956007.dsh.model.InMemoryModelHealthStore;
+import io.github.git13166956007.dsh.model.MariaDbModelUsageStore;
+import io.github.git13166956007.dsh.model.InMemoryModelUsageStore;
 import io.github.git13166956007.dsh.model.ModelHealthStore;
+import io.github.git13166956007.dsh.model.ModelUsageStore;
 import io.github.git13166956007.dsh.model.ModelProfileStore;
 import io.github.git13166956007.dsh.model.ModelRegistry;
 import io.github.git13166956007.dsh.model.ModelRouter;
@@ -174,8 +177,19 @@ public class DshRuntimeConfiguration {
     }
 
     @Bean
-    public ModelRegistry modelRegistry(ModelProfileStore store, ModelHealthStore healthStore, Environment environment) {
-        return new ModelRegistry(store, healthStore,
+    public ModelUsageStore modelUsageStore(Environment environment) {
+        boolean enabled = Boolean.parseBoolean(environment.getProperty("dsh.persistence.enabled", "false"));
+        if (!enabled) return new InMemoryModelUsageStore();
+        return new MariaDbModelUsageStore(
+                environment.getProperty("dsh.persistence.jdbc-url"),
+                environment.getProperty("dsh.persistence.username"),
+                environment.getProperty("dsh.persistence.password"));
+    }
+
+    @Bean
+    public ModelRegistry modelRegistry(ModelProfileStore store, ModelHealthStore healthStore,
+                                       ModelUsageStore usageStore, Environment environment) {
+        return new ModelRegistry(store, healthStore, usageStore,
                 environment.getProperty("dsh.model.base-url", "https://api.deepseek.com"),
                 environment.getProperty("dsh.model.provider", "deepseek"),
                 environment.getProperty("dsh.model.name", "deepseek-v4-flash"),

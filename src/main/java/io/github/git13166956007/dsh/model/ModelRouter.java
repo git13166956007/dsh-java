@@ -44,6 +44,7 @@ public final class ModelRouter implements ChatModel {
             try {
                 ModelResponse response = client(profile).complete(messages, effectiveTools(profile, tools), apiKey);
                 registry.recordSuccess(profile.id(), elapsedMs(started));
+                registry.recordUsage(profile.id(), messages, response);
                 return response;
             } catch (Exception exception) {
                 registry.recordFailure(profile.id(), elapsedMs(started), exception);
@@ -76,6 +77,7 @@ public final class ModelRouter implements ChatModel {
                     response = client(profile).stream(messages, effectiveTools, apiKey, guardedListener);
                 }
                 registry.recordSuccess(profile.id(), elapsedMs(started));
+                registry.recordUsage(profile.id(), messages, response);
                 return response;
             } catch (Exception exception) {
                 registry.recordFailure(profile.id(), elapsedMs(started), exception);

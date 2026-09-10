@@ -1,5 +1,7 @@
 package io.github.git13166956007.dsh.model;
 
+import io.github.git13166956007.dsh.agent.ChatMessage;
+import io.github.git13166956007.dsh.agent.ModelResponse;
 import java.net.URI;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -15,18 +17,26 @@ import tools.jackson.databind.ObjectMapper;
 public final class ModelRegistry {
     private final ModelProfileStore store;
     private final ModelHealthStore healthStore;
+    private final ModelUsageStore usageStore;
     private final Map<String, ModelProfileData> profiles = new LinkedHashMap<String, ModelProfileData>();
     private final Map<String, ModelProvider> providers = new ConcurrentHashMap<String, ModelProvider>();
 
     public ModelRegistry(ModelProfileStore store, String baseUrl, String provider, String model,
                          String apiKey, String proxyHost, int proxyPort) {
-        this(store, new InMemoryModelHealthStore(), baseUrl, provider, model, apiKey, proxyHost, proxyPort);
+        this(store, new InMemoryModelHealthStore(), new InMemoryModelUsageStore(), baseUrl, provider, model,
+                apiKey, proxyHost, proxyPort);
     }
 
     public ModelRegistry(ModelProfileStore store, ModelHealthStore healthStore, String baseUrl, String provider,
                          String model, String apiKey, String proxyHost, int proxyPort) {
+        this(store, healthStore, new InMemoryModelUsageStore(), baseUrl, provider, model, apiKey, proxyHost, proxyPort);
+    }
+
+    public ModelRegistry(ModelProfileStore store, ModelHealthStore healthStore, ModelUsageStore usageStore,
+                         String baseUrl, String provider, String model, String apiKey, String proxyHost, int proxyPort) {
         this.store = store;
         this.healthStore = healthStore;
+        this.usageStore = usageStore;
         try {
             profiles.putAll(index(store.list()));
             if (profiles.isEmpty()) {
@@ -339,6 +349,7 @@ public final class ModelRegistry {
         try {
             store.delete(id);
             healthStore.delete(id);
+            usageStore.delete(id);
             ensureActive();
             return true;
         } catch (Exception exception) {
@@ -384,6 +395,44 @@ public final class ModelRegistry {
         }
     }
 
+    public synchronized ModelUsage usage(String id) {
+        require(id);
+        try {
+            ModelUsageData value = usageStore.find(id);
+            return value == null ? ModelUsage.unknown(id) : ModelUsage.from(value);
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to load model usage", exception);
+        }
+    }
+
+    public synchronized void recordUsage(String id, List<ChatMessage> messages, ModelResponse response) {
+        try {
+            ModelProfileData profile = require(id);
+            List<ChatMessage> effectiveMessages = messages == null ? List.of() : messages;
+            int promptTokens = response == null || response.promptTokens() == null
+                    ? tokenizer(id).count(effectiveMessages) : Math.max(0, response.promptTokens());
+            int completionTokens = response == null || response.completionTokens() == null
+                    ? estimateCompletionTokens(id, response) : Math.max(0, response.completionTokens());
+            int totalTokens = response == null || response.totalTokens() == null
+                    ? promptTokens + completionTokens : Math.max(0, response.totalTokens());
+            double estimatedCost = (profile.inputPricePerMillionTokens() == null ? 0
+                    : promptTokens * profile.inputPricePerMillionTokens() / 1_000_000d)
+                    + (profile.outputPricePerMillionTokens() == null ? 0
+                    : completionTokens * profile.outputPricePerMillionTokens() / 1_000_000d);
+            ModelUsageData previous = usageStore.find(id);
+            ModelUsageData next = new ModelUsageData(id,
+                    (previous == null ? 0 : previous.requestCount()) + 1,
+                    (previous == null ? 0 : previous.promptTokens()) + promptTokens,
+                    (previous == null ? 0 : previous.completionTokens()) + completionTokens,
+                    (previous == null ? 0 : previous.totalTokens()) + totalTokens,
+                    (previous == null ? 0 : previous.estimatedCostUsd()) + estimatedCost,
+                    Instant.now());
+            usageStore.save(next);
+        } catch (Exception exception) {
+            // Usage telemetry must not turn a successful model request into a failed request.
+        }
+    }
+
     public synchronized void recordSuccess(String id, long latencyMs) {
         recordHealth(id, true, latencyMs, null);
     }
@@ -391,6 +440,11 @@ public final class ModelRegistry {
     public synchronized void recordFailure(String id, long latencyMs, Throwable failure) {
         String message = failure == null ? "model request failed" : failure.getMessage();
         recordHealth(id, false, latencyMs, message == null ? failure.getClass().getSimpleName() : message);
+    }
+
+    private int estimateCompletionTokens(String id, ModelResponse response) {
+        if (response == null) return 0;
+        return tokenizer(id).count(ChatMessage.assistant(response.content(), response.toolCalls()));
     }
 
     private void recordHealth(String id, boolean success, long latencyMs, String error) {

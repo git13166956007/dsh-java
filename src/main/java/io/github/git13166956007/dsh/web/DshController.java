@@ -41,6 +41,7 @@ import io.github.git13166956007.dsh.skill.SkillInfo;
 import io.github.git13166956007.dsh.skill.SkillRegistry;
 import io.github.git13166956007.dsh.model.ModelProfile;
 import io.github.git13166956007.dsh.model.ModelHealth;
+import io.github.git13166956007.dsh.model.ModelUsage;
 import io.github.git13166956007.dsh.model.ModelRegistry;
 import io.github.git13166956007.dsh.plan.Plan;
 import io.github.git13166956007.dsh.plan.AdaptivePlanService;
@@ -489,6 +490,15 @@ public final class DshController {
     public ModelHealth modelHealth(@PathVariable String id) {
         try {
             return modelRegistry.health(id);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
+        }
+    }
+
+    @GetMapping("/models/{id}/usage")
+    public ModelUsage modelUsage(@PathVariable String id) {
+        try {
+            return modelRegistry.usage(id);
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
         }

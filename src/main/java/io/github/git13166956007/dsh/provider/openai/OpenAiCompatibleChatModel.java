@@ -115,6 +115,9 @@ public final class OpenAiCompatibleChatModel implements ChatModel {
         StringBuilder nonSseBody = new StringBuilder();
         Map<Integer, PartialToolCall> partialCalls = new LinkedHashMap<Integer, PartialToolCall>();
         String finishReason = null;
+        Integer promptTokens = null;
+        Integer completionTokens = null;
+        Integer totalTokens = null;
         boolean sawSsePayload = false;
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(
                 response.body(), StandardCharsets.UTF_8))) {
@@ -130,6 +133,12 @@ public final class OpenAiCompatibleChatModel implements ChatModel {
                 if (data.isEmpty()) continue;
 
                 JsonNode chunk = objectMapper.readTree(data);
+                JsonNode usage = chunk.path("usage");
+                if (usage.isObject()) {
+                    promptTokens = integerValue(usage, "prompt_tokens", promptTokens);
+                    completionTokens = integerValue(usage, "completion_tokens", completionTokens);
+                    totalTokens = integerValue(usage, "total_tokens", totalTokens);
+                }
                 JsonNode choice = chunk.path("choices").path(0);
                 JsonNode delta = choice.path("delta");
                 String text = delta.path("content").asText(null);
@@ -178,7 +187,8 @@ public final class OpenAiCompatibleChatModel implements ChatModel {
             String arguments = partial.arguments.length() == 0 ? "{}" : partial.arguments.toString();
             toolCalls.add(new ToolCall(partial.id, partial.name, objectMapper.readTree(arguments)));
         }
-        return new ModelResponse(content.length() == 0 ? null : content.toString(), toolCalls, finishReason);
+        return new ModelResponse(content.length() == 0 ? null : content.toString(), toolCalls, finishReason,
+                promptTokens, completionTokens, totalTokens);
     }
 
     private ModelResponse parseCompletion(JsonNode root) throws Exception {
@@ -186,7 +196,15 @@ public final class OpenAiCompatibleChatModel implements ChatModel {
         JsonNode message = choice.path("message");
         String content = message.path("content").isNull() ? null : message.path("content").asText(null);
         List<ToolCall> toolCalls = parseToolCalls(message.path("tool_calls"));
-        return new ModelResponse(content, toolCalls, choice.path("finish_reason").asText(null));
+        JsonNode usage = root.path("usage");
+        return new ModelResponse(content, toolCalls, choice.path("finish_reason").asText(null),
+                integerValue(usage, "prompt_tokens", null), integerValue(usage, "completion_tokens", null),
+                integerValue(usage, "total_tokens", null));
+    }
+
+    private static Integer integerValue(JsonNode object, String field, Integer fallback) {
+        if (object == null || !object.isObject() || !object.has(field) || object.path(field).isNull()) return fallback;
+        return object.path(field).isIntegralNumber() ? object.path(field).asInt() : fallback;
     }
 
     private static String diagnostic(String body) {

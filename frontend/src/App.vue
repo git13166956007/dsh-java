@@ -259,10 +259,15 @@ async function refreshModels() {
     modelProviders.value = providersResponse.ok ? await providersResponse.json() : []
     models.value = await Promise.all(profiles.map(async (model) => {
       try {
-        const healthResponse = await fetch(`/api/v1/models/${encodeURIComponent(model.id)}/health`)
+        const [healthResponse, usageResponse] = await Promise.all([
+          fetch(`/api/v1/models/${encodeURIComponent(model.id)}/health`),
+          fetch(`/api/v1/models/${encodeURIComponent(model.id)}/usage`)
+        ])
         model.health = healthResponse.ok ? await healthResponse.json() : null
+        model.usage = usageResponse.ok ? await usageResponse.json() : null
       } catch {
         model.health = null
+        model.usage = null
       }
       return model
     }))
@@ -2158,7 +2163,7 @@ onUnmounted(() => {
               <strong>{{ model.name }}</strong>
               <span :class="['tool-source', model.active ? 'connected' : '']">{{ model.active ? 'DEFAULT' : model.provider }}</span>
             </div>
-          <p>{{ model.model }} · {{ model.baseUrl }}<br />{{ model.apiKeyConfigured ? 'API key configured' : 'Uses request or environment API key' }} · {{ model.supportsTools ? 'tools' : 'no tools' }} · {{ model.supportsStreaming ? 'streaming' : 'non-streaming' }} · {{ model.contextWindow ? `${model.contextWindow} context` : 'context unknown' }}<br /><span v-if="model.fallbackModelId">fallback: {{ models.find((candidate) => candidate.id === model.fallbackModelId)?.name || model.fallbackModelId }} · {{ model.failoverPolicy || 'any_failure' }}</span><span v-if="model.inputPricePerMillionTokens != null || model.outputPricePerMillionTokens != null">{{ model.fallbackModelId ? ' · ' : '' }}price ${{ model.inputPricePerMillionTokens ?? '?' }} / ${{ model.outputPricePerMillionTokens ?? '?' }} per 1M tokens</span><span v-if="model.health">{{ model.fallbackModelId || model.inputPricePerMillionTokens != null || model.outputPricePerMillionTokens != null ? ' · ' : '' }}health {{ model.health.status.toLowerCase() }} · {{ model.health.successCount }}/{{ model.health.failureCount }} · {{ model.health.lastLatencyMs == null ? 'no latency' : `${model.health.lastLatencyMs}ms` }}</span></p>
+          <p>{{ model.model }} · {{ model.baseUrl }}<br />{{ model.apiKeyConfigured ? 'API key configured' : 'Uses request or environment API key' }} · {{ model.supportsTools ? 'tools' : 'no tools' }} · {{ model.supportsStreaming ? 'streaming' : 'non-streaming' }} · {{ model.contextWindow ? `${model.contextWindow} context` : 'context unknown' }}<br /><span v-if="model.fallbackModelId">fallback: {{ models.find((candidate) => candidate.id === model.fallbackModelId)?.name || model.fallbackModelId }} · {{ model.failoverPolicy || 'any_failure' }}</span><span v-if="model.inputPricePerMillionTokens != null || model.outputPricePerMillionTokens != null">{{ model.fallbackModelId ? ' · ' : '' }}price ${{ model.inputPricePerMillionTokens ?? '?' }} / ${{ model.outputPricePerMillionTokens ?? '?' }} per 1M tokens</span><span v-if="model.usage && model.usage.requestCount"> · usage {{ model.usage.requestCount }} requests · {{ model.usage.totalTokens }} tokens · ${{ model.usage.estimatedCostUsd.toFixed(6) }}</span><span v-if="model.health"> · health {{ model.health.status.toLowerCase() }} · {{ model.health.successCount }}/{{ model.health.failureCount }} · {{ model.health.lastLatencyMs == null ? 'no latency' : `${model.health.lastLatencyMs}ms` }}</span></p>
           </div>
           <div class="managed-tool-actions model-actions">
             <button v-if="!model.active && model.enabled" class="secondary-button compact" type="button" @click="activateModel(model)">Default</button>

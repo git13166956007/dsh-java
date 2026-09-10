@@ -25,7 +25,8 @@ class ModelRouterTest {
         server.createContext("/v1/chat/completions", exchange -> {
             authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
             requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
-            byte[] response = "{\"choices\":[{\"message\":{\"content\":\"pong\"},\"finish_reason\":\"stop\"}]}"
+            byte[] response = ("{\"choices\":[{\"message\":{\"content\":\"pong\"},\"finish_reason\":\"stop\"}],"
+                    + "\"usage\":{\"prompt_tokens\":11,\"completion_tokens\":7,\"total_tokens\":18}}")
                     .getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set("Content-Type", "application/json");
             exchange.sendResponseHeaders(200, response.length);
@@ -42,11 +43,18 @@ class ModelRouterTest {
                     "stored-key", "", 0, true, false, true, true, false, 32768,
                     0.4, 0.85, 512, 0.1, 0.2, 7,
                     "{\"reasoning_effort\":\"high\",\"response_format\":{\"type\":\"text\"}}");
+            registry.update(profile.id(), new ObjectMapper().readTree(
+                    "{\"inputPricePerMillionTokens\":0.27,\"outputPricePerMillionTokens\":1.10}"));
 
             ModelResponse result = new ModelRouter(registry, new ObjectMapper()).complete(
                     List.of(ChatMessage.user("ping")), List.of(), "request-key", profile.id());
 
             assertEquals("pong", result.content());
+            assertEquals(11, result.promptTokens());
+            assertEquals(7, result.completionTokens());
+            assertEquals(18, result.totalTokens());
+            assertEquals(1, registry.usage(profile.id()).requestCount());
+            assertEquals(18, registry.usage(profile.id()).totalTokens());
             assertEquals("HEALTHY", registry.health(profile.id()).status());
             assertEquals(1, registry.health(profile.id()).successCount());
             org.junit.jupiter.api.Assertions.assertNotNull(registry.health(profile.id()).lastLatencyMs());
@@ -59,6 +67,39 @@ class ModelRouterTest {
             org.junit.jupiter.api.Assertions.assertTrue(requestBody.get().contains("\"presence_penalty\":0.2"));
             org.junit.jupiter.api.Assertions.assertTrue(requestBody.get().contains("\"reasoning_effort\":\"high\""));
             org.junit.jupiter.api.Assertions.assertTrue(requestBody.get().contains("\"response_format\":{\"type\":\"text\"}"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    void readsUsageFromStreamingResponses() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/chat/completions", exchange -> {
+            byte[] response = ("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n"
+                    + "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],"
+                    + "\"usage\":{\"prompt_tokens\":5,\"completion_tokens\":2,\"total_tokens\":7}}\n\n"
+                    + "data: [DONE]\n\n").getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+        try {
+            ModelRegistry registry = new ModelRegistry(new InMemoryModelProfileStore(),
+                    "https://api.deepseek.com", "deepseek", "fallback", "key", "", 0);
+            ModelProfile profile = registry.create("Streaming", "openai_compatible",
+                    "http://127.0.0.1:" + server.getAddress().getPort() + "/v1", "stream-model",
+                    "key", "", 0, true, false);
+
+            ModelResponse result = new ModelRouter(registry, new ObjectMapper()).stream(
+                    List.of(ChatMessage.user("ping")), List.of(), null, profile.id(), ignored -> { });
+
+            assertEquals("ok", result.content());
+            assertEquals(5, result.promptTokens());
+            assertEquals(2, result.completionTokens());
+            assertEquals(7, registry.usage(profile.id()).totalTokens());
         } finally {
             server.stop(0);
         }

@@ -152,6 +152,16 @@ CREATE TABLE IF NOT EXISTS dsh_model_health (
     last_error TEXT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS dsh_model_usage (
+    model_id VARCHAR(64) NOT NULL PRIMARY KEY,
+    request_count BIGINT NOT NULL DEFAULT 0,
+    prompt_tokens BIGINT NOT NULL DEFAULT 0,
+    completion_tokens BIGINT NOT NULL DEFAULT 0,
+    total_tokens BIGINT NOT NULL DEFAULT 0,
+    estimated_cost_usd DOUBLE NOT NULL DEFAULT 0,
+    last_used_at TIMESTAMP(3) NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS dsh_mcp_health (
     server_id VARCHAR(64) NOT NULL PRIMARY KEY,
     status VARCHAR(16) NOT NULL DEFAULT 'UNKNOWN',

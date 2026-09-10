@@ -5,6 +5,9 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import io.github.git13166956007.dsh.agent.ChatMessage;
+import io.github.git13166956007.dsh.agent.ModelResponse;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
@@ -155,6 +158,47 @@ class ModelRegistryTest {
         assertThrows(IllegalArgumentException.class,
                 () -> registry.update("default", new ObjectMapper().readTree(
                         "{\"inputPricePerMillionTokens\":-0.01}")));
+    }
+
+    @Test
+    void recordsAndPersistsModelUsageAndEstimatedCost() throws Exception {
+        InMemoryModelProfileStore profiles = new InMemoryModelProfileStore();
+        InMemoryModelHealthStore health = new InMemoryModelHealthStore();
+        InMemoryModelUsageStore usages = new InMemoryModelUsageStore();
+        ModelRegistry registry = new ModelRegistry(profiles, health, usages,
+                "https://api.deepseek.com", "deepseek", "deepseek-v4-flash", "", "", 0);
+        registry.update("default", new ObjectMapper().readTree(
+                "{\"inputPricePerMillionTokens\":0.27,\"outputPricePerMillionTokens\":1.10}"));
+
+        registry.recordUsage("default", List.of(ChatMessage.user("hello")),
+                new ModelResponse("world", List.of(), "stop", 10, 20, 30));
+
+        ModelUsage usage = registry.usage("default");
+        assertEquals(1, usage.requestCount());
+        assertEquals(10, usage.promptTokens());
+        assertEquals(20, usage.completionTokens());
+        assertEquals(30, usage.totalTokens());
+        assertEquals(0.0000247, usage.estimatedCostUsd(), 0.0000000001);
+
+        ModelRegistry restored = new ModelRegistry(profiles, health, usages,
+                "https://api.deepseek.com", "deepseek", "deepseek-v4-flash", "", "", 0);
+        assertEquals(30, restored.usage("default").totalTokens());
+    }
+
+    @Test
+    void estimatesMissingModelUsageWithTheConfiguredTokenizer() throws Exception {
+        InMemoryModelUsageStore usages = new InMemoryModelUsageStore();
+        ModelRegistry registry = new ModelRegistry(new InMemoryModelProfileStore(),
+                new InMemoryModelHealthStore(), usages, "https://api.deepseek.com", "deepseek",
+                "deepseek-v4-flash", "", "", 0);
+
+        registry.recordUsage("default", List.of(ChatMessage.user("12345678")),
+                new ModelResponse("1234", List.of(), "stop"));
+
+        ModelUsage usage = registry.usage("default");
+        assertEquals(2, usage.promptTokens());
+        assertEquals(1, usage.completionTokens());
+        assertEquals(3, usage.totalTokens());
     }
 
     @Test
