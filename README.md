@@ -82,11 +82,25 @@ export DSH_PERSISTENCE_ENABLED=true
 
 前端右上角的 `Tools` 可以添加调试工具。自定义工具当前是运行时内存工具：填写名称、描述、JSON Schema 和固定返回值后，模型即可调用；应用重启后需要重新添加，真正的业务执行工具通过插件或 MCP 接入。
 
-MCP Server 配置管理接口为 `GET/POST/PATCH/DELETE /api/v1/mcp/servers`。当前只保存和校验连接配置，状态会显示为 `DISCONNECTED`；真正的 MCP 连接、工具同步和重连策略随后接入。
+MCP Server 管理已经接入官方 Java SDK `0.17.0`，支持 `stdio`、`sse` 和 `streamable_http`。配置后通过 `POST /api/v1/mcp/servers/{id}/connect` 建立会话，工具会自动同步进统一的 ToolRegistry；`refresh`、`disconnect` 分别用于刷新工具和释放连接。MCP 工具会以 `mcp.<server-id>.<tool-name>` 暴露，避免不同 Server 同名冲突。
+
+Skills 使用文件系统目录，默认扫描项目根目录 `skills/`，也可以通过 `DSH_SKILLS_DIR` 指定目录。每个 Skill 的入口文件是 `skills/<name>/SKILL.md`，支持简单 front matter：
+
+```markdown
+---
+name: Writing Style
+description: Keep answers concise and structured.
+enabled: true
+---
+
+具体的 Agent 指令写在这里。启用后会追加到每次 Agent run 的 system prompt。
+```
+
+Skills 管理接口为 `GET /api/v1/skills`、`PATCH /api/v1/skills/{id}` 和 `POST /api/v1/skills/refresh`，前端的 `MCP`、`Skills` 入口也可以直接管理它们。
 
 调试前端可以在页面输入框临时填写 API Key。它只随当前请求提交，不保存到浏览器、本地配置或 Git；未填写时使用 `DEEPSEEK_API_KEY` 环境变量。
 
-当前默认使用 `deepseek-v4-flash`，内置了 `time_now` 工具。模型客户端是 OpenAI-compatible 的 DeepSeek Chat Completions 适配器，MCP 工具适配将在 `ToolRegistry` 边界上接入。
+当前默认使用 `deepseek-v4-flash`，内置了 `time_now` 工具。模型客户端是 OpenAI-compatible 的 DeepSeek Chat Completions 适配器，MCP 工具和本地工具都从同一个 `ToolRegistry` 边界进入 Agent Loop。
 
 详细能力缺口和实施顺序见 [`docs/runtime-roadmap.md`](docs/runtime-roadmap.md)。
 
@@ -98,10 +112,9 @@ MCP Server 配置管理接口为 `GET/POST/PATCH/DELETE /api/v1/mcp/servers`。�
 
 后续实现顺序：
 
-1. 接入 MCP Java SDK，提供 `McpToolProvider`。
-2. 实现流式模型输出和会话事件持久化。
-3. 增加审批策略、工作区文件工具和 shell 工具。
-4. 增加插件 JAR 版本、依赖排序和受控 reload。
+1. 增加工具审批策略、工作区文件工具和 shell 工具。
+2. 为 MCP 配置和 Skills 增加持久化、凭据引用及重连策略。
+3. 增加插件 JAR 版本、依赖排序和受控 reload。
 
 ## License
 

@@ -10,6 +10,8 @@ import io.github.git13166956007.dsh.context.InMemoryConversationStore;
 import io.github.git13166956007.dsh.context.MariaDbConversationStore;
 import io.github.git13166956007.dsh.core.DshRuntime;
 import io.github.git13166956007.dsh.mcp.McpServerRegistry;
+import io.github.git13166956007.dsh.mcp.McpClientManager;
+import io.github.git13166956007.dsh.skill.SkillRegistry;
 import io.github.git13166956007.dsh.provider.deepseek.DeepSeekChatModel;
 import io.github.git13166956007.dsh.tool.ToolDefinition;
 import io.github.git13166956007.dsh.tool.ToolRegistry;
@@ -55,8 +57,14 @@ public class DshRuntimeConfiguration {
     }
 
     @Bean
-    public AgentLoop agentLoop(ChatModel chatModel, ToolRegistry toolRegistry) {
-        return new AgentLoop(chatModel, toolRegistry, 8);
+    public SkillRegistry skillRegistry(Environment environment) {
+        return new SkillRegistry(environment.getProperty("dsh.skills.directory",
+                environment.getProperty("DSH_SKILLS_DIR", "skills")));
+    }
+
+    @Bean
+    public AgentLoop agentLoop(ChatModel chatModel, ToolRegistry toolRegistry, SkillRegistry skillRegistry) {
+        return new AgentLoop(chatModel, toolRegistry, skillRegistry, 8);
     }
 
     @Bean
@@ -78,5 +86,11 @@ public class DshRuntimeConfiguration {
     @Bean
     public McpServerRegistry mcpServerRegistry() {
         return new McpServerRegistry();
+    }
+
+    @Bean(destroyMethod = "close")
+    public McpClientManager mcpClientManager(McpServerRegistry mcpServerRegistry, ToolRegistry toolRegistry,
+                                             ObjectMapper objectMapper) {
+        return new McpClientManager(mcpServerRegistry, toolRegistry, objectMapper);
     }
 }

@@ -29,6 +29,10 @@ public final class McpServerRegistry {
         return new ArrayList<McpServerInfo>(servers.values());
     }
 
+    public synchronized McpServerInfo find(String id) {
+        return servers.get(id);
+    }
+
     public synchronized McpServerInfo update(String id, String name, String transport, String endpoint,
                                               String command, List<String> arguments, Boolean enabled) {
         McpServerInfo current = require(id);
@@ -50,6 +54,14 @@ public final class McpServerRegistry {
 
     public synchronized boolean delete(String id) {
         return servers.remove(id) != null;
+    }
+
+    public synchronized McpServerInfo setStatus(String id, String status) {
+        McpServerInfo current = require(id);
+        McpServerInfo updated = new McpServerInfo(current.id(), current.name(), current.transport(),
+                current.endpoint(), current.command(), current.arguments(), current.enabled(), status);
+        servers.put(id, updated);
+        return updated;
     }
 
     private McpServerInfo require(String id) {

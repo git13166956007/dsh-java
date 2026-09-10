@@ -19,6 +19,12 @@ const history = ref([])
 const runtime = ref({ runtimeStarted: false, pluginCount: 0 })
 const tools = ref([])
 const toolManagerOpen = ref(false)
+const capabilityTab = ref('tools')
+const mcpServers = ref([])
+const skills = ref([])
+const mcpForm = ref({ name: '', transport: 'stdio', endpoint: '', command: '', arguments: '' })
+const mcpFormError = ref('')
+const mcpSaving = ref(false)
 const toolForm = ref({
   name: '',
   description: '',
@@ -63,10 +69,38 @@ async function refreshTools() {
   }
 }
 
+async function refreshMcpServers() {
+  try {
+    const response = await fetch('/api/v1/mcp/servers')
+    if (!response.ok) throw new Error('MCP 列表不可用')
+    mcpServers.value = await response.json()
+  } catch {
+    mcpServers.value = []
+  }
+}
+
+async function refreshSkills() {
+  try {
+    const response = await fetch('/api/v1/skills')
+    if (!response.ok) throw new Error('Skills 列表不可用')
+    skills.value = await response.json()
+  } catch {
+    skills.value = []
+  }
+}
+
 function openToolManager() {
+  openCapabilities('tools')
+}
+
+function openCapabilities(tab) {
   toolFormError.value = ''
+  mcpFormError.value = ''
+  capabilityTab.value = tab
   toolManagerOpen.value = true
   refreshTools()
+  refreshMcpServers()
+  refreshSkills()
 }
 
 function resetToolForm() {
@@ -130,6 +164,78 @@ async function deleteTool(tool) {
   if (!tool.removable) return
   const response = await fetch(`/api/v1/tools/${encodeURIComponent(tool.name)}`, { method: 'DELETE' })
   if (response.ok) tools.value = tools.value.filter((item) => item.name !== tool.name)
+}
+
+function resetMcpForm() {
+  mcpForm.value = { name: '', transport: 'stdio', endpoint: '', command: '', arguments: '' }
+  mcpFormError.value = ''
+}
+
+async function createMcpServer() {
+  mcpFormError.value = ''
+  if (!mcpForm.value.name.trim()) {
+    mcpFormError.value = '请填写 Server 名称'
+    return
+  }
+  if (mcpForm.value.transport === 'stdio' && !mcpForm.value.command.trim()) {
+    mcpFormError.value = 'stdio 需要填写启动命令'
+    return
+  }
+  if (mcpForm.value.transport !== 'stdio' && !mcpForm.value.endpoint.trim()) {
+    mcpFormError.value = 'HTTP transport 需要填写服务地址'
+    return
+  }
+  mcpSaving.value = true
+  try {
+    const response = await fetch('/api/v1/mcp/servers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: mcpForm.value.name.trim(),
+        transport: mcpForm.value.transport,
+        endpoint: mcpForm.value.endpoint.trim() || null,
+        command: mcpForm.value.command.trim() || null,
+        arguments: mcpForm.value.arguments.split(/\s+/).filter(Boolean)
+      })
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) throw new Error(payload.message || payload.error || 'MCP Server 创建失败')
+    mcpServers.value.push(payload)
+    resetMcpForm()
+  } catch (requestError) {
+    mcpFormError.value = requestError.message
+  } finally {
+    mcpSaving.value = false
+  }
+}
+
+async function mcpAction(server, action) {
+  const response = await fetch(`/api/v1/mcp/servers/${server.id}/${action}`, { method: 'POST' })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    mcpFormError.value = payload.message || payload.error || `MCP ${action} 失败`
+    return
+  }
+  Object.assign(server, payload)
+  await refreshTools()
+}
+
+async function deleteMcpServer(server) {
+  const response = await fetch(`/api/v1/mcp/servers/${server.id}`, { method: 'DELETE' })
+  if (response.ok) {
+    mcpServers.value = mcpServers.value.filter((item) => item.id !== server.id)
+    await refreshTools()
+  }
+}
+
+async function toggleSkill(skill) {
+  const response = await fetch(`/api/v1/skills/${encodeURIComponent(skill.id)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled: !skill.enabled })
+  })
+  if (!response.ok) return
+  Object.assign(skill, await response.json())
 }
 
 async function sendMessage() {
@@ -294,6 +400,8 @@ async function scrollTranscript() {
 onMounted(() => {
   refreshHealth()
   refreshTools()
+  refreshMcpServers()
+  refreshSkills()
 })
 </script>
 
@@ -350,6 +458,14 @@ onMounted(() => {
           <button class="tools-button" type="button" title="Manage tools" @click="openToolManager">
             <span>Tools</span>
             <span class="tools-button-count">{{ tools.length }}</span>
+          </button>
+          <button class="tools-button" type="button" title="Manage MCP servers" @click="openCapabilities('mcp')">
+            <span>MCP</span>
+            <span class="tools-button-count">{{ mcpServers.filter((item) => item.status === 'CONNECTED').length }}</span>
+          </button>
+          <button class="tools-button" type="button" title="Manage skills" @click="openCapabilities('skills')">
+            <span>Skills</span>
+            <span class="tools-button-count">{{ skills.filter((item) => item.enabled).length }}</span>
           </button>
           <label class="api-key-control">
             <span>DEBUG API KEY</span>
@@ -454,7 +570,13 @@ onMounted(() => {
         <button class="icon-button" type="button" title="Close tool manager" aria-label="Close tool manager" @click="toolManagerOpen = false">×</button>
       </header>
 
-      <div class="tool-manager-list">
+      <nav class="capability-tabs" aria-label="Capabilities">
+        <button :class="{ active: capabilityTab === 'tools' }" type="button" @click="capabilityTab = 'tools'">Tools</button>
+        <button :class="{ active: capabilityTab === 'mcp' }" type="button" @click="capabilityTab = 'mcp'">MCP Servers</button>
+        <button :class="{ active: capabilityTab === 'skills' }" type="button" @click="capabilityTab = 'skills'">Skills</button>
+      </nav>
+
+      <div v-if="capabilityTab === 'tools'" class="tool-manager-list">
         <div v-for="tool in tools" :key="tool.name" class="managed-tool">
           <div class="managed-tool-copy">
             <div class="managed-tool-title">
@@ -474,7 +596,7 @@ onMounted(() => {
         <p v-if="tools.length === 0" class="tool-manager-empty">No tools registered.</p>
       </div>
 
-      <form class="tool-create-form" @submit.prevent="createTool">
+      <form v-if="capabilityTab === 'tools'" class="tool-create-form" @submit.prevent="createTool">
         <div class="tool-form-heading">
           <div>
             <div class="eyebrow">CUSTOM TOOL</div>
@@ -509,6 +631,57 @@ onMounted(() => {
           </button>
         </div>
       </form>
+
+      <div v-if="capabilityTab === 'mcp'" class="tool-manager-list">
+        <div v-for="server in mcpServers" :key="server.id" class="managed-tool">
+          <div class="managed-tool-copy">
+            <div class="managed-tool-title">
+              <strong>{{ server.name }}</strong>
+              <span :class="['tool-source', server.status === 'CONNECTED' ? 'connected' : '']">{{ server.status }}</span>
+            </div>
+            <p>{{ server.transport }} · {{ server.endpoint || server.command }}</p>
+          </div>
+          <div class="managed-tool-actions">
+            <button v-if="server.status === 'CONNECTED'" class="secondary-button compact" type="button" @click="mcpAction(server, 'disconnect')">断开</button>
+            <button v-else class="secondary-button compact" type="button" @click="mcpAction(server, 'connect')">连接</button>
+            <button v-if="server.status === 'CONNECTED'" class="secondary-button compact" type="button" title="Refresh MCP tools" @click="mcpAction(server, 'refresh')">刷新</button>
+            <button class="delete-tool-button" type="button" title="Delete MCP server" aria-label="Delete MCP server" @click="deleteMcpServer(server)">×</button>
+          </div>
+        </div>
+        <p v-if="mcpServers.length === 0" class="tool-manager-empty">No MCP servers configured.</p>
+
+        <form class="tool-create-form inline-form" @submit.prevent="createMcpServer">
+          <div class="tool-form-heading">
+            <div>
+              <div class="eyebrow">MCP CLIENT</div>
+              <h3>Add MCP server</h3>
+            </div>
+            <span class="tool-form-note">stdio / SSE / HTTP</span>
+          </div>
+          <div class="tool-form-grid">
+            <label><span>Name</span><input v-model="mcpForm.name" placeholder="filesystem" autocomplete="off" /></label>
+            <label><span>Transport</span><select v-model="mcpForm.transport"><option value="stdio">stdio</option><option value="sse">sse</option><option value="streamable_http">streamable_http</option></select></label>
+          </div>
+          <label v-if="mcpForm.transport !== 'stdio'"><span>Endpoint</span><input v-model="mcpForm.endpoint" placeholder="http://localhost:3000" autocomplete="off" /></label>
+          <label v-else><span>Command</span><input v-model="mcpForm.command" placeholder="npx" autocomplete="off" /></label>
+          <label><span>{{ mcpForm.transport === 'stdio' ? 'Arguments' : 'Endpoint hint' }}</span><input v-if="mcpForm.transport === 'stdio'" v-model="mcpForm.arguments" placeholder="-y @modelcontextprotocol/server-filesystem /tmp" autocomplete="off" /><input v-else value="SSE uses /sse; streamable HTTP uses /mcp by default" disabled /></label>
+          <p v-if="mcpFormError" class="tool-form-error">{{ mcpFormError }}</p>
+          <div class="tool-form-footer"><button class="secondary-button" type="button" @click="resetMcpForm">Reset</button><button class="send-button" type="submit" :disabled="mcpSaving"><span>{{ mcpSaving ? 'Adding' : 'Add server' }}</span><span class="send-arrow">↗</span></button></div>
+        </form>
+      </div>
+
+      <div v-if="capabilityTab === 'skills'" class="tool-manager-list">
+        <div v-for="skill in skills" :key="skill.id" class="managed-tool skill-item">
+          <div class="managed-tool-copy">
+            <div class="managed-tool-title"><strong>{{ skill.name }}</strong><span class="tool-source">{{ skill.id }}</span></div>
+            <p>{{ skill.description }}</p>
+            <details><summary>查看 SKILL.md</summary><pre class="skill-content">{{ skill.content }}</pre></details>
+          </div>
+          <label class="tool-toggle" :title="skill.enabled ? 'Disable skill' : 'Enable skill'"><input type="checkbox" :checked="skill.enabled" @change="toggleSkill(skill)" /><span></span></label>
+        </div>
+        <p v-if="skills.length === 0" class="tool-manager-empty">No skills found. Add skills/&lt;name&gt;/SKILL.md and refresh.</p>
+        <div class="tool-form-footer skill-footer"><button class="secondary-button" type="button" @click="refreshSkills">Refresh skills</button></div>
+      </div>
     </section>
   </div>
 </template>

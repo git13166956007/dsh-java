@@ -1,22 +1,25 @@
 package io.github.git13166956007.dsh.agent;
 
 import io.github.git13166956007.dsh.tool.ToolRegistry;
+import io.github.git13166956007.dsh.skill.SkillRegistry;
 import java.util.ArrayList;
 import java.util.List;
 
 public final class AgentLoop {
-    private static final String SYSTEM_PROMPT =
-            "You are a helpful assistant. Use available tools when they are useful, " +
-            "then give a concise final answer.";
-
     private final ChatModel model;
     private final ToolRegistry tools;
+    private final SkillRegistry skills;
     private final int maxTurns;
 
     public AgentLoop(ChatModel model, ToolRegistry tools, int maxTurns) {
+        this(model, tools, null, maxTurns);
+    }
+
+    public AgentLoop(ChatModel model, ToolRegistry tools, SkillRegistry skills, int maxTurns) {
         if (maxTurns < 1) throw new IllegalArgumentException("maxTurns must be positive");
         this.model = model;
         this.tools = tools;
+        this.skills = skills;
         this.maxTurns = maxTurns;
     }
 
@@ -39,7 +42,7 @@ public final class AgentLoop {
 
         List<ChatMessage> messages = new ArrayList<ChatMessage>();
         List<AgentTraceEvent> trace = new ArrayList<AgentTraceEvent>();
-        messages.add(ChatMessage.system(SYSTEM_PROMPT));
+        messages.add(ChatMessage.system(systemPrompt()));
         messages.addAll(history);
         messages.add(ChatMessage.user(prompt));
 
@@ -80,7 +83,7 @@ public final class AgentLoop {
 
         List<ChatMessage> messages = new ArrayList<ChatMessage>();
         List<AgentTraceEvent> trace = new ArrayList<AgentTraceEvent>();
-        messages.add(ChatMessage.system(SYSTEM_PROMPT));
+        messages.add(ChatMessage.system(systemPrompt()));
         messages.addAll(history);
         messages.add(ChatMessage.user(prompt));
 
@@ -110,5 +113,9 @@ public final class AgentLoop {
         }
 
         throw new IllegalStateException("agent exceeded max turns: " + maxTurns);
+    }
+
+    private String systemPrompt() {
+        return skills == null ? "You are a helpful assistant. Use available tools when they are useful, then give a concise final answer." : skills.systemPrompt();
     }
 }

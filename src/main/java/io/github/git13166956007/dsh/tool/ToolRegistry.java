@@ -26,6 +26,11 @@ public final class ToolRegistry {
         register(definition, arguments -> result, "custom", true);
     }
 
+    public synchronized void registerExternal(ToolDefinition definition, ToolHandler handler, String source) {
+        if (source == null || source.trim().isEmpty()) throw new IllegalArgumentException("source must not be blank");
+        register(definition, handler, source.trim(), true);
+    }
+
     private void register(ToolDefinition definition, ToolHandler handler, String source, boolean removable) {
         if (tools.containsKey(definition.name())) {
             throw new IllegalArgumentException("duplicate tool: " + definition.name());
@@ -55,6 +60,19 @@ public final class ToolRegistry {
         if (tool == null || !tool.removable) return false;
         tools.remove(name);
         return true;
+    }
+
+    public synchronized int removeBySource(String source) {
+        int removed = 0;
+        var iterator = tools.entrySet().iterator();
+        while (iterator.hasNext()) {
+            RegisteredTool tool = iterator.next().getValue();
+            if (tool.removable && tool.source.equals(source)) {
+                iterator.remove();
+                removed++;
+            }
+        }
+        return removed;
     }
 
     public synchronized boolean setEnabled(String name, boolean enabled) {

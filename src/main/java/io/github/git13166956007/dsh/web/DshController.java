@@ -11,6 +11,9 @@ import io.github.git13166956007.dsh.agent.ToolCall;
 import io.github.git13166956007.dsh.context.ContextManager;
 import io.github.git13166956007.dsh.mcp.McpServerInfo;
 import io.github.git13166956007.dsh.mcp.McpServerRegistry;
+import io.github.git13166956007.dsh.mcp.McpClientManager;
+import io.github.git13166956007.dsh.skill.SkillInfo;
+import io.github.git13166956007.dsh.skill.SkillRegistry;
 import io.github.git13166956007.dsh.tool.ToolInfo;
 import io.github.git13166956007.dsh.tool.ToolRegistry;
 import io.github.git13166956007.dsh.core.DshRuntime;
@@ -38,14 +41,19 @@ public final class DshController {
     private final ContextManager contextManager;
     private final ToolRegistry toolRegistry;
     private final McpServerRegistry mcpServerRegistry;
+    private final McpClientManager mcpClientManager;
+    private final SkillRegistry skillRegistry;
 
     public DshController(DshRuntime runtime, AgentLoop agentLoop, ContextManager contextManager,
-                         ToolRegistry toolRegistry, McpServerRegistry mcpServerRegistry) {
+                         ToolRegistry toolRegistry, McpServerRegistry mcpServerRegistry,
+                         McpClientManager mcpClientManager, SkillRegistry skillRegistry) {
         this.runtime = runtime;
         this.agentLoop = agentLoop;
         this.contextManager = contextManager;
         this.toolRegistry = toolRegistry;
         this.mcpServerRegistry = mcpServerRegistry;
+        this.mcpClientManager = mcpClientManager;
+        this.skillRegistry = skillRegistry;
     }
 
     @GetMapping("/health")
@@ -121,8 +129,10 @@ public final class DshController {
     @PatchMapping("/mcp/servers/{id}")
     public McpServerInfo updateMcpServer(@PathVariable String id, @RequestBody McpServerRequest request) {
         try {
-            return mcpServerRegistry.update(id, request.name(), request.transport(), request.endpoint(),
+            mcpClientManager.disconnect(id);
+            McpServerInfo updated = mcpServerRegistry.update(id, request.name(), request.transport(), request.endpoint(),
                     request.command(), request.arguments(), request.enabled());
+            return updated.enabled() ? mcpClientManager.connect(id) : updated;
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
         }
@@ -130,8 +140,68 @@ public final class DshController {
 
     @DeleteMapping("/mcp/servers/{id}")
     public void deleteMcpServer(@PathVariable String id) {
-        if (!mcpServerRegistry.delete(id)) {
+        if (mcpServerRegistry.find(id) == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown MCP server: " + id);
+        }
+        mcpClientManager.remove(id);
+    }
+
+    @PostMapping("/mcp/servers/{id}/connect")
+    public McpServerInfo connectMcpServer(@PathVariable String id) {
+        try {
+            return mcpClientManager.connect(id);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
+        } catch (Exception exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, exception.getMessage(), exception);
+        }
+    }
+
+    @PostMapping("/mcp/servers/{id}/refresh")
+    public McpServerInfo refreshMcpServer(@PathVariable String id) {
+        try {
+            return mcpClientManager.refresh(id);
+        } catch (Exception exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, exception.getMessage(), exception);
+        }
+    }
+
+    @PostMapping("/mcp/servers/{id}/disconnect")
+    public McpServerInfo disconnectMcpServer(@PathVariable String id) {
+        try {
+            return mcpClientManager.disconnect(id);
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
+        }
+    }
+
+    @GetMapping("/skills")
+    public java.util.List<SkillInfo> skills() {
+        return skillRegistry.list();
+    }
+
+    @GetMapping("/skills/{id}")
+    public SkillInfo skill(@PathVariable String id) {
+        SkillInfo skill = skillRegistry.find(id);
+        if (skill == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "unknown skill: " + id);
+        return skill;
+    }
+
+    @PostMapping("/skills/refresh")
+    public java.util.List<SkillInfo> refreshSkills() {
+        skillRegistry.refresh();
+        return skillRegistry.list();
+    }
+
+    @PatchMapping("/skills/{id}")
+    public SkillInfo updateSkill(@PathVariable String id, @RequestBody SkillUpdateRequest request) {
+        if (request == null || request.enabled() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "enabled must be provided");
+        }
+        try {
+            return skillRegistry.setEnabled(id, request.enabled());
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
         }
     }
 
@@ -222,6 +292,9 @@ public final class DshController {
     }
 
     public record ToolUpdateRequest(Boolean enabled) {
+    }
+
+    public record SkillUpdateRequest(Boolean enabled) {
     }
 
     public record ToolCreateRequest(String name, String description, tools.jackson.databind.JsonNode parameters,
