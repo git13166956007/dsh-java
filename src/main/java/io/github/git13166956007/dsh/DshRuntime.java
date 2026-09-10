@@ -36,6 +36,14 @@ public final class DshRuntime implements AutoCloseable {
         return eventBus;
     }
 
+    public boolean isStarted() {
+        return started;
+    }
+
+    public int pluginCount() {
+        return plugins.size();
+    }
+
     public <T> T service(ServiceKey<T> key) {
         Object value = services.get(key);
         if (value == null) throw new IllegalStateException("missing service: " + key);
