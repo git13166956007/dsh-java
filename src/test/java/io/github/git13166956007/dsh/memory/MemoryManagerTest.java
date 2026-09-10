@@ -34,4 +34,17 @@ class MemoryManagerTest {
                 "Please remember that I prefer concise answers.", "Understood.", 3).size());
         assertEquals(1, manager.list("conversation", "c-1", 10).size());
     }
+
+    @Test
+    void updatesAnExistingMemoryWithoutChangingItsScope() throws Exception {
+        MemoryManager manager = new MemoryManager(new InMemoryMemoryStore());
+        MemoryRecord original = manager.save("conversation", "c-1", "fact", "old value", null, 0.4);
+
+        MemoryRecord updated = manager.update(original.id(), "preference", "new value", null, 0.9);
+
+        assertEquals("preference", updated.memoryType());
+        assertEquals("new value", updated.content());
+        assertEquals(0.9, updated.importance());
+        assertEquals(1, manager.search("conversation", "c-1", "new value", 10).size());
+    }
 }

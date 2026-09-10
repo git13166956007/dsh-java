@@ -13,6 +13,11 @@ public final class InMemoryMemoryStore implements MemoryStore {
     private final Map<Long, MemoryRecordData> memories = new LinkedHashMap<Long, MemoryRecordData>();
 
     @Override
+    public synchronized MemoryRecordData find(long id) {
+        return memories.get(id);
+    }
+
+    @Override
     public synchronized List<MemoryRecordData> list(String namespace, String subjectKey, int limit) {
         return memories.values().stream().filter(memory -> matches(memory, namespace, subjectKey))
                 .sorted(Comparator.comparing(MemoryRecordData::updatedAt).reversed())

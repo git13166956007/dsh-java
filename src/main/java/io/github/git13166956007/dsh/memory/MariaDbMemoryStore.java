@@ -23,6 +23,18 @@ public final class MariaDbMemoryStore implements MemoryStore {
     }
 
     @Override
+    public MemoryRecordData find(long id) throws SQLException {
+        try (Connection connection = connection(); PreparedStatement statement = connection.prepareStatement(
+                "SELECT id, namespace, subject_key, memory_type, content, metadata_json, importance, created_at, updated_at "
+                        + "FROM dsh_memory WHERE id=?")) {
+            statement.setLong(1, id);
+            try (ResultSet rows = statement.executeQuery()) {
+                return rows.next() ? read(rows) : null;
+            }
+        }
+    }
+
+    @Override
     public List<MemoryRecordData> list(String namespace, String subjectKey, int limit) throws SQLException {
         return query(namespace, subjectKey, null, limit);
     }
@@ -89,14 +101,9 @@ public final class MariaDbMemoryStore implements MemoryStore {
     }
 
     private MemoryRecordData readById(long id) throws SQLException {
-        try (Connection connection = connection(); PreparedStatement statement = connection.prepareStatement(
-                "SELECT id, namespace, subject_key, memory_type, content, metadata_json, importance, created_at, updated_at FROM dsh_memory WHERE id=?")) {
-            statement.setLong(1, id);
-            try (ResultSet rows = statement.executeQuery()) {
-                if (!rows.next()) throw new SQLException("memory was not saved: " + id);
-                return read(rows);
-            }
-        }
+        MemoryRecordData saved = find(id);
+        if (saved == null) throw new SQLException("memory was not saved: " + id);
+        return saved;
     }
 
     private static void bind(PreparedStatement statement, MemoryRecordData memory) throws SQLException {

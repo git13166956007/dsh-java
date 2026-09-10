@@ -42,6 +42,20 @@ public final class MemoryManager {
         return MemoryRecord.from(saved);
     }
 
+    public MemoryRecord update(long id, String type, String content, String metadataJson,
+                               Double importance) throws Exception {
+        MemoryRecordData current = store.find(id);
+        if (current == null) throw new IllegalArgumentException("unknown memory: " + id);
+        String normalizedContent = content == null ? current.content() : required(content, "content");
+        double score = importance == null ? current.importance() : importance;
+        if (score < 0 || score > 1) throw new IllegalArgumentException("importance must be between 0 and 1");
+        MemoryRecordData updated = new MemoryRecordData(id, current.namespace(), current.subjectKey(),
+                type == null || type.isBlank() ? current.memoryType() : type.trim(), normalizedContent,
+                metadataJson == null ? current.metadataJson() : metadataJson, score,
+                current.createdAt(), current.updatedAt());
+        return MemoryRecord.from(store.save(updated));
+    }
+
     public void delete(long id) throws Exception {
         store.delete(id);
     }

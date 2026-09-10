@@ -55,6 +55,7 @@ const subAgentFormError = ref('')
 const subAgentSaving = ref(false)
 const memories = ref([])
 const memoryForm = ref({ memoryType: 'fact', content: '', importance: 0.5 })
+const memoryEditingId = ref(null)
 const memoryFormError = ref('')
 const memorySaving = ref(false)
 const agentForm = ref({
@@ -338,14 +339,18 @@ async function saveMemory() {
   }
   memorySaving.value = true
   try {
-    const response = await fetch('/api/v1/memories', {
-      method: 'POST',
+    const editing = memoryEditingId.value !== null
+    const response = await fetch(editing ? `/api/v1/memories/${encodeURIComponent(memoryEditingId.value)}` : '/api/v1/memories', {
+      method: editing ? 'PATCH' : 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ namespace: 'conversation', subjectKey: memorySubjectKey(), memoryType: memoryForm.value.memoryType, content: memoryForm.value.content.trim(), importance: Number(memoryForm.value.importance) || 0.5 })
+      body: JSON.stringify(editing
+        ? { memoryType: memoryForm.value.memoryType, content: memoryForm.value.content.trim(), importance: Number(memoryForm.value.importance) || 0 }
+        : { namespace: 'conversation', subjectKey: memorySubjectKey(), memoryType: memoryForm.value.memoryType, content: memoryForm.value.content.trim(), importance: Number(memoryForm.value.importance) || 0.5 })
     })
     const payload = await response.json().catch(() => ({}))
     if (!response.ok) throw new Error(payload.message || payload.error || 'Memory save failed')
-    memoryForm.value.content = ''
+    memoryForm.value = { memoryType: 'fact', content: '', importance: 0.5 }
+    memoryEditingId.value = null
     await refreshMemories()
   } catch (requestError) {
     memoryFormError.value = requestError.message
@@ -354,9 +359,28 @@ async function saveMemory() {
   }
 }
 
+function editMemory(memory) {
+  memoryEditingId.value = memory.id
+  memoryForm.value = {
+    memoryType: memory.memoryType,
+    content: memory.content,
+    importance: memory.importance
+  }
+  memoryFormError.value = ''
+}
+
+function resetMemoryForm() {
+  memoryEditingId.value = null
+  memoryForm.value = { memoryType: 'fact', content: '', importance: 0.5 }
+  memoryFormError.value = ''
+}
+
 async function deleteMemory(memory) {
   const response = await fetch(`/api/v1/memories/${memory.id}`, { method: 'DELETE' })
-  if (response.ok) await refreshMemories()
+  if (response.ok) {
+    if (memoryEditingId.value === memory.id) resetMemoryForm()
+    await refreshMemories()
+  }
 }
 
 function resetSubAgentForm() {
@@ -2014,15 +2038,18 @@ onUnmounted(() => {
         <div class="tool-form-heading"><div><div class="eyebrow">CONTEXT MEMORY</div><h3>Conversation memories</h3></div><span class="tool-form-note">{{ memorySubjectKey() }}</span></div>
         <div v-for="memory in memories" :key="memory.id" class="managed-tool memory-item">
           <div class="managed-tool-copy"><div class="managed-tool-title"><strong>{{ memory.memoryType }}</strong><span class="tool-source">{{ memory.importance.toFixed(2) }}</span></div><p>{{ memory.content }}</p></div>
-          <button class="delete-tool-button" type="button" title="Delete memory" aria-label="Delete memory" @click="deleteMemory(memory)">×</button>
+          <div class="managed-tool-actions">
+            <button class="secondary-button compact" type="button" @click="editMemory(memory)">Edit</button>
+            <button class="delete-tool-button" type="button" title="Delete memory" aria-label="Delete memory" @click="deleteMemory(memory)">×</button>
+          </div>
         </div>
         <p v-if="memories.length === 0" class="tool-manager-empty">No memories for this conversation.</p>
         <form class="tool-create-form inline-form" @submit.prevent="saveMemory">
-          <div class="tool-form-heading"><div><div class="eyebrow">EXPLICIT MEMORY</div><h3>Remember something</h3></div><span class="tool-form-note">Injected on matching runs</span></div>
+          <div class="tool-form-heading"><div><div class="eyebrow">EXPLICIT MEMORY</div><h3>{{ memoryEditingId === null ? 'Remember something' : 'Edit memory' }}</h3></div><span class="tool-form-note">Injected on matching runs</span></div>
           <div class="tool-form-grid"><label><span>Type</span><input v-model="memoryForm.memoryType" placeholder="fact" autocomplete="off" /></label><label><span>Importance</span><input v-model="memoryForm.importance" type="number" min="0" max="1" step="0.1" /></label></div>
           <label><span>Content</span><textarea v-model="memoryForm.content" rows="3" placeholder="The user prefers concise answers"></textarea></label>
           <p v-if="memoryFormError" class="tool-form-error">{{ memoryFormError }}</p>
-          <div class="tool-form-footer"><button class="send-button" type="submit" :disabled="memorySaving"><span>{{ memorySaving ? 'Saving' : 'Save memory' }}</span><span class="send-arrow">↗</span></button></div>
+          <div class="tool-form-footer"><button v-if="memoryEditingId !== null" class="secondary-button" type="button" @click="resetMemoryForm">Reset</button><button class="send-button" type="submit" :disabled="memorySaving"><span>{{ memorySaving ? 'Saving' : memoryEditingId === null ? 'Save memory' : 'Update memory' }}</span><span class="send-arrow">↗</span></button></div>
         </form>
       </div>
 

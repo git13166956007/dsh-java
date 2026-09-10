@@ -599,6 +599,17 @@ public final class DshController {
         }
     }
 
+    @PatchMapping("/memories/{id}")
+    public MemoryRecord updateMemory(@PathVariable long id, @RequestBody MemoryUpdateRequest request) throws Exception {
+        if (request == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "memory update must not be null");
+        try {
+            return memoryManager.update(id, request.memoryType(), request.content(), request.metadataJson(), request.importance());
+        } catch (IllegalArgumentException exception) {
+            throw new ResponseStatusException(exception.getMessage() != null && exception.getMessage().startsWith("unknown memory:")
+                    ? HttpStatus.NOT_FOUND : HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
+        }
+    }
+
     @DeleteMapping("/memories/{id}")
     public void deleteMemory(@PathVariable long id) throws Exception {
         memoryManager.delete(id);
@@ -1005,6 +1016,9 @@ public final class DshController {
 
     public record MemoryRequest(String namespace, String subjectKey, String memoryType, String content,
                                 String metadataJson, Double importance) {
+    }
+
+    public record MemoryUpdateRequest(String memoryType, String content, String metadataJson, Double importance) {
     }
 
     public record ToolCreateRequest(String name, String description, tools.jackson.databind.JsonNode parameters,
