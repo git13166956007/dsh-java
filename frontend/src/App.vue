@@ -1,7 +1,9 @@
 <script setup>
 import { computed, nextTick, onMounted, ref } from 'vue'
 import DOMPurify from 'dompurify'
+import katex from 'katex'
 import { marked } from 'marked'
+import 'katex/dist/katex.min.css'
 
 const draft = ref('')
 const apiKey = ref('')
@@ -152,7 +154,33 @@ function formatArguments(argumentsNode) {
 }
 
 function renderMarkdown(content) {
-  return DOMPurify.sanitize(marked.parse(content || '', { breaks: true, gfm: true }))
+  const formulas = []
+  const source = (content || '').replace(
+    /\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)|(?<!\$)\$([^\n$]+?)(?<!\$)\$/g,
+    (match, blockDollar, blockBracket, inlineBracket, inlineDollar) => {
+      const displayMode = blockDollar !== undefined || blockBracket !== undefined
+      const expression = blockDollar ?? blockBracket ?? inlineBracket ?? inlineDollar
+      const token = `<${displayMode ? 'div' : 'span'} data-dsh-math="${formulas.length}"></${displayMode ? 'div' : 'span'}>`
+      formulas.push({ token, expression, displayMode })
+      return displayMode ? `\n\n${token}\n\n` : token
+    }
+  )
+
+  let html = marked.parse(source, { breaks: true, gfm: true })
+  for (const formula of formulas) {
+    let rendered
+    try {
+      rendered = katex.renderToString(formula.expression.trim(), {
+        displayMode: formula.displayMode,
+        throwOnError: false,
+        output: 'htmlAndMathml'
+      })
+    } catch {
+      rendered = `<code>${formula.expression}</code>`
+    }
+    html = html.replaceAll(formula.token, rendered)
+  }
+  return DOMPurify.sanitize(html)
 }
 
 function formatTime(value) {

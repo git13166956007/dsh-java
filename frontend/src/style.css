@@ -84,6 +84,8 @@ h2 { font-size: 17px; }
 .markdown-content th, .markdown-content td { padding: 7px 9px; border: 1px solid #354346; text-align: left; }
 .markdown-content th { color: #e0ebe7; background: #1b2527; }
 .markdown-content hr { margin: 18px 0; border: 0; border-top: 1px solid #354346; }
+.markdown-content .katex-display { overflow-x: auto; overflow-y: hidden; margin: 16px 0; padding: 4px 0; text-align: left; }
+.markdown-content .katex { color: #dce9e4; font-size: 1.02em; }
 .thinking-row { display: flex; align-items: center; gap: 10px; max-width: 780px; margin: 10px auto; color: #879493; font-size: 12px; }
 .thinking-dots { display: inline-flex; gap: 3px; }
 .thinking-dots i { width: 5px; height: 5px; border-radius: 50%; background: #91d7c2; animation: blink 1.1s infinite ease-in-out; }
