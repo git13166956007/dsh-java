@@ -1,0 +1,32 @@
+src/main/java/io/github/git13166956007/dsh/config/DshRuntimeConfiguration.java
+  s_89c027812d25a3::t_e6c9a14383219a 31
+  h_eb697744b14c1b 45
+README.md
+  s_89c027812d25a3::t_e6c9a14383219a 54
+src/main/resources/application.yml
+  h_eb697744b14c1b 11
+  h_eb697744b14c1b 12
+frontend/src/App.vue
+  h_eb697744b14c1b 145
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "452776c74cb991f2d367b3459b0a8e0f0cba062b",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_89c027812d25a3": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f75a2f8d2ffeC1JxWZMepKhg3f",
+        "model": "mimo-v2.5-free"
+      },
+      "human_author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
