@@ -1,0 +1,24 @@
+README.md
+  h_eb697744b14c1b 85
+src/main/java/io/github/git13166956007/dsh/mcp/McpClientManager.java
+  h_eb697744b14c1b 158-160
+src/main/java/io/github/git13166956007/dsh/tool/ToolRegistry.java
+  h_eb697744b14c1b 32-34
+src/test/java/io/github/git13166956007/dsh/agent/AgentLoopTest.java
+  h_eb697744b14c1b 19,35,49,69,97
+src/test/java/io/github/git13166956007/dsh/mcp/McpClientManagerTest.java
+  h_eb697744b14c1b 16-24
+src/test/java/io/github/git13166956007/dsh/tool/ToolRegistryTest.java
+  h_eb697744b14c1b 27,30,32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "627495eac89bc2f0e1c55ba085ad8eef1202d0e0",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
