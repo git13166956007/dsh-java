@@ -220,8 +220,10 @@ public class DshRuntimeConfiguration {
     @Bean
     public AdaptivePlanService adaptivePlanService(AgentLoop agentLoop, PlanRegistry planRegistry,
                                                    SubAgentProfileRegistry subAgentProfileRegistry,
-                                                   ObjectMapper objectMapper) {
-        return new AdaptivePlanService(agentLoop, planRegistry, subAgentProfileRegistry, objectMapper);
+                                                   ObjectMapper objectMapper, ToolRegistry toolRegistry,
+                                                   SkillRegistry skillRegistry) {
+        return new AdaptivePlanService(agentLoop, planRegistry, subAgentProfileRegistry, objectMapper,
+                toolRegistry, skillRegistry);
     }
 
     @Bean(destroyMethod = "close")

@@ -467,7 +467,8 @@ public final class DshController {
         }
         try {
             return adaptivePlanService.create(request.prompt(), request.apiKey(), request.agentId(), request.modelId(),
-                    request.approvalRequired() == null || request.approvalRequired(), request.maxSteps(), request.maxConcurrency());
+                    request.approvalRequired() == null || request.approvalRequired(), request.maxSteps(), request.maxConcurrency(),
+                    Boolean.TRUE.equals(request.allowDynamicSubAgents()));
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
         }
@@ -663,7 +664,8 @@ public final class DshController {
     }
 
     public record AdaptivePlanRequest(String prompt, String apiKey, String agentId, String modelId,
-                                      Boolean approvalRequired, Integer maxSteps, Integer maxConcurrency) {
+                                      Boolean approvalRequired, Integer maxSteps, Integer maxConcurrency,
+                                      Boolean allowDynamicSubAgents) {
     }
 
     public record MemoryRequest(String namespace, String subjectKey, String memoryType, String content,

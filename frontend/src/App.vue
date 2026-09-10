@@ -71,7 +71,7 @@ const planForm = ref({
 })
 const planFormError = ref('')
 const planSaving = ref(false)
-const adaptivePlanForm = ref({ prompt: '', maxSteps: 6, maxConcurrency: 1, approvalRequired: true })
+const adaptivePlanForm = ref({ prompt: '', maxSteps: 6, maxConcurrency: 1, approvalRequired: true, allowDynamicSubAgents: false })
 let planPollTimer = null
 const modelForm = ref({
   id: null,
@@ -425,7 +425,8 @@ async function createAdaptivePlan() {
         modelId: selectedModelId.value,
         approvalRequired: adaptivePlanForm.value.approvalRequired,
         maxSteps: Number(adaptivePlanForm.value.maxSteps) || 6,
-        maxConcurrency: Number(adaptivePlanForm.value.maxConcurrency) || 1
+        maxConcurrency: Number(adaptivePlanForm.value.maxConcurrency) || 1,
+        allowDynamicSubAgents: adaptivePlanForm.value.allowDynamicSubAgents
       })
     })
     const payload = await response.json().catch(() => ({}))
@@ -1509,6 +1510,7 @@ onUnmounted(() => clearTimeout(planPollTimer))
           <label><span>Task</span><textarea v-model="adaptivePlanForm.prompt" rows="3" placeholder="Describe a complex task and let the planner split it into executable steps"></textarea></label>
           <div class="tool-form-grid"><label><span>Max steps</span><input v-model="adaptivePlanForm.maxSteps" type="number" min="1" max="16" inputmode="numeric" /></label><label><span>Max concurrency</span><input v-model="adaptivePlanForm.maxConcurrency" type="number" min="1" max="16" inputmode="numeric" /></label></div>
           <label class="plan-approval-toggle"><input v-model="adaptivePlanForm.approvalRequired" type="checkbox" /> Require approval</label>
+          <label class="plan-approval-toggle"><input v-model="adaptivePlanForm.allowDynamicSubAgents" type="checkbox" /> Allow adaptive worker creation</label>
           <div class="tool-form-footer"><button class="send-button" type="submit" :disabled="planSaving"><span>{{ planSaving ? 'Planning' : 'Generate adaptive plan' }}</span><span class="send-arrow">↗</span></button></div>
         </form>
       </div>

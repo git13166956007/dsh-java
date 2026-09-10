@@ -38,4 +38,27 @@ class AdaptivePlanServiceTest {
         assertEquals(1, plan.steps().size());
         assertEquals("Research worker", subAgents.find(plan.steps().get(0).subAgentId()).name());
     }
+
+    @Test
+    void canCreateAndPersistAWorkerWhenNoExistingWorkerMatches() throws Exception {
+        ChatModel model = new ChatModel() {
+            @Override
+            public ModelResponse complete(List<ChatMessage> messages, List<ToolDefinition> definitions) {
+                return new ModelResponse("{" +
+                        "\"title\":\"Deploy task\",\"goal\":\"Deploy safely\",\"steps\":[{" +
+                        "\"title\":\"Deploy\",\"instruction\":\"Deploy the service\",\"worker\":{" +
+                        "\"name\":\"Deployment worker\",\"systemPrompt\":\"Deploy and verify\",\"allowedToolNames\":[\"missing\"],\"skillIds\":[]}}]}",
+                        List.of(), "stop");
+            }
+        };
+        ToolRegistry tools = new ToolRegistry();
+        SubAgentProfileRegistry subAgents = new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 8);
+        AdaptivePlanService service = new AdaptivePlanService(new AgentLoop(model, tools, 2),
+                new PlanRegistry(new InMemoryPlanStore()), subAgents, new ObjectMapper(), tools, null);
+
+        Plan plan = service.create("Deploy the service", null, null, "model-1", false, 4, 1, true);
+
+        assertEquals("Deployment worker", subAgents.find(plan.steps().get(0).subAgentId()).name());
+        assertEquals(List.of(), subAgents.find(plan.steps().get(0).subAgentId()).allowedToolNames());
+    }
 }
