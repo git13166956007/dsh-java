@@ -20,6 +20,8 @@ dsh:
     password: ${DSH_DB_PASSWORD:dsh-local-password}
     max-history-messages: ${DSH_MAX_HISTORY_MESSAGES:24}
     max-context-tokens: ${DSH_MAX_CONTEXT_TOKENS:12000}
+  security:
+    secret-key: ${DSH_SECRET_KEY:}
   agent:
     max-turns: ${DSH_AGENT_MAX_TURNS:8}
   skills:

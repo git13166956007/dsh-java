@@ -12,11 +12,17 @@ public final class MariaDbModelProfileStore implements ModelProfileStore {
     private final String jdbcUrl;
     private final String username;
     private final String password;
+    private final SecretCipher secrets;
 
     public MariaDbModelProfileStore(String jdbcUrl, String username, String password) {
+        this(jdbcUrl, username, password, null);
+    }
+
+    public MariaDbModelProfileStore(String jdbcUrl, String username, String password, String masterKey) {
         this.jdbcUrl = jdbcUrl;
         this.username = username;
         this.password = password;
+        this.secrets = new SecretCipher(masterKey);
         ensureSchema();
     }
 
@@ -31,7 +37,7 @@ public final class MariaDbModelProfileStore implements ModelProfileStore {
             while (rows.next()) {
                 result.add(new ModelProfileData(rows.getString("id"), rows.getString("name"),
                         rows.getString("provider"), rows.getString("base_url"), rows.getString("model_name"),
-                        rows.getString("api_key"), rows.getString("proxy_host"), rows.getInt("proxy_port"),
+                        secrets.decrypt(rows.getString("api_key")), rows.getString("proxy_host"), rows.getInt("proxy_port"),
                         rows.getBoolean("enabled"), rows.getBoolean("active")));
             }
         }
@@ -54,7 +60,7 @@ public final class MariaDbModelProfileStore implements ModelProfileStore {
             statement.setString(3, profile.provider());
             statement.setString(4, profile.baseUrl());
             statement.setString(5, profile.model());
-            statement.setString(6, profile.apiKey());
+            statement.setString(6, secrets.encrypt(profile.apiKey()));
             statement.setString(7, profile.proxyHost());
             statement.setInt(8, profile.proxyPort());
             statement.setBoolean(9, profile.enabled());

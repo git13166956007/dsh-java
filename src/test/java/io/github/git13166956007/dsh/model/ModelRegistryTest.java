@@ -32,4 +32,15 @@ class ModelRegistryTest {
         assertTrue(registry.find(second.id()).active());
         assertFalse(registry.find("default").active());
     }
+
+    @Test
+    void encryptsAndDecryptsSecretsWithoutExposingPlaintext() {
+        SecretCipher cipher = new SecretCipher("local-master-key");
+        String encrypted = cipher.encrypt("api-key-value");
+
+        assertTrue(encrypted.startsWith("enc:v1:"));
+        assertTrue(!encrypted.contains("api-key-value"));
+        assertEquals("api-key-value", cipher.decrypt(encrypted));
+        assertEquals("legacy-plain", cipher.decrypt("legacy-plain"));
+    }
 }

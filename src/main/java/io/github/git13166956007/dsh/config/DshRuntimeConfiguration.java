@@ -92,7 +92,8 @@ public class DshRuntimeConfiguration {
         return new MariaDbModelProfileStore(
                 environment.getProperty("dsh.persistence.jdbc-url"),
                 environment.getProperty("dsh.persistence.username"),
-                environment.getProperty("dsh.persistence.password"));
+                environment.getProperty("dsh.persistence.password"),
+                environment.getProperty("dsh.security.secret-key", environment.getProperty("DSH_SECRET_KEY", "")));
     }
 
     @Bean

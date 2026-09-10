@@ -86,6 +86,8 @@ export DSH_PERSISTENCE_ENABLED=true
 
 模型管理接口为 `GET/POST/PATCH/DELETE /api/v1/models`，以及 `POST /api/v1/models/{id}/activate`。Profile 支持 `provider`、`baseUrl`、`model`、`proxyHost`、`proxyPort`、`enabled` 和 `active`。聊天请求可以传 `modelId` 选择模型；不传时使用当前 active 模型。页面中的 DEBUG API KEY 仍然只对当前请求生效，并优先于 Profile 中保存的 Key。
 
+启用 MariaDB 时建议同时设置 `DSH_SECRET_KEY`。模型 API Key 会使用 AES-GCM 封装后保存，接口仍只返回 `apiKeyConfigured`；历史明文记录可以兼容读取，设置主密钥后更新一次模型即可转为加密存储。主密钥不会写入配置文件或 Git。
+
 Agent Profile 管理接口为 `GET/POST/PATCH/DELETE /api/v1/agents`，以及 `POST /api/v1/agents/{id}/activate`。Profile 支持 `mode`（`chat`、`planning`、`execution`）、`modelId`、`systemPrompt`、`maxTurns`、`enabled` 和 `active`。聊天请求可以传 `agentId` 和 `mode`；不传时使用当前 active Agent Profile。Planning 模式不会向模型暴露工具，并要求输出结构化的执行计划；Execution 模式允许使用已启用工具。
 
 Sub-agent Profile 管理接口为 `GET/POST/PATCH/DELETE /api/v1/sub-agents`。每个子智能体可以独立配置 `mode`、`modelId`、`systemPrompt`、`maxTurns`、工具白名单 `allowedToolNames`、Skill 白名单 `skillIds` 和 `enabled`。白名单会在模型请求和实际工具执行两处生效。计划步骤可以填写 `subAgentId`，执行时由对应子智能体完成。
