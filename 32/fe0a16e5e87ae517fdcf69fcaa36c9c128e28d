@@ -1,0 +1,14 @@
+frontend/src/App.vue
+  h_eb697744b14c1b 20,146-160,1284
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "32fe0a16e5e87ae517fdcf69fcaa36c9c128e28d",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
