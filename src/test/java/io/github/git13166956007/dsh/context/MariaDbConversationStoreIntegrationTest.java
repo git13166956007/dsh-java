@@ -152,4 +152,39 @@ class MariaDbConversationStoreIntegrationTest {
             }
         }
     }
+
+    @Test
+    void summaryWriteOnlyAdvancesTheCoveredMessageCount() throws Exception {
+        String url = System.getenv().getOrDefault("DSH_DB_URL", "jdbc:mariadb://127.0.0.1:3307/dsh");
+        String user = System.getenv().getOrDefault("DSH_DB_USER", "dsh");
+        String password = System.getenv().getOrDefault("DSH_DB_PASSWORD", "dsh-local-password");
+        try (Connection ignored = DriverManager.getConnection(url, user, password)) {
+            // Database is available; the test below is authoritative.
+        } catch (Exception exception) {
+            assumeTrue(false, "MariaDB integration test skipped: " + exception.getMessage());
+            return;
+        }
+
+        String conversationId = UUID.randomUUID().toString();
+        MariaDbConversationStore store = new MariaDbConversationStore(url, user, password);
+        try {
+            store.open(conversationId, "summary race");
+            assertTrue(store.saveSummaryIfNewer(conversationId, new ConversationSummary("new", 10)));
+            assertFalse(store.saveSummaryIfNewer(conversationId, new ConversationSummary("old", 4)));
+            assertEquals("new", store.loadSummary(conversationId).content());
+            assertEquals(10, store.loadSummary(conversationId).coveredMessageCount());
+        } finally {
+            try (Connection connection = DriverManager.getConnection(url, user, password);
+                 PreparedStatement events = connection.prepareStatement("DELETE FROM dsh_session_event WHERE session_id=?");
+                 PreparedStatement head = connection.prepareStatement("DELETE FROM dsh_session_event_head WHERE session_id=?");
+                 PreparedStatement conversation = connection.prepareStatement("DELETE FROM dsh_conversation WHERE id=?")) {
+                events.setString(1, conversationId);
+                events.executeUpdate();
+                head.setString(1, conversationId);
+                head.executeUpdate();
+                conversation.setString(1, conversationId);
+                conversation.executeUpdate();
+            }
+        }
+    }
 }

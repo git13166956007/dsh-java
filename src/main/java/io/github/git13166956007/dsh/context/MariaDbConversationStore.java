@@ -235,6 +235,36 @@ public final class MariaDbConversationStore implements ConversationStore {
         }
     }
 
+    @Override
+    public boolean saveSummaryIfNewer(String conversationId, ConversationSummary summary) throws Exception {
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            try (PreparedStatement conversation = connection.prepareStatement(
+                    "SELECT 1 FROM dsh_conversation WHERE id=? FOR UPDATE")) {
+                conversation.setString(1, conversationId);
+                try (ResultSet rows = conversation.executeQuery()) {
+                    if (!rows.next()) throw new IllegalArgumentException("unknown conversation: " + conversationId);
+                }
+                if (isDeleted(connection, conversationId)) {
+                    throw new IllegalStateException("conversation is deleted: " + conversationId);
+                }
+                ConversationSummary current = SessionEventProjection.project(eventLog.read(connection, conversationId)).summary();
+                if (current != null && current.coveredMessageCount() >= summary.coveredMessageCount()) {
+                    connection.commit();
+                    return false;
+                }
+                eventLog.append(connection, conversationId, SessionEventTypes.SUMMARY_UPDATED,
+                        objectMapper.createObjectNode().put("content", summary.content())
+                                .put("coveredMessageCount", summary.coveredMessageCount()));
+                connection.commit();
+                return true;
+            } catch (Exception exception) {
+                connection.rollback();
+                throw exception;
+            }
+        }
+    }
+
     private Connection connection() throws SQLException {
         return DriverManager.getConnection(jdbcUrl, username, password);
     }

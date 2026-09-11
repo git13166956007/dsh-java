@@ -123,11 +123,22 @@ public final class InMemoryConversationStore implements ConversationStore {
     }
 
     @Override
-    public void saveSummary(String conversationId, ConversationSummary summary) throws Exception {
+    public synchronized void saveSummary(String conversationId, ConversationSummary summary) throws Exception {
         if (!exists(conversationId)) throw new IllegalArgumentException("unknown or deleted conversation: " + conversationId);
         eventLog.append(conversationId, SessionEventTypes.SUMMARY_UPDATED,
                 objectMapper.createObjectNode().put("content", summary.content())
                         .put("coveredMessageCount", summary.coveredMessageCount()));
+    }
+
+    @Override
+    public synchronized boolean saveSummaryIfNewer(String conversationId, ConversationSummary summary) throws Exception {
+        if (!exists(conversationId)) throw new IllegalArgumentException("unknown or deleted conversation: " + conversationId);
+        ConversationSummary current = loadSummary(conversationId);
+        if (current != null && current.coveredMessageCount() >= summary.coveredMessageCount()) return false;
+        eventLog.append(conversationId, SessionEventTypes.SUMMARY_UPDATED,
+                objectMapper.createObjectNode().put("content", summary.content())
+                        .put("coveredMessageCount", summary.coveredMessageCount()));
+        return true;
     }
 
     private ConversationInfo requireInfo(String conversationId) {

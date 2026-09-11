@@ -183,6 +183,8 @@ public final class PlanExecutor implements AutoCloseable {
                         : subAgents.runForExecution(instruction, apiKey, step.subAgentId(), stepRunId,
                         planId, step.id());
                 if (result.pendingApproval() != null) {
+                    plans.waitStepForApproval(planId, step.id(), result.pendingApproval().toolName());
+                    plans.waitForApproval(planId);
                     return new StepOutcome(step.id(), false, true, result.answer(), result.runId());
                 }
                 completeRun(stepRunId, result.answer());

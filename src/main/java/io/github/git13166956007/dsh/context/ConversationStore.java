@@ -75,4 +75,12 @@ public interface ConversationStore {
     default void saveSummary(String conversationId, ConversationSummary summary) throws Exception {
         throw new UnsupportedOperationException("conversation summaries are not supported");
     }
+
+    /** Persists a summary only when it advances the covered message count. */
+    default boolean saveSummaryIfNewer(String conversationId, ConversationSummary summary) throws Exception {
+        ConversationSummary current = loadSummary(conversationId);
+        if (current != null && current.coveredMessageCount() >= summary.coveredMessageCount()) return false;
+        saveSummary(conversationId, summary);
+        return true;
+    }
 }

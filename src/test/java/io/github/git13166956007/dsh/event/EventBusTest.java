@@ -155,5 +155,20 @@ public final class EventBusTest {
         bus.close();
     }
 
+    @Test
+    void rejectsJournalReplayWithTheSameIdAndDifferentContent() {
+        InMemoryEventJournal journal = new InMemoryEventJournal();
+        java.time.Instant occurredAt = java.time.Instant.now();
+        EventRecord first = new EventRecord("event-1", TEXT.name(), "first", null, true,
+                null, null, occurredAt);
+        EventRecord conflicting = new EventRecord("event-1", TEXT.name(), "second", null, true,
+                null, null, occurredAt);
+
+        journal.append(first);
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> journal.append(conflicting));
+        assertEquals(1, journal.read().size());
+    }
+
     private record CredentialPayload(String apiKey, String authorization, String value) { }
 }

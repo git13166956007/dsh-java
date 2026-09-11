@@ -41,6 +41,11 @@ public final class MariaDbEventJournal implements EventJournal {
             statement.setString(7, record.error());
             statement.setTimestamp(8, Timestamp.from(record.occurredAt()));
             statement.executeUpdate();
+            EventRecord existing = readById(connection, record.id());
+            if (existing == null || !same(existing, record)) {
+                throw new IllegalArgumentException(
+                        "event ID was already used with different content: " + record.id());
+            }
         }
     }
 
@@ -67,6 +72,39 @@ public final class MariaDbEventJournal implements EventJournal {
 
     private Connection connection() throws SQLException {
         return DriverManager.getConnection(jdbcUrl, username, password);
+    }
+
+    private EventRecord readById(Connection connection, String eventId) throws Exception {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT event_id, event_name, payload_json, value_json, accepted, reason, error, occurred_at "
+                        + "FROM dsh_event_journal WHERE event_id=?")) {
+            statement.setString(1, eventId);
+            try (ResultSet rows = statement.executeQuery()) {
+                if (!rows.next()) return null;
+                String valueJson = rows.getString("value_json");
+                return new EventRecord(rows.getString("event_id"), rows.getString("event_name"),
+                        objectMapper.readTree(rows.getString("payload_json")),
+                        valueJson == null ? null : objectMapper.readTree(valueJson),
+                        rows.getBoolean("accepted"), rows.getString("reason"), rows.getString("error"),
+                        rows.getTimestamp("occurred_at").toInstant());
+            }
+        }
+    }
+
+    private static boolean same(EventRecord left, EventRecord right) {
+        return java.util.Objects.equals(left.eventName(), right.eventName())
+                && jsonEquals(left.payload(), right.payload())
+                && jsonEquals(left.value(), right.value())
+                && left.accepted() == right.accepted()
+                && java.util.Objects.equals(left.reason(), right.reason())
+                && java.util.Objects.equals(left.error(), right.error());
+    }
+
+    private static boolean jsonEquals(Object left, Object right) {
+        if (left == right) return true;
+        if (left == null || right == null) return false;
+        ObjectMapper mapper = new ObjectMapper();
+        return mapper.valueToTree(left).equals(mapper.valueToTree(right));
     }
 
     private void ensureSchema() {

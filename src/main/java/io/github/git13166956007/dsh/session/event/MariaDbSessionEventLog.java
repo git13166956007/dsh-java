@@ -134,11 +134,16 @@ public final class MariaDbSessionEventLog implements SessionEventLog {
 
     @Override
     public synchronized List<SessionEvent> read(String sessionId) throws Exception {
+        try (Connection connection = connection()) {
+            return read(connection, sessionId);
+        }
+    }
+
+    public synchronized List<SessionEvent> read(Connection connection, String sessionId) throws Exception {
         List<SessionEvent> result = new ArrayList<SessionEvent>();
-        try (Connection connection = connection();
-             PreparedStatement statement = connection.prepareStatement(
-                     "SELECT id, sequence_no, occurred_at, event_type, payload_json FROM dsh_session_event "
-                             + "WHERE session_id=? ORDER BY sequence_no")) {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT id, sequence_no, occurred_at, event_type, payload_json FROM dsh_session_event "
+                        + "WHERE session_id=? ORDER BY sequence_no")) {
             statement.setString(1, sessionId);
             try (ResultSet rows = statement.executeQuery()) {
                 while (rows.next()) {

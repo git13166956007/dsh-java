@@ -115,6 +115,16 @@ class InMemoryConversationStoreTest {
     }
 
     @Test
+    void staleSummaryCannotOverwriteAnAlreadyAdvancedSummary() throws Exception {
+        InMemoryConversationStore store = new InMemoryConversationStore();
+        String id = store.open(null, "summary race");
+        assertEquals(true, store.saveSummaryIfNewer(id, new ConversationSummary("new", 10)));
+        assertEquals(false, store.saveSummaryIfNewer(id, new ConversationSummary("old", 4)));
+        assertEquals("new", store.loadSummary(id).content());
+        assertEquals(10, store.loadSummary(id).coveredMessageCount());
+    }
+
+    @Test
     void usesProviderTokenizerForContextBudget() throws Exception {
         InMemoryConversationStore store = new InMemoryConversationStore();
         ContextManager context = new ContextManager(store, 10, 100);

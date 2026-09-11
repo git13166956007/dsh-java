@@ -268,8 +268,7 @@ public final class ContextManager {
         ModelResponse response = model.complete(prompt, List.<ToolDefinition>of(), apiKey, modelId);
         String content = response.content() == null ? "" : response.content().trim();
         if (content.isEmpty()) return false;
-        store.saveSummary(conversationId, new ConversationSummary(content, all.size()));
-        return true;
+        return store.saveSummaryIfNewer(conversationId, new ConversationSummary(content, all.size()));
     }
 
     private static void appendTranscript(StringBuilder transcript, ChatMessage message) {
