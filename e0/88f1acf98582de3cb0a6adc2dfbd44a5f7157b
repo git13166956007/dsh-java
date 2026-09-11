@@ -1,0 +1,14 @@
+frontend/src/style.css
+  h_eb697744b14c1b 493-693
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e088f1acf98582de3cb0a6adc2dfbd44a5f7157b",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
