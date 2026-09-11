@@ -38,4 +38,21 @@ class RunManagerTest {
         manager.event(runId, "plan_step_completed", "step-1");
         assertEquals(List.of("plan_step_started"), types);
     }
+
+    @Test
+    void terminalRunCannotBeReopenedByACompetingLifecycleCommand() throws Exception {
+        RunManager manager = new RunManager(new InMemoryRunStore());
+        String runId = manager.start(new RunSpec(null, RunKind.AGENT, null, null, null, null, null));
+
+        manager.complete(runId, "done");
+        manager.cancel(runId);
+        manager.fail(runId, "late failure");
+
+        Run saved = manager.find(runId);
+        assertNotNull(saved);
+        assertEquals(RunStatus.COMPLETED, saved.status());
+        assertEquals("done", saved.output());
+        assertEquals(List.of("run_started", "run_completed"),
+                manager.events(runId).stream().map(RunEvent::type).toList());
+    }
 }

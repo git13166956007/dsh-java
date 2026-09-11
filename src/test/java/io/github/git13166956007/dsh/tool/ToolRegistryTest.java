@@ -2,10 +2,15 @@ package io.github.git13166956007.dsh.tool;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.node.JsonNodeFactory;
+import tools.jackson.databind.node.ObjectNode;
 
 class ToolRegistryTest {
     @Test
@@ -61,5 +66,60 @@ class ToolRegistryTest {
         assertEquals(true, second.list().get(0).approvalRequired());
         second.setApprovalRequired("approval_demo", false);
         assertEquals("saved-result", second.execute("approval_demo", JsonNodeFactory.instance.objectNode()));
+    }
+
+    @Test
+    void doesNotHoldRegistryLockWhileToolRuns() throws Exception {
+        ToolRegistry registry = new ToolRegistry();
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        registry.register(new ToolDefinition("blocking", "Blocking tool.",
+                JsonNodeFactory.instance.objectNode().put("type", "object")), arguments -> {
+            started.countDown();
+            release.await(2, TimeUnit.SECONDS);
+            return "done";
+        });
+
+        CompletableFuture<String> execution = CompletableFuture.supplyAsync(() -> {
+            try {
+                return registry.execute("blocking", JsonNodeFactory.instance.objectNode());
+            } catch (Exception exception) {
+                throw new RuntimeException(exception);
+            }
+        });
+        assertEquals(true, started.await(1, TimeUnit.SECONDS));
+        registry.setEnabled("blocking", false);
+        release.countDown();
+        assertEquals("done", execution.get(2, TimeUnit.SECONDS));
+    }
+
+    @Test
+    void validatesToolArgumentsAgainstSchemaBeforeExecution() {
+        ToolRegistry registry = new ToolRegistry();
+        ObjectNode schema = JsonNodeFactory.instance.objectNode().put("type", "object");
+        schema.putObject("properties").putObject("query").put("type", "string");
+        schema.putArray("required").add("query");
+        schema.put("additionalProperties", false);
+        registry.register(new ToolDefinition("search", "Search.", schema), arguments -> "ok");
+
+        ObjectNode valid = JsonNodeFactory.instance.objectNode().put("query", "kernel");
+        assertDoesNotThrow(() -> registry.validateArguments("search", valid, null));
+        assertThrows(IllegalArgumentException.class,
+                () -> registry.validateArguments("search", JsonNodeFactory.instance.objectNode(), null));
+        assertThrows(IllegalArgumentException.class,
+                () -> registry.validateArguments("search", JsonNodeFactory.instance.objectNode().put("query", 1), null));
+        assertThrows(IllegalArgumentException.class,
+                () -> registry.validateArguments("search", JsonNodeFactory.instance.objectNode().put("query", "x")
+                        .put("extra", true), null));
+    }
+
+    @Test
+    void definitionSchemaIsDefensivelyCopied() {
+        ObjectNode schema = JsonNodeFactory.instance.objectNode().put("type", "object");
+        ToolDefinition definition = new ToolDefinition("immutable_schema", "Schema.", schema);
+        schema.put("additionalProperties", false);
+        assertEquals(false, definition.parameters().has("additionalProperties"));
+        definition.parameters().put("additionalProperties", false);
+        assertEquals(false, definition.parameters().has("additionalProperties"));
     }
 }

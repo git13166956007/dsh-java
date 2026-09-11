@@ -2,6 +2,9 @@ package io.github.git13166956007.dsh.session.event;
 
 import io.github.git13166956007.dsh.agent.ChatMessage;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
@@ -70,5 +73,27 @@ public final class SessionEventProjectionTest {
         assertEquals("New", snapshot.title());
         assertEquals(List.of("new"), snapshot.messages().stream().map(ChatMessage::content).toList());
         assertEquals(false, snapshot.deleted());
+    }
+
+    @Test
+    void concurrentInMemoryAppendsKeepAContiguousSequence() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        InMemorySessionEventLog log = new InMemorySessionEventLog();
+        ExecutorService executor = Executors.newFixedThreadPool(8);
+        try {
+            for (int index = 0; index < 200; index++) {
+                int eventIndex = index;
+                executor.submit(() -> log.append("session-concurrent", SessionEventTypes.USER_MESSAGE,
+                        mapper.createObjectNode().put("index", eventIndex)));
+            }
+        } finally {
+            executor.shutdown();
+            assertEquals(true, executor.awaitTermination(5, TimeUnit.SECONDS));
+        }
+
+        List<SessionEvent> events = log.read("session-concurrent");
+        assertEquals(200, events.size());
+        assertEquals(java.util.stream.LongStream.rangeClosed(1, 200).boxed().toList(),
+                events.stream().map(SessionEvent::sequence).toList());
     }
 }

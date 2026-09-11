@@ -20,6 +20,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
@@ -595,6 +596,36 @@ class AgentLoopTest {
                 null, null, 0, 300, 4);
         assertThrows(AgentBudgetExceededException.class,
                 () -> AgentTestSupport.loop(model, tools, 2).runDetailed("loop", null, List.of(), options));
+    }
+
+    @Test
+    void interruptsAStuckModelWhenRunBudgetExpires() throws Exception {
+        AtomicBoolean interrupted = new AtomicBoolean();
+        CountDownLatch interruptObserved = new CountDownLatch(1);
+        ChatModel model = new ChatModel() {
+            @Override
+            public ModelResponse complete(List<ChatMessage> messages, List<ToolDefinition> definitions) throws Exception {
+                try {
+                    Thread.sleep(10_000);
+                } catch (InterruptedException exception) {
+                    interrupted.set(true);
+                    interruptObserved.countDown();
+                    throw exception;
+                }
+                return new ModelResponse("late", List.of(), "stop");
+            }
+        };
+        AgentExecutionOptions options = new AgentExecutionOptions(null, AgentMode.CHAT, "", 1,
+                null, null, 4, 1, 4);
+        AgentLoop loop = AgentTestSupport.loop(model, new ToolRegistry(), 1);
+        try {
+            assertThrows(AgentBudgetExceededException.class,
+                    () -> loop.runDetailed("timeout", null, List.of(), options));
+            assertEquals(true, interruptObserved.await(2, TimeUnit.SECONDS));
+            assertEquals(true, interrupted.get());
+        } finally {
+            loop.close();
+        }
     }
 
     @Test

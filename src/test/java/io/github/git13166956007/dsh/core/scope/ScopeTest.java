@@ -28,4 +28,19 @@ public final class ScopeTest {
         assertTrue(closed.get());
         root.close();
     }
+
+    @Test
+    void closingParentClosesChildScopesBeforeParentEffects() {
+        Scope root = new Scope("root");
+        Scope child = root.child("child");
+        AtomicBoolean childClosed = new AtomicBoolean();
+        AtomicBoolean parentEffectClosed = new AtomicBoolean();
+        child.effect(() -> childClosed.set(true));
+        root.effect(() -> parentEffectClosed.set(true));
+
+        root.close();
+
+        assertTrue(childClosed.get());
+        assertTrue(parentEffectClosed.get());
+    }
 }

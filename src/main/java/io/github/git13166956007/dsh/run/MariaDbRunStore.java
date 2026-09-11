@@ -79,6 +79,31 @@ public final class MariaDbRunStore implements RunStore {
     }
 
     @Override
+    public boolean compareAndSetStatus(RunData expected, RunData next) throws SQLException {
+        try (Connection connection = connection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "UPDATE dsh_run SET parent_run_id=?, kind=?, status=?, conversation_id=?, plan_id=?, step_id=?, "
+                             + "agent_id=?, model_id=?, started_at=?, completed_at=?, error_text=?, output_text=? "
+                             + "WHERE id=? AND status=?")) {
+            statement.setString(1, next.parentRunId());
+            statement.setString(2, next.kind().value());
+            statement.setString(3, next.status().value());
+            statement.setString(4, next.conversationId());
+            statement.setString(5, next.planId());
+            statement.setString(6, next.stepId());
+            statement.setString(7, next.agentId());
+            statement.setString(8, next.modelId());
+            statement.setTimestamp(9, Timestamp.from(next.startedAt()));
+            setTimestamp(statement, 10, next.completedAt());
+            statement.setString(11, next.error());
+            statement.setString(12, next.output());
+            statement.setString(13, expected.id());
+            statement.setString(14, expected.status().value());
+            return statement.executeUpdate() == 1;
+        }
+    }
+
+    @Override
     public RunEventData saveEvent(RunEventData event) throws SQLException {
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(

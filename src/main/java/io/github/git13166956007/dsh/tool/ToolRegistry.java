@@ -137,27 +137,48 @@ public final class ToolRegistry {
         return true;
     }
 
-    public synchronized String execute(String name, JsonNode arguments) throws Exception {
+    public String execute(String name, JsonNode arguments) throws Exception {
         return execute(name, arguments, null);
     }
 
-    public synchronized String execute(String name, JsonNode arguments, Set<String> allowedNames) throws Exception {
+    public String execute(String name, JsonNode arguments, Set<String> allowedNames) throws Exception {
         return execute(name, arguments, allowedNames, false);
     }
 
-    public synchronized String executeApproved(String name, JsonNode arguments, Set<String> allowedNames) throws Exception {
+    public String executeApproved(String name, JsonNode arguments, Set<String> allowedNames) throws Exception {
         return execute(name, arguments, allowedNames, true);
     }
 
-    private String execute(String name, JsonNode arguments, Set<String> allowedNames, boolean approvalGranted) throws Exception {
-        if (allowedNames != null && !allowedNames.contains(name)) {
-            throw new IllegalStateException("tool is not allowed for this agent: " + name);
+    public void validateArguments(String name, JsonNode arguments, Set<String> allowedNames) {
+        ToolDefinition definition;
+        synchronized (this) {
+            if (allowedNames != null && !allowedNames.contains(name)) {
+                throw new IllegalStateException("tool is not allowed for this agent: " + name);
+            }
+            RegisteredTool tool = tools.get(name);
+            if (tool == null) throw new IllegalArgumentException("unknown tool: " + name);
+            definition = tool.definition;
         }
-        RegisteredTool tool = tools.get(name);
-        if (tool == null) throw new IllegalArgumentException("unknown tool: " + name);
-        if (!tool.enabled) throw new IllegalStateException("tool is disabled: " + name);
-        if (tool.approvalRequired && !approvalGranted) throw new ToolApprovalRequiredException(name);
-        return tool.handler.execute(arguments);
+        ToolSchemaValidator.validate(definition.parameters(), arguments);
+    }
+
+    private String execute(String name, JsonNode arguments, Set<String> allowedNames, boolean approvalGranted) throws Exception {
+        ToolHandler handler;
+        ToolDefinition definition;
+        synchronized (this) {
+            if (allowedNames != null && !allowedNames.contains(name)) {
+                throw new IllegalStateException("tool is not allowed for this agent: " + name);
+            }
+            RegisteredTool tool = tools.get(name);
+            if (tool == null) throw new IllegalArgumentException("unknown tool: " + name);
+            if (!tool.enabled) throw new IllegalStateException("tool is disabled: " + name);
+            if (tool.approvalRequired && !approvalGranted) throw new ToolApprovalRequiredException(name);
+            handler = tool.handler;
+            definition = tool.definition;
+        }
+        ToolSchemaValidator.validate(definition.parameters(), arguments);
+        // Tool code is external work. Do not hold the registry lock while it runs.
+        return handler.execute(arguments);
     }
 
     private static final class RegisteredTool {

@@ -19,9 +19,12 @@ public final class InMemorySessionEventLog implements SessionEventLog {
     public SessionEvent append(String sessionId, String type, JsonNode payload) {
         CopyOnWriteArrayList<SessionEvent> stream = events.computeIfAbsent(sessionId,
                 ignored -> new CopyOnWriteArrayList<SessionEvent>());
-        SessionEvent event = new SessionEvent(UUID.randomUUID().toString(), sessionId, stream.size() + 1,
-                Instant.now(), type, payload.deepCopy());
-        stream.add(event);
+        SessionEvent event;
+        synchronized (stream) {
+            event = new SessionEvent(UUID.randomUUID().toString(), sessionId, stream.size() + 1,
+                    Instant.now(), type, payload.deepCopy());
+            stream.add(event);
+        }
         for (Consumer<SessionEvent> consumer : subscribers.getOrDefault(sessionId,
                 new CopyOnWriteArrayList<Consumer<SessionEvent>>())) consumer.accept(event);
         return event;

@@ -5,8 +5,10 @@ import io.github.git13166956007.dsh.core.profile.ProfilePatch;
 import io.github.git13166956007.dsh.plugin.Registration;
 import io.github.git13166956007.dsh.service.ServiceKey;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /** A hierarchical runtime scope for per-agent and per-session services. */
@@ -15,6 +17,7 @@ public final class Scope implements AutoCloseable {
     private final Scope parent;
     private final Map<ServiceKey<?>, Object> services = new HashMap<ServiceKey<?>, Object>();
     private final Deque<AutoCloseable> effects = new ArrayDeque<AutoCloseable>();
+    private final List<Scope> children = new ArrayList<Scope>();
     private RuntimeProfile profile;
     private boolean closed;
 
@@ -69,7 +72,9 @@ public final class Scope implements AutoCloseable {
         RuntimeProfile childProfile = inherited == null ? null : new RuntimeProfile(childId, inherited.id(),
                 inherited.modelId(), inherited.systemPrompt(), inherited.allowedToolNames(),
                 inherited.allowedSkillIds(), inherited.permissions());
-        return new Scope(childId, this, childProfile);
+        Scope child = new Scope(childId, this, childProfile);
+        children.add(child);
+        return child;
     }
 
     public synchronized Scope child(String childId, ProfilePatch patch) {
@@ -90,13 +95,25 @@ public final class Scope implements AutoCloseable {
     }
 
     @Override
-    public synchronized void close() {
-        if (closed) return;
-        closed = true;
-        while (!effects.isEmpty()) {
-            try { effects.pop().close(); } catch (Exception ignored) { }
+    public void close() {
+        List<Scope> childScopes;
+        List<AutoCloseable> ownedEffects;
+        synchronized (this) {
+            if (closed) return;
+            closed = true;
+            childScopes = new ArrayList<Scope>(children);
+            children.clear();
+            ownedEffects = new ArrayList<AutoCloseable>(effects);
+            effects.clear();
+            services.clear();
         }
-        services.clear();
+        for (int index = childScopes.size() - 1; index >= 0; index--) childScopes.get(index).close();
+        for (AutoCloseable effect : ownedEffects) {
+            try { effect.close(); } catch (Exception ignored) { }
+        }
+        if (parent != null) {
+            synchronized (parent) { parent.children.remove(this); }
+        }
     }
 
     private void ensureOpen() {

@@ -10,6 +10,7 @@ import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public final class EventBusTest {
     private static final EventKey<String> TEXT = new EventKey<String>("test.text", String.class);
@@ -84,4 +85,23 @@ public final class EventBusTest {
         assertThrows(TimeoutException.class, () -> bus.waterfall(TEXT, "slow"));
         bus.close();
     }
+
+    @Test
+    void redactsCredentialsBeforeJournaling() throws Exception {
+        InMemoryEventJournal journal = new InMemoryEventJournal();
+        EventBus bus = new EventBus(journal);
+        EventKey<CredentialPayload> key = new EventKey<>("test.credentials", CredentialPayload.class);
+
+        bus.waterfall(key, new CredentialPayload("sk-secret", "Bearer secret", "visible"));
+
+        EventRecord record = journal.read().get(0);
+        String payload = record.payload().toString();
+        assertTrue(payload.contains("[REDACTED]"));
+        assertTrue(!payload.contains("sk-secret"));
+        assertTrue(!payload.contains("Bearer secret"));
+        assertTrue(payload.contains("visible"));
+        bus.close();
+    }
+
+    private record CredentialPayload(String apiKey, String authorization, String value) { }
 }

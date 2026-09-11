@@ -29,15 +29,23 @@ public final class MariaDbSessionEventLog implements SessionEventLog {
 
     @Override
     public synchronized SessionEvent append(String sessionId, String type, JsonNode payload) throws Exception {
-        try (Connection connection = connection()) {
-            connection.setAutoCommit(false);
-            try {
-                SessionEvent event = append(connection, sessionId, type, payload);
-                connection.commit();
-                return event;
-            } catch (Exception exception) {
-                connection.rollback();
-                throw exception;
+        for (int attempt = 0; ; attempt++) {
+            try (Connection connection = connection()) {
+                connection.setAutoCommit(false);
+                try {
+                    SessionEvent event = append(connection, sessionId, type, payload);
+                    connection.commit();
+                    return event;
+                } catch (Exception exception) {
+                    connection.rollback();
+                    if (attempt >= 4 || !isTransientLockFailure(exception)) throw exception;
+                    try {
+                        Thread.sleep(20L * (attempt + 1));
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        throw interrupted;
+                    }
+                }
             }
         }
     }
@@ -47,12 +55,33 @@ public final class MariaDbSessionEventLog implements SessionEventLog {
                                             JsonNode payload) throws Exception {
         long sequence;
         try (PreparedStatement statement = connection.prepareStatement(
-                "SELECT COALESCE(MAX(sequence_no), 0) + 1 FROM dsh_session_event WHERE session_id=? FOR UPDATE")) {
+                "INSERT IGNORE INTO dsh_session_event_head (session_id, sequence_no) VALUES (?, 0)")) {
+            statement.setString(1, sessionId);
+            statement.executeUpdate();
+        }
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT sequence_no FROM dsh_session_event_head WHERE session_id=? FOR UPDATE")) {
             statement.setString(1, sessionId);
             try (ResultSet rows = statement.executeQuery()) {
-                rows.next();
-                sequence = rows.getLong(1);
+                if (!rows.next()) throw new SQLException("session event head was not created");
+                sequence = rows.getLong(1) + 1;
             }
+        }
+        if (sequence == 1) {
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "SELECT COALESCE(MAX(sequence_no), 0) FROM dsh_session_event WHERE session_id=?")) {
+                statement.setString(1, sessionId);
+                try (ResultSet rows = statement.executeQuery()) {
+                    rows.next();
+                    sequence = rows.getLong(1) + 1;
+                }
+            }
+        }
+        try (PreparedStatement statement = connection.prepareStatement(
+                "UPDATE dsh_session_event_head SET sequence_no=? WHERE session_id=?")) {
+            statement.setLong(1, sequence);
+            statement.setString(2, sessionId);
+            statement.executeUpdate();
         }
         String id = UUID.randomUUID().toString();
         Instant occurredAt = Instant.now();
@@ -116,8 +145,23 @@ public final class MariaDbSessionEventLog implements SessionEventLog {
                              + "INDEX idx_dsh_session_event_session (session_id, sequence_no)) "
                              + "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4")) {
             statement.executeUpdate();
+            try (PreparedStatement head = connection.prepareStatement(
+                    "CREATE TABLE IF NOT EXISTS dsh_session_event_head ("
+                            + "session_id CHAR(36) NOT NULL PRIMARY KEY, sequence_no BIGINT NOT NULL DEFAULT 0) "
+                            + "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4")) {
+                head.executeUpdate();
+            }
         } catch (SQLException exception) {
             throw new IllegalStateException("failed to initialize session event schema", exception);
         }
+    }
+
+    private static boolean isTransientLockFailure(Throwable failure) {
+        for (Throwable current = failure; current != null; current = current.getCause()) {
+            if (current instanceof SQLException sql
+                    && ("40001".equals(sql.getSQLState()) || sql.getErrorCode() == 1205
+                    || sql.getErrorCode() == 1213)) return true;
+        }
+        return false;
     }
 }

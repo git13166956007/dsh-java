@@ -26,6 +26,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
@@ -37,6 +40,7 @@ public final class AgentLoop implements AutoCloseable {
     private final ObjectMapper objectMapper;
     private final int maxTurns;
     private final ExecutorService asyncExecutor = Executors.newCachedThreadPool();
+    private final ExecutorService modelExecutor = Executors.newCachedThreadPool();
     private volatile SubAgentRunner subAgents;
     private final Map<String, PendingExecution> pendingApprovals = new ConcurrentHashMap<String, PendingExecution>();
     private final Map<String, Future<?>> activeRuns = new ConcurrentHashMap<String, Future<?>>();
@@ -192,7 +196,7 @@ public final class AgentLoop implements AutoCloseable {
             for (int turn = 0; turn < options.maxTurns(); turn++) {
                 budget.check();
                 emitRunEvent(runId, options, AgentEvents.Phase.MODEL_REQUESTED, "turn=" + turn);
-                ModelResponse response = complete(activeModel, runId, messages, definitions, apiKey, options.modelId());
+                ModelResponse response = complete(activeModel, runId, messages, definitions, apiKey, options.modelId(), budget);
                 recordEvent(runId, "model_response", response.content());
                 ChatMessage assistantMessage = ChatMessage.assistant(response.content(), response.toolCalls(),
                         response.reasoningContent());
@@ -332,11 +336,14 @@ public final class AgentLoop implements AutoCloseable {
     }
 
     private ModelResponse complete(ChatModel activeModel, String runId, List<ChatMessage> messages,
-                                   List<ToolDefinition> definitions, String apiKey, String modelId) throws Exception {
+                                   List<ToolDefinition> definitions, String apiKey, String modelId,
+                                   ExecutionBudget budget) throws Exception {
         EventBus bus = eventBus();
         AgentEvents.ModelRequest request = new AgentEvents.ModelRequest(runId, messages, definitions, apiKey, modelId, false);
         if (bus != null) request = bus.rewrite(AgentEvents.MODEL_REQUEST, request);
-        ModelResponse response = activeModel.complete(request.messages(), request.tools(), request.apiKey(), request.modelId());
+        AgentEvents.ModelRequest finalRequest = request;
+        ModelResponse response = runWithBudget(() -> activeModel.complete(finalRequest.messages(), finalRequest.tools(),
+                finalRequest.apiKey(), finalRequest.modelId()), budget);
         if (bus != null) response = bus.rewrite(AgentEvents.MODEL_RESPONSE,
                 new AgentEvents.ModelResponseEvent(runId, response)).response();
         return response;
@@ -344,7 +351,7 @@ public final class AgentLoop implements AutoCloseable {
 
     private ModelResponse stream(ChatModel activeModel, String runId, List<ChatMessage> messages,
                                  List<ToolDefinition> definitions, String apiKey, String modelId,
-                                 AgentStreamListener listener) throws Exception {
+                                 AgentStreamListener listener, ExecutionBudget budget) throws Exception {
         EventBus bus = eventBus();
         AgentEvents.ModelRequest request = new AgentEvents.ModelRequest(runId, messages, definitions, apiKey, modelId, true);
         if (bus != null) request = bus.rewrite(AgentEvents.MODEL_REQUEST, request);
@@ -358,7 +365,9 @@ public final class AgentLoop implements AutoCloseable {
                 listener.onReasoning(value);
             }
         };
-        ModelResponse response = activeModel.stream(request.messages(), request.tools(), request.apiKey(), request.modelId(), streamListener);
+        AgentEvents.ModelRequest finalRequest = request;
+        ModelResponse response = runWithBudget(() -> activeModel.stream(finalRequest.messages(), finalRequest.tools(),
+                finalRequest.apiKey(), finalRequest.modelId(), streamListener), budget);
         if (bus != null) response = bus.rewrite(AgentEvents.MODEL_RESPONSE,
                 new AgentEvents.ModelResponseEvent(runId, response)).response();
         return response;
@@ -460,7 +469,7 @@ public final class AgentLoop implements AutoCloseable {
                             }
                             @Override public void onToolCall(ToolCall call) { }
                             @Override public void onToolResult(AgentTraceEvent result) { }
-                        });
+                        }, budget);
                 recordEvent(runId, "model_response", response.content());
                 ChatMessage assistantMessage = ChatMessage.assistant(response.content(), response.toolCalls(),
                         response.reasoningContent());
@@ -571,8 +580,10 @@ public final class AgentLoop implements AutoCloseable {
                 pending.budget.check();
                 checkToolPermission(pending.approval.toolName(), pending.options);
                 try {
-                    result = toolRegistry().executeApproved(pending.approval.toolName(), pending.approval.arguments(),
-                            pending.options.allowedToolNames());
+                    PendingExecution approvedPending = pending;
+                    result = runWithBudget(() -> toolRegistry().executeApproved(approvedPending.approval.toolName(),
+                            approvedPending.approval.arguments(), approvedPending.options.allowedToolNames()),
+                            approvedPending.budget);
                 } catch (Exception exception) {
                     result = "Tool execution failed: " + exception.getMessage();
                 }
@@ -637,7 +648,7 @@ public final class AgentLoop implements AutoCloseable {
             pending.budget.check();
             emitRunEvent(pending.runId, pending.options, AgentEvents.Phase.MODEL_REQUESTED, "turn=" + turn);
             ModelResponse response = complete(model(), pending.runId, pending.messages, pending.definitions,
-                    pending.apiKey, pending.options.modelId());
+                    pending.apiKey, pending.options.modelId(), pending.budget);
             recordEvent(pending.runId, "model_response", response.content());
             ChatMessage assistantMessage = ChatMessage.assistant(response.content(), response.toolCalls(),
                     response.reasoningContent());
@@ -742,7 +753,9 @@ public final class AgentLoop implements AutoCloseable {
                                ExecutionBudget budget) throws Exception {
         checkToolPermission(call.name(), options);
         if (!DELEGATE_TOOL.equals(call.name())) {
-            return toolRegistry().execute(call.name(), call.arguments(), options.allowedToolNames());
+            toolRegistry().validateArguments(call.name(), call.arguments(), options.allowedToolNames());
+            return runWithBudget(() -> toolRegistry().execute(call.name(), call.arguments(), options.allowedToolNames()),
+                    budget);
         }
         if (!delegationAllowed(options)) {
             throw new IllegalStateException("sub-agent delegation is not allowed for this agent");
@@ -1160,6 +1173,7 @@ public final class AgentLoop implements AutoCloseable {
     @Override
     public void close() {
         asyncExecutor.shutdownNow();
+        modelExecutor.shutdownNow();
         activeRuns.clear();
         activeThreads.values().forEach(Thread::interrupt);
         activeThreads.clear();
@@ -1237,6 +1251,36 @@ public final class AgentLoop implements AutoCloseable {
                 throw new AgentBudgetExceededException("maximum tool calls exceeded: " + maxToolCalls);
             }
             toolCalls++;
+        }
+    }
+
+    private <T> T runWithBudget(java.util.concurrent.Callable<T> task, ExecutionBudget budget) throws Exception {
+        long remainingMillis = budget.remainingMillis();
+        if (remainingMillis == Long.MAX_VALUE) return task.call();
+        if (remainingMillis <= 0) throw new AgentBudgetExceededException("agent timeout exceeded");
+        Scope executionScope = executionScopes.get();
+        Future<T> future = modelExecutor.submit(() -> {
+            Scope previous = executionScopes.get();
+            if (executionScope != null) executionScopes.set(executionScope);
+            try {
+                return task.call();
+            } finally {
+                if (previous == null) executionScopes.remove(); else executionScopes.set(previous);
+            }
+        });
+        try {
+            return future.get(remainingMillis, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException exception) {
+            future.cancel(true);
+            throw new AgentBudgetExceededException("agent timeout exceeded");
+        } catch (ExecutionException exception) {
+            Throwable cause = exception.getCause();
+            if (cause instanceof Exception checked) throw checked;
+            if (cause instanceof Error error) throw error;
+            throw new IllegalStateException(cause);
+        } catch (InterruptedException exception) {
+            future.cancel(true);
+            throw exception;
         }
     }
 }

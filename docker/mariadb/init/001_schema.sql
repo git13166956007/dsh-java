@@ -41,6 +41,22 @@ CREATE TABLE IF NOT EXISTS dsh_message (
     INDEX idx_dsh_message_conversation (conversation_id, turn_no, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS dsh_session_event (
+    id CHAR(36) NOT NULL PRIMARY KEY,
+    session_id CHAR(36) NOT NULL,
+    sequence_no BIGINT NOT NULL,
+    occurred_at TIMESTAMP(3) NOT NULL,
+    event_type VARCHAR(128) NOT NULL,
+    payload_json LONGTEXT NOT NULL,
+    UNIQUE KEY uq_dsh_session_event_sequence (session_id, sequence_no),
+    INDEX idx_dsh_session_event_session (session_id, sequence_no)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS dsh_session_event_head (
+    session_id CHAR(36) NOT NULL PRIMARY KEY,
+    sequence_no BIGINT NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS dsh_tool_definition (
     name VARCHAR(128) NOT NULL PRIMARY KEY,
     source_type VARCHAR(32) NOT NULL,

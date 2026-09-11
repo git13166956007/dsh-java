@@ -11,7 +11,7 @@ public final class ToolDefinition {
     public ToolDefinition(String name, String description, ObjectNode parameters) {
         this.name = Objects.requireNonNull(name, "name");
         this.description = Objects.requireNonNull(description, "description");
-        this.parameters = Objects.requireNonNull(parameters, "parameters");
+        this.parameters = Objects.requireNonNull(parameters, "parameters").deepCopy();
     }
 
     public String name() {
@@ -23,6 +23,6 @@ public final class ToolDefinition {
     }
 
     public ObjectNode parameters() {
-        return parameters;
+        return parameters.deepCopy();
     }
 }

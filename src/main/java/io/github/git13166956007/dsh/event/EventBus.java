@@ -186,7 +186,37 @@ public final class EventBus implements AutoCloseable {
     }
 
     private void journal(EventRecord record) throws Exception {
-        if (journal != null) journal.append(record);
+        if (journal != null) journal.append(new EventRecord(record.eventName(), redact(record.payload()),
+                redact(record.value()), record.accepted(), record.reason(), record.error(), record.occurredAt()));
+    }
+
+    private JsonNode redact(Object value) {
+        if (value == null) return null;
+        JsonNode node = objectMapper.valueToTree(value);
+        redact(node);
+        return node;
+    }
+
+    private void redact(JsonNode node) {
+        if (node == null) return;
+        if (node.isObject()) {
+            node.properties().forEach(entry -> {
+                if (isSecretField(entry.getKey())) {
+                    ((tools.jackson.databind.node.ObjectNode) node).put(entry.getKey(), "[REDACTED]");
+                } else {
+                    redact(entry.getValue());
+                }
+            });
+        } else if (node.isArray()) {
+            for (JsonNode value : node) redact(value);
+        }
+    }
+
+    private static boolean isSecretField(String name) {
+        String normalized = name == null ? "" : name.replaceAll("[^A-Za-z0-9]", "").toLowerCase();
+        return normalized.equals("apikey") || normalized.equals("authorization")
+                || normalized.equals("password") || normalized.equals("secret")
+                || normalized.equals("credential") || normalized.endsWith("token");
     }
 
     private record RegisteredHandler<T>(EventHandlerOptions options, ContextualEventHandler<T> handler) { }

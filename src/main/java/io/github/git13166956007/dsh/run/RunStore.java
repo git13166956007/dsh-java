@@ -9,5 +9,10 @@ public interface RunStore {
 
     void saveRun(RunData run) throws Exception;
 
+    default boolean compareAndSetStatus(RunData expected, RunData next) throws Exception {
+        saveRun(next);
+        return true;
+    }
+
     RunEventData saveEvent(RunEventData event) throws Exception;
 }
