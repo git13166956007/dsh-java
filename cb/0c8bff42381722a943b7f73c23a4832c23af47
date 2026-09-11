@@ -1,0 +1,43 @@
+src/main/java/io/github/git13166956007/dsh/core/profile/ProfilePatch.java
+  s_5f0247805a0da5::t_522c0813cf971f 17
+src/test/java/io/github/git13166956007/dsh/agent/AgentLoopTest.java
+  s_5f0247805a0da5::t_39046bbc43c791 3,42,89,126,175,223,271,315,355,382,420,454,493,504,541,572,597,611,628
+src/test/java/io/github/git13166956007/dsh/agent/AgentRunRecoveryTest.java
+  s_5f0247805a0da5::t_b627e307af8273 3,37
+src/test/java/io/github/git13166956007/dsh/agent/SubAgentRunnerTest.java
+  s_5f0247805a0da5::t_a16d1420e051b0 3,29,51,82,101
+src/test/java/io/github/git13166956007/dsh/agent/SubAgentSessionManagerTest.java
+  s_5f0247805a0da5::t_d7508d2c942315 3,29,58
+src/test/java/io/github/git13166956007/dsh/core/scope/ScopeTest.java
+  s_81c96cb3778b9f::t_45630dc4f9bb33 25
+src/test/java/io/github/git13166956007/dsh/plan/AdaptivePlanServiceTest.java
+  s_5f0247805a0da5::t_867b81668791de 3,48,85,109,127,147,165,181,211,241,261
+src/test/java/io/github/git13166956007/dsh/plan/PlanExecutorTest.java
+  s_5f0247805a0da5::t_0c37342b2f5381 3,47,49,76,79,110,112,152,169,203
+src/test/java/io/github/git13166956007/dsh/test/AgentTestSupport.java
+  s_5f0247805a0da5::t_a86ae48e0a4e60 1-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "cb0c8bff42381722a943b7f73c23a4832c23af47",
+  "prompts": {},
+  "sessions": {
+    "s_5f0247805a0da5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08906-b39d-77f1-894a-72f28e58decc",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "sherlock <sherlock09271207@gmail.com>"
+    },
+    "s_81c96cb3778b9f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5490cf89-c469-4885-b1b4-bf644857119f",
+        "model": "GLM-5.3"
+      },
+      "human_author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
