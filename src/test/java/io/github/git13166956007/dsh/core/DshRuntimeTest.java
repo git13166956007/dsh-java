@@ -1,17 +1,26 @@
 package io.github.git13166956007.dsh.core;
 
+import java.io.IOException;
+import java.util.Map;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.jar.JarEntry;
+import java.util.jar.JarOutputStream;
+import java.util.stream.Stream;
+import javax.tools.JavaCompiler;
+import javax.tools.ToolProvider;
 import io.github.git13166956007.dsh.plugin.DshPlugin;
 import io.github.git13166956007.dsh.plugin.PluginContext;
 import io.github.git13166956007.dsh.plugin.PluginLease;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import io.github.git13166956007.dsh.service.ServiceKey;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 public final class DshRuntimeTest {
     private static final ServiceKey<String> GREETING = new ServiceKey<String>("greeting", String.class);
@@ -165,6 +174,76 @@ public final class DshRuntimeTest {
                 () -> runtime.uninstall("capability-source"));
         assertEquals(2, runtime.pluginCount());
         runtime.close();
+    }
+
+    @Test
+    void loadsServiceProviderPluginsThroughAnIsolatedClassLoader() throws Exception {
+        JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+        assumeTrue(compiler != null, "JDK compiler is required for dynamic plugin test");
+        Path root = Files.createTempDirectory("dsh-plugin-test");
+        Path source = root.resolve("src");
+        Path classes = root.resolve("classes");
+        Path pluginDirectory = root.resolve("plugins");
+        Files.createDirectories(source.resolve("fixture"));
+        Files.createDirectories(classes);
+        Files.createDirectories(pluginDirectory);
+        Files.writeString(source.resolve("fixture/Provider.java"), """
+                package fixture;
+                import io.github.git13166956007.dsh.plugin.DshPlugin;
+                import io.github.git13166956007.dsh.plugin.PluginContext;
+                import java.util.Set;
+                public final class Provider implements DshPlugin {
+                    public String id() { return "z-provider"; }
+                    public Set<String> capabilities() { return Set.of("dynamic.maps"); }
+                    public void start(PluginContext context) { }
+                }
+                """);
+        Files.writeString(source.resolve("fixture/Consumer.java"), """
+                package fixture;
+                import io.github.git13166956007.dsh.plugin.DshPlugin;
+                import io.github.git13166956007.dsh.plugin.PluginContext;
+                import java.util.Set;
+                public final class Consumer implements DshPlugin {
+                    public String id() { return "a-consumer"; }
+                    public Set<String> requiredCapabilities() { return Set.of("dynamic.maps"); }
+                    public void start(PluginContext context) { context.requireCapability("dynamic.maps"); }
+                }
+                """);
+        int result = compiler.run(null, null, null, "-classpath", System.getProperty("java.class.path"),
+                "-d", classes.toString(), source.resolve("fixture/Provider.java").toString(),
+                source.resolve("fixture/Consumer.java").toString());
+        assertEquals(0, result);
+        Path jar = pluginDirectory.resolve("dynamic.jar");
+        try (JarOutputStream output = new JarOutputStream(Files.newOutputStream(jar))) {
+            try (Stream<Path> files = Files.walk(classes)) {
+                for (Path file : files.filter(Files::isRegularFile).toList()) {
+                    String entry = classes.relativize(file).toString().replace(java.io.File.separatorChar, '/');
+                    output.putNextEntry(new JarEntry(entry));
+                    Files.copy(file, output);
+                    output.closeEntry();
+                }
+            }
+            output.putNextEntry(new JarEntry("META-INF/services/io.github.git13166956007.dsh.plugin.DshPlugin"));
+            output.write("fixture.Consumer\nfixture.Provider\n".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            output.closeEntry();
+        }
+
+        DshRuntime runtime = new DshRuntime();
+        try {
+            assertEquals(java.util.List.of("z-provider", "a-consumer"), runtime.loadPlugins(pluginDirectory));
+            assertTrue(runtime.pluginInfo().stream().allMatch(DshRuntime.PluginInfo::dynamic));
+            assertEquals(java.util.List.of("a-consumer", "z-provider"), runtime.unloadPlugins());
+            assertEquals(0, runtime.pluginCount());
+        } finally {
+            runtime.close();
+            deleteTree(root);
+        }
+    }
+
+    private static void deleteTree(Path root) throws IOException {
+        try (Stream<Path> files = Files.walk(root)) {
+            for (Path file : files.sorted(java.util.Comparator.reverseOrder()).toList()) Files.deleteIfExists(file);
+        }
     }
 
 }
