@@ -10,6 +10,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import tools.jackson.databind.JsonNode;
@@ -73,16 +74,24 @@ public final class MariaDbConversationStore implements ConversationStore {
         List<ConversationInfo> result = new ArrayList<ConversationInfo>();
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(
-                     "SELECT c.id, c.title, c.created_at, c.updated_at, COUNT(m.id) AS message_count "
-                             + "FROM dsh_conversation c LEFT JOIN dsh_message m ON m.conversation_id = c.id "
-                             + "GROUP BY c.id, c.title, c.created_at, c.updated_at "
-                             + "ORDER BY c.updated_at DESC, c.id LIMIT ?")) {
-            statement.setInt(1, limit);
+                     "SELECT c.id, c.title, c.created_at, c.updated_at, c.summary_text, c.summary_message_count, "
+                             + "(SELECT COUNT(*) FROM dsh_message m WHERE m.conversation_id=c.id) AS message_count "
+                             + "FROM dsh_conversation c")) {
             try (ResultSet rows = statement.executeQuery()) {
-                while (rows.next()) result.add(readInfo(rows));
+                while (rows.next()) {
+                    String id = rows.getString("id");
+                    SessionEventProjection.Snapshot snapshot = projection(id);
+                    if (snapshot.updatedAt() != null && !snapshot.deleted()) {
+                        result.add(new ConversationInfo(id, snapshot.title(), snapshot.messages().size(),
+                                snapshot.createdAt(), snapshot.updatedAt()));
+                    } else if (snapshot.updatedAt() == null) {
+                        result.add(readLegacyInfo(rows));
+                    }
+                }
             }
         }
-        return result;
+        return result.stream().sorted(Comparator.comparing(ConversationInfo::updatedAt).reversed()
+                        .thenComparing(ConversationInfo::id)).limit(limit).toList();
     }
 
     @Override
@@ -131,22 +140,22 @@ public final class MariaDbConversationStore implements ConversationStore {
     public List<ConversationSearchResult> search(String query, int limit) throws SQLException {
         if (limit <= 0) return List.of();
         List<ConversationSearchResult> result = new ArrayList<ConversationSearchResult>();
-        try (Connection connection = connection();
-             PreparedStatement statement = connection.prepareStatement(
-                     "SELECT c.id, c.title, m.role, m.content, "
-                             + "(SELECT COUNT(*) FROM dsh_message before_message "
-                             + "WHERE before_message.conversation_id=m.conversation_id "
-                             + "AND (before_message.turn_no < m.turn_no "
-                             + "OR (before_message.turn_no=m.turn_no AND before_message.id <= m.id))) - 1 AS message_index "
-                             + "FROM dsh_message m JOIN dsh_conversation c ON c.id=m.conversation_id "
-                             + "WHERE LOWER(COALESCE(m.content, '')) LIKE ? "
-                             + "ORDER BY c.updated_at DESC, m.turn_no, m.id LIMIT ?")) {
-            statement.setString(1, "%" + query.toLowerCase(java.util.Locale.ROOT) + "%");
-            statement.setInt(2, limit);
-            try (ResultSet rows = statement.executeQuery()) {
-                while (rows.next()) result.add(new ConversationSearchResult(rows.getString("id"),
-                        rows.getInt("message_index"), rows.getString("role"), rows.getString("content"),
-                        rows.getString("title")));
+        String normalized = query.toLowerCase(java.util.Locale.ROOT);
+        try (Connection connection = connection()) {
+            for (ConversationInfo info : list(Integer.MAX_VALUE)) {
+                if (result.size() >= limit) break;
+                SessionEventProjection.Snapshot snapshot = projection(info.id());
+                List<ChatMessage> messages = snapshot.updatedAt() == null
+                        ? readLegacyMessages(connection, info.id(), Integer.MAX_VALUE)
+                        : snapshot.messages();
+                String title = snapshot.updatedAt() == null ? info.title() : snapshot.title();
+                for (int index = 0; index < messages.size() && result.size() < limit; index++) {
+                    ChatMessage message = messages.get(index);
+                    if (message.content() != null && message.content().toLowerCase(java.util.Locale.ROOT).contains(normalized)) {
+                        result.add(new ConversationSearchResult(info.id(), index, message.role().value(),
+                                message.content(), title));
+                    }
+                }
             }
         }
         return result;
@@ -156,8 +165,9 @@ public final class MariaDbConversationStore implements ConversationStore {
     public List<ChatMessage> load(String conversationId, int limit) throws SQLException {
         if (limit <= 0) return List.of();
         try {
-            List<ChatMessage> projected = SessionEventProjection.messages(eventLog.read(conversationId));
-            if (!projected.isEmpty()) {
+            List<io.github.git13166956007.dsh.session.event.SessionEvent> events = eventLog.read(conversationId);
+            List<ChatMessage> projected = SessionEventProjection.messages(events);
+            if (!events.isEmpty()) {
                 int from = Math.max(0, projected.size() - limit);
                 return List.copyOf(projected.subList(from, projected.size()));
             }
@@ -240,6 +250,8 @@ public final class MariaDbConversationStore implements ConversationStore {
 
     @Override
     public ConversationSummary loadSummary(String conversationId) throws SQLException {
+        SessionEventProjection.Snapshot snapshot = projection(conversationId);
+        if (snapshot.updatedAt() != null) return snapshot.summary();
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(
                      "SELECT summary_text, summary_message_count FROM dsh_conversation WHERE id=?")) {
@@ -281,6 +293,40 @@ public final class MariaDbConversationStore implements ConversationStore {
         Timestamp updated = rows.getTimestamp("updated_at");
         return new ConversationInfo(rows.getString("id"), rows.getString("title"), rows.getInt("message_count"),
                 created.toInstant(), updated.toInstant());
+    }
+
+    private static ConversationInfo readLegacyInfo(ResultSet rows) throws SQLException {
+        Timestamp created = rows.getTimestamp("created_at");
+        Timestamp updated = rows.getTimestamp("updated_at");
+        return new ConversationInfo(rows.getString("id"), rows.getString("title"), rows.getInt("message_count"),
+                created.toInstant(), updated.toInstant());
+    }
+
+    private SessionEventProjection.Snapshot projection(String conversationId) throws SQLException {
+        try {
+            return SessionEventProjection.project(eventLog.read(conversationId));
+        } catch (Exception exception) {
+            throw sqlException("failed to project session events", exception);
+        }
+    }
+
+    private List<ChatMessage> readLegacyMessages(Connection connection, String conversationId, int limit)
+            throws SQLException {
+        List<ChatMessage> messages = new ArrayList<ChatMessage>();
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT role, content, reasoning_content, tool_calls_json, tool_call_id FROM dsh_message "
+                        + "WHERE conversation_id = ? ORDER BY turn_no, id")) {
+            statement.setString(1, conversationId);
+            try (ResultSet result = statement.executeQuery()) {
+                while (result.next() && messages.size() < limit) {
+                    ChatMessage message = readMessage(result.getString("role"), result.getString("content"),
+                            result.getString("reasoning_content"), result.getString("tool_calls_json"),
+                            result.getString("tool_call_id"));
+                    if (message != null) messages.add(message);
+                }
+            }
+        }
+        return messages;
     }
 
     private void ensureSchema() {

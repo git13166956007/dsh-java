@@ -42,9 +42,14 @@ public final class InMemoryConversationStore implements ConversationStore {
     public SessionEventLog eventLog() { return eventLog; }
 
     @Override
-    public List<ConversationInfo> list(int limit) {
+    public List<ConversationInfo> list(int limit) throws Exception {
         if (limit <= 0) return List.of();
-        return infos.values().stream()
+        List<ConversationInfo> projected = new ArrayList<ConversationInfo>();
+        for (String conversationId : infos.keySet()) {
+            ConversationInfo info = projectedInfo(conversationId);
+            if (info != null) projected.add(info);
+        }
+        return projected.stream()
                 .sorted(Comparator.comparing(ConversationInfo::updatedAt).reversed()
                         .thenComparing(ConversationInfo::id))
                 .limit(limit)
@@ -72,8 +77,10 @@ public final class InMemoryConversationStore implements ConversationStore {
 
     @Override
     public List<ChatMessage> load(String conversationId, int limit) throws Exception {
-        List<ChatMessage> messages = SessionEventProjection.messages(eventLog.read(conversationId));
-        if (messages.isEmpty()) messages = conversations.get(conversationId);
+        List<io.github.git13166956007.dsh.session.event.SessionEvent> events = eventLog.read(conversationId);
+        List<ChatMessage> messages = events.isEmpty()
+                ? conversations.get(conversationId)
+                : SessionEventProjection.messages(events);
         if (messages == null || limit <= 0) return List.of();
         int from = Math.max(0, messages.size() - limit);
         return new ArrayList<ChatMessage>(messages.subList(from, messages.size()));
@@ -105,12 +112,12 @@ public final class InMemoryConversationStore implements ConversationStore {
     }
 
     @Override
-    public List<ConversationSearchResult> search(String query, int limit) {
+    public List<ConversationSearchResult> search(String query, int limit) throws Exception {
         if (limit <= 0) return List.of();
         String normalized = query.toLowerCase(java.util.Locale.ROOT);
         List<ConversationSearchResult> result = new ArrayList<ConversationSearchResult>();
         for (ConversationInfo info : list(Integer.MAX_VALUE)) {
-            List<ChatMessage> messages = conversations.getOrDefault(info.id(), new CopyOnWriteArrayList<ChatMessage>());
+            List<ChatMessage> messages = load(info.id(), Integer.MAX_VALUE);
             for (int index = 0; index < messages.size() && result.size() < limit; index++) {
                 String content = messages.get(index).content();
                 if (content != null && content.toLowerCase(java.util.Locale.ROOT).contains(normalized)) {
@@ -124,8 +131,9 @@ public final class InMemoryConversationStore implements ConversationStore {
     }
 
     @Override
-    public ConversationSummary loadSummary(String conversationId) {
-        return summaries.get(conversationId);
+    public ConversationSummary loadSummary(String conversationId) throws Exception {
+        List<io.github.git13166956007.dsh.session.event.SessionEvent> events = eventLog.read(conversationId);
+        return events.isEmpty() ? summaries.get(conversationId) : SessionEventProjection.project(events).summary();
     }
 
     @Override
@@ -140,5 +148,17 @@ public final class InMemoryConversationStore implements ConversationStore {
         ConversationInfo info = infos.get(conversationId);
         if (info == null) throw new IllegalArgumentException("unknown conversation: " + conversationId);
         return info;
+    }
+
+    private ConversationInfo projectedInfo(String conversationId) throws Exception {
+        ConversationInfo fallback = infos.get(conversationId);
+        if (fallback == null) return null;
+        List<io.github.git13166956007.dsh.session.event.SessionEvent> events = eventLog.read(conversationId);
+        if (events.isEmpty()) return fallback;
+        SessionEventProjection.Snapshot snapshot = SessionEventProjection.project(events);
+        if (snapshot.deleted()) return null;
+        Instant createdAt = snapshot.createdAt() == null ? fallback.createdAt() : snapshot.createdAt();
+        Instant updatedAt = snapshot.updatedAt() == null ? fallback.updatedAt() : snapshot.updatedAt();
+        return new ConversationInfo(conversationId, snapshot.title(), snapshot.messages().size(), createdAt, updatedAt);
     }
 }

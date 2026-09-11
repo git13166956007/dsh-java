@@ -18,6 +18,7 @@ import io.github.git13166956007.dsh.service.ServiceKey;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -779,6 +780,7 @@ public final class AgentLoop implements AutoCloseable {
 
     private String executeTool(ToolCall call, RunOptions options, String apiKey, String runId,
                                ExecutionBudget budget) throws Exception {
+        checkToolPermission(call.name(), options);
         if (!DELEGATE_TOOL.equals(call.name())) {
             return toolRegistry().execute(call.name(), call.arguments(), options.allowedToolNames());
         }
@@ -822,6 +824,16 @@ public final class AgentLoop implements AutoCloseable {
         }
     }
 
+    private static void checkToolPermission(String toolName, RunOptions options) {
+        if (options.permissions() == null || options.permissions().isEmpty()) return;
+        String decision = options.permissions().get("tool." + toolName);
+        if (decision == null) decision = options.permissions().get(toolName);
+        if (decision != null && ("deny".equalsIgnoreCase(decision)
+                || "false".equalsIgnoreCase(decision) || "disabled".equalsIgnoreCase(decision))) {
+            throw new IllegalStateException("tool permission denied: " + toolName);
+        }
+    }
+
     private String delegationResult(JsonNode arguments, AgentRunResult child) {
         String profileId = arguments == null ? "unknown" : arguments.path("profileId").asString("unknown");
         return delegationResult(profileId, child);
@@ -846,8 +858,10 @@ public final class AgentLoop implements AutoCloseable {
         }
         AgentProfileData profile = profileRegistry.resolve(agentId);
         return new RunOptions(blankToNull(modelId) == null ? profile.modelId() : blankToNull(modelId),
-                modeOverride == null ? profile.mode() : modeOverride, profile.maxTurns(), profile.systemPrompt(), null, null,
-                profile.maxToolCalls(), profile.timeoutSeconds(), profile.maxDepth(), memoryNamespace, memorySubjectKey, agentId, Map.of());
+                modeOverride == null ? profile.mode() : modeOverride, profile.maxTurns(), profile.systemPrompt(),
+                profile.allowedToolNames().isEmpty() ? null : Set.copyOf(profile.allowedToolNames()),
+                profile.skillIds().isEmpty() ? null : Set.copyOf(profile.skillIds()), profile.maxToolCalls(),
+                profile.timeoutSeconds(), profile.maxDepth(), memoryNamespace, memorySubjectKey, agentId, profile.permissions());
     }
 
     private String systemPrompt(RunOptions options, String query, AgentRunContext context) throws Exception {

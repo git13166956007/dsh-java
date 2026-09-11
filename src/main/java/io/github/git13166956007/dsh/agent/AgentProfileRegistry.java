@@ -5,6 +5,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 public final class AgentProfileRegistry {
@@ -58,6 +59,14 @@ public final class AgentProfileRegistry {
     public synchronized AgentProfile create(String name, AgentMode mode, String modelId, String systemPrompt,
                                              Integer maxTurns, Boolean enabled, Boolean active, Integer maxToolCalls,
                                              Integer timeoutSeconds, Integer maxDepth) {
+        return create(name, mode, modelId, systemPrompt, maxTurns, enabled, active, maxToolCalls,
+                timeoutSeconds, maxDepth, List.of(), List.of(), Map.of());
+    }
+
+    public synchronized AgentProfile create(String name, AgentMode mode, String modelId, String systemPrompt,
+                                             Integer maxTurns, Boolean enabled, Boolean active, Integer maxToolCalls,
+                                             Integer timeoutSeconds, Integer maxDepth, List<String> allowedToolNames,
+                                             List<String> skillIds, Map<String, String> permissions) {
         String id = UUID.randomUUID().toString();
         boolean nextEnabled = enabled == null || enabled;
         boolean nextActive = nextEnabled && (Boolean.TRUE.equals(active)
@@ -67,7 +76,8 @@ public final class AgentProfileRegistry {
                 blankToNull(modelId), blankToEmpty(systemPrompt), validMaxTurns(maxTurns == null ? defaultMaxTurns : maxTurns),
                 validMaxToolCalls(maxToolCalls == null ? 64 : maxToolCalls),
                 validTimeoutSeconds(timeoutSeconds == null ? 300 : timeoutSeconds),
-                validMaxDepth(maxDepth == null ? 4 : maxDepth), nextEnabled, nextActive);
+                validMaxDepth(maxDepth == null ? 4 : maxDepth), nextEnabled, nextActive,
+                normalizeList(allowedToolNames, "tool"), normalizeList(skillIds, "skill"), normalizePermissions(permissions));
         save(profile);
         return AgentProfile.from(profile);
     }
@@ -80,6 +90,15 @@ public final class AgentProfileRegistry {
     public synchronized AgentProfile update(String id, String name, AgentMode mode, String modelId,
                                              String systemPrompt, Integer maxTurns, Boolean enabled, Boolean active,
                                              Integer maxToolCalls, Integer timeoutSeconds, Integer maxDepth) {
+        return update(id, name, mode, modelId, systemPrompt, maxTurns, enabled, active, maxToolCalls,
+                timeoutSeconds, maxDepth, null, null, null);
+    }
+
+    public synchronized AgentProfile update(String id, String name, AgentMode mode, String modelId,
+                                             String systemPrompt, Integer maxTurns, Boolean enabled, Boolean active,
+                                             Integer maxToolCalls, Integer timeoutSeconds, Integer maxDepth,
+                                             List<String> allowedToolNames, List<String> skillIds,
+                                             Map<String, String> permissions) {
         AgentProfileData current = require(id);
         boolean nextActive = active == null ? current.active() : active;
         boolean nextEnabled = enabled == null ? current.enabled() : enabled;
@@ -93,7 +112,10 @@ public final class AgentProfileRegistry {
                 maxTurns == null ? current.maxTurns() : validMaxTurns(maxTurns),
                 maxToolCalls == null ? current.maxToolCalls() : validMaxToolCalls(maxToolCalls),
                 timeoutSeconds == null ? current.timeoutSeconds() : validTimeoutSeconds(timeoutSeconds),
-                maxDepth == null ? current.maxDepth() : validMaxDepth(maxDepth), nextEnabled, nextActive);
+                maxDepth == null ? current.maxDepth() : validMaxDepth(maxDepth), nextEnabled, nextActive,
+                allowedToolNames == null ? current.allowedToolNames() : normalizeList(allowedToolNames, "tool"),
+                skillIds == null ? current.skillIds() : normalizeList(skillIds, "skill"),
+                permissions == null ? current.permissions() : normalizePermissions(permissions));
         save(updated);
         ensureActive();
         return AgentProfile.from(profiles.get(id));
@@ -104,7 +126,8 @@ public final class AgentProfileRegistry {
         if (!target.enabled()) throw new IllegalArgumentException("agent profile is disabled: " + id);
         deactivateAll();
         AgentProfileData active = new AgentProfileData(target.id(), target.name(), target.mode(), target.modelId(),
-                target.systemPrompt(), target.maxTurns(), target.maxToolCalls(), target.timeoutSeconds(), target.maxDepth(), true, true);
+                target.systemPrompt(), target.maxTurns(), target.maxToolCalls(), target.timeoutSeconds(), target.maxDepth(), true, true,
+                target.allowedToolNames(), target.skillIds(), target.permissions());
         save(active);
         return AgentProfile.from(active);
     }
@@ -132,7 +155,8 @@ public final class AgentProfileRegistry {
             if (profile.active()) {
                 save(new AgentProfileData(profile.id(), profile.name(), profile.mode(), profile.modelId(),
                         profile.systemPrompt(), profile.maxTurns(), profile.maxToolCalls(), profile.timeoutSeconds(),
-                        profile.maxDepth(), profile.enabled(), false));
+                        profile.maxDepth(), profile.enabled(), false, profile.allowedToolNames(), profile.skillIds(),
+                        profile.permissions()));
             }
         }
     }
@@ -190,5 +214,27 @@ public final class AgentProfileRegistry {
 
     private static String blankToEmpty(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    private static List<String> normalizeList(List<String> values, String kind) {
+        if (values == null) return List.of();
+        List<String> result = new ArrayList<String>();
+        for (String value : values) {
+            String normalized = blankToNull(value);
+            if (normalized == null) throw new IllegalArgumentException(kind + " name must not be blank");
+            if (!result.contains(normalized)) result.add(normalized);
+        }
+        return List.copyOf(result);
+    }
+
+    private static Map<String, String> normalizePermissions(Map<String, String> values) {
+        if (values == null) return Map.of();
+        Map<String, String> result = new java.util.LinkedHashMap<String, String>();
+        for (Map.Entry<String, String> entry : values.entrySet()) {
+            String key = blankToNull(entry.getKey());
+            if (key == null) throw new IllegalArgumentException("permission name must not be blank");
+            result.put(key, entry.getValue() == null ? "" : entry.getValue().trim());
+        }
+        return Map.copyOf(result);
     }
 }

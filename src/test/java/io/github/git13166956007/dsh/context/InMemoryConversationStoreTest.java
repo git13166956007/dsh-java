@@ -202,4 +202,32 @@ class InMemoryConversationStoreTest {
         assertEquals(1, context.conversations(20).size());
         assertEquals(first, context.conversations(20).get(0).id());
     }
+
+    @Test
+    void derivesConversationMetadataFromSessionEvents() throws Exception {
+        InMemoryConversationStore store = new InMemoryConversationStore();
+        String id = store.open(null, "Initial title");
+        store.append(id, ChatMessage.user("hello"));
+        store.rename(id, "Renamed title");
+
+        ConversationInfo info = store.list(10).get(0);
+        assertEquals("Renamed title", info.title());
+        assertEquals(1, info.messageCount());
+        assertEquals(List.of("hello"), store.search("HELLO", 10).stream()
+                .map(ConversationSearchResult::content).toList());
+    }
+
+    @Test
+    void deletedSessionProjectionDoesNotFallBackToCachedMessages() throws Exception {
+        InMemoryConversationStore store = new InMemoryConversationStore();
+        String id = store.open(null, "Delete me");
+        store.append(id, ChatMessage.user("must disappear"));
+        store.delete(id);
+
+        assertEquals(List.of(), store.load(id, 10));
+        assertEquals(List.of(), store.search("must disappear", 10));
+        assertEquals(1, store.eventLog().read(id).stream()
+                .filter(event -> event.type().equals(io.github.git13166956007.dsh.session.event.SessionEventTypes.DELETED))
+                .count());
+    }
 }

@@ -7,11 +7,14 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 public final class MariaDbAgentProfileStore implements AgentProfileStore {
     private final String jdbcUrl;
     private final String username;
     private final String password;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public MariaDbAgentProfileStore(String jdbcUrl, String username, String password) {
         this.jdbcUrl = jdbcUrl;
@@ -25,7 +28,7 @@ public final class MariaDbAgentProfileStore implements AgentProfileStore {
         List<AgentProfileData> result = new ArrayList<AgentProfileData>();
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(
-                     "SELECT id, name, mode, model_id, system_prompt, max_turns, max_tool_calls, timeout_seconds, max_depth, enabled, active "
+                     "SELECT id, name, mode, model_id, system_prompt, max_turns, max_tool_calls, timeout_seconds, max_depth, enabled, active, allowed_tools_json, skill_ids_json, permissions_json "
                              + "FROM dsh_agent_profile ORDER BY created_at, id");
              ResultSet rows = statement.executeQuery()) {
             while (rows.next()) {
@@ -33,7 +36,9 @@ public final class MariaDbAgentProfileStore implements AgentProfileStore {
                         AgentMode.parse(rows.getString("mode")), rows.getString("model_id"),
                         rows.getString("system_prompt"), rows.getInt("max_turns"),
                         rows.getInt("max_tool_calls"), rows.getInt("timeout_seconds"), rows.getInt("max_depth"),
-                        rows.getBoolean("enabled"), rows.getBoolean("active")));
+                        rows.getBoolean("enabled"), rows.getBoolean("active"),
+                        readList(rows.getString("allowed_tools_json")), readList(rows.getString("skill_ids_json")),
+                        readMap(rows.getString("permissions_json"))));
             }
         }
         return result;
@@ -44,13 +49,14 @@ public final class MariaDbAgentProfileStore implements AgentProfileStore {
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(
                      "INSERT INTO dsh_agent_profile "
-                             + "(id, name, mode, model_id, system_prompt, max_turns, max_tool_calls, timeout_seconds, max_depth, enabled, active) "
-                             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                             + "(id, name, mode, model_id, system_prompt, max_turns, max_tool_calls, timeout_seconds, max_depth, enabled, active, allowed_tools_json, skill_ids_json, permissions_json) "
+                             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                              + "ON DUPLICATE KEY UPDATE name=VALUES(name), mode=VALUES(mode), "
                              + "model_id=VALUES(model_id), system_prompt=VALUES(system_prompt), "
                              + "max_turns=VALUES(max_turns), max_tool_calls=VALUES(max_tool_calls), "
                              + "timeout_seconds=VALUES(timeout_seconds), max_depth=VALUES(max_depth), "
-                             + "enabled=VALUES(enabled), active=VALUES(active)")) {
+                             + "enabled=VALUES(enabled), active=VALUES(active), allowed_tools_json=VALUES(allowed_tools_json), "
+                             + "skill_ids_json=VALUES(skill_ids_json), permissions_json=VALUES(permissions_json)")) {
             statement.setString(1, profile.id());
             statement.setString(2, profile.name());
             statement.setString(3, profile.mode().value());
@@ -62,6 +68,9 @@ public final class MariaDbAgentProfileStore implements AgentProfileStore {
             statement.setInt(9, profile.maxDepth());
             statement.setBoolean(10, profile.enabled());
             statement.setBoolean(11, profile.active());
+            statement.setString(12, write(profile.allowedToolNames()));
+            statement.setString(13, write(profile.skillIds()));
+            statement.setString(14, write(profile.permissions()));
             statement.executeUpdate();
         }
     }
@@ -93,6 +102,9 @@ public final class MariaDbAgentProfileStore implements AgentProfileStore {
             addColumn(connection, "max_tool_calls INT NOT NULL DEFAULT 64");
             addColumn(connection, "timeout_seconds INT NOT NULL DEFAULT 300");
             addColumn(connection, "max_depth INT NOT NULL DEFAULT 4");
+            addColumn(connection, "allowed_tools_json TEXT NULL");
+            addColumn(connection, "skill_ids_json TEXT NULL");
+            addColumn(connection, "permissions_json TEXT NULL");
         } catch (SQLException exception) {
             throw new IllegalStateException("failed to initialize agent profile schema", exception);
         }
@@ -107,5 +119,36 @@ public final class MariaDbAgentProfileStore implements AgentProfileStore {
                 "ALTER TABLE dsh_agent_profile ADD COLUMN IF NOT EXISTS " + definition)) {
             statement.executeUpdate();
         }
+    }
+
+    private String write(Object value) throws SQLException {
+        try { return objectMapper.writeValueAsString(value); }
+        catch (Exception exception) { throw sqlException("failed to serialize agent profile", exception); }
+    }
+
+    private List<String> readList(String value) throws SQLException {
+        if (value == null || value.isBlank()) return List.of();
+        try {
+            JsonNode node = objectMapper.readTree(value);
+            List<String> result = new ArrayList<String>();
+            if (node != null && node.isArray()) for (JsonNode item : node) result.add(item.asString(""));
+            return List.copyOf(result);
+        } catch (Exception exception) { throw sqlException("failed to deserialize agent profile list", exception); }
+    }
+
+    private java.util.Map<String, String> readMap(String value) throws SQLException {
+        if (value == null || value.isBlank()) return java.util.Map.of();
+        try {
+            JsonNode node = objectMapper.readTree(value);
+            java.util.Map<String, String> result = new java.util.LinkedHashMap<String, String>();
+            if (node != null && node.isObject()) node.properties().forEach(entry -> result.put(entry.getKey(), entry.getValue().asString("")));
+            return java.util.Map.copyOf(result);
+        } catch (Exception exception) { throw sqlException("failed to deserialize agent profile permissions", exception); }
+    }
+
+    private static SQLException sqlException(String message, Exception cause) {
+        SQLException exception = new SQLException(message);
+        exception.initCause(cause);
+        return exception;
     }
 }

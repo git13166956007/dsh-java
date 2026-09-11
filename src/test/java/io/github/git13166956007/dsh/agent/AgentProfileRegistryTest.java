@@ -4,6 +4,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.List;
+import java.util.Map;
+
 import org.junit.jupiter.api.Test;
 
 class AgentProfileRegistryTest {
@@ -57,5 +60,19 @@ class AgentProfileRegistryTest {
         assertEquals(12, restored.maxToolCalls());
         assertEquals(45, restored.timeoutSeconds());
         assertEquals(2, restored.maxDepth());
+    }
+
+    @Test
+    void persistsCapabilitiesAndPermissions() {
+        InMemoryAgentProfileStore store = new InMemoryAgentProfileStore();
+        AgentProfileRegistry registry = new AgentProfileRegistry(store, 8);
+        AgentProfile profile = registry.create("Restricted", AgentMode.EXECUTION, null, "Use only approved tools.",
+                4, true, false, 8, 60, 2, List.of("time_now"), List.of("safe-answer"),
+                Map.of("tool.time_now", "allow", "filesystem", "read"));
+
+        AgentProfile restored = new AgentProfileRegistry(store, 8).find(profile.id());
+        assertEquals(List.of("time_now"), restored.allowedToolNames());
+        assertEquals(List.of("safe-answer"), restored.skillIds());
+        assertEquals("read", restored.permissions().get("filesystem"));
     }
 }

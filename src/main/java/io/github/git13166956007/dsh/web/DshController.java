@@ -612,7 +612,8 @@ public final class DshController {
         try {
             return agentProfileRegistry.create(request.name(), AgentMode.parse(request.mode()), request.modelId(),
                     request.systemPrompt(), request.maxTurns(), request.enabled(), request.active(),
-                    request.maxToolCalls(), request.timeoutSeconds(), request.maxDepth());
+                    request.maxToolCalls(), request.timeoutSeconds(), request.maxDepth(), request.allowedToolNames(),
+                    request.skillIds(), request.permissions());
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
         }
@@ -623,7 +624,8 @@ public final class DshController {
         try {
             return agentProfileRegistry.update(id, request.name(), request.mode() == null ? null : AgentMode.parse(request.mode()),
                     request.modelId(), request.systemPrompt(), request.maxTurns(), request.enabled(), request.active(),
-                    request.maxToolCalls(), request.timeoutSeconds(), request.maxDepth());
+                    request.maxToolCalls(), request.timeoutSeconds(), request.maxDepth(), request.allowedToolNames(),
+                    request.skillIds(), request.permissions());
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
         }
@@ -1399,7 +1401,9 @@ public final class DshController {
 
     public record AgentProfileRequest(String name, String mode, String modelId, String systemPrompt,
                                       Integer maxTurns, Boolean enabled, Boolean active, Integer maxToolCalls,
-                                      Integer timeoutSeconds, Integer maxDepth) {
+                                      Integer timeoutSeconds, Integer maxDepth,
+                                      java.util.List<String> allowedToolNames, java.util.List<String> skillIds,
+                                      java.util.Map<String, String> permissions) {
     }
 
     public record SubAgentProfileRequest(String name, String mode, String modelId, String systemPrompt,
