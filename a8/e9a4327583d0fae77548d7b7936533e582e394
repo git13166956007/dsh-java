@@ -1,0 +1,16 @@
+frontend/src/App.vue
+  h_eb697744b14c1b 2062-2069,2072-2085,2087
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 828,830,836-842,1454-1460
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a8e9a4327583d0fae77548d7b7936533e582e394",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
