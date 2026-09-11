@@ -20,15 +20,7 @@ public final class McpServerRegistry {
     public McpServerRegistry(McpServerStore store) {
         this.store = store;
         if (store != null) {
-            try {
-                for (McpServerInfo server : store.list()) {
-                    McpServerSecrets value = store.loadSecrets(server.id());
-                    secrets.put(server.id(), value);
-                    servers.put(server.id(), withSecretMetadata(server, value));
-                }
-            } catch (Exception exception) {
-                throw new IllegalStateException("failed to load MCP server profiles", exception);
-            }
+            reloadFromStore();
         }
     }
 
@@ -47,6 +39,7 @@ public final class McpServerRegistry {
                                               String command, List<String> arguments, String credentialRef,
                                               Map<String, String> headers, Map<String, String> environment,
                                               Boolean approvalRequired) {
+        reloadFromStore();
         String normalizedName = required(name, "name");
         String normalizedTransport = normalizeTransport(transport);
         validateTransport(normalizedTransport, endpoint, command);
@@ -62,10 +55,12 @@ public final class McpServerRegistry {
     }
 
     public synchronized List<McpServerInfo> list() {
+        reloadFromStore();
         return new ArrayList<McpServerInfo>(servers.values());
     }
 
     public synchronized McpServerInfo find(String id) {
+        reloadFromStore();
         return servers.get(id);
     }
 
@@ -86,6 +81,7 @@ public final class McpServerRegistry {
                                               String command, List<String> arguments, Boolean enabled,
                                               String credentialRef, Map<String, String> headers,
                                               Map<String, String> environment, Boolean approvalRequired) {
+        reloadFromStore();
         McpServerInfo current = require(id);
         McpServerSecrets currentSecrets = secrets.getOrDefault(id, McpServerSecrets.empty());
         McpServerSecrets nextSecrets = new McpServerSecrets(
@@ -112,6 +108,7 @@ public final class McpServerRegistry {
     }
 
     public synchronized boolean delete(String id) {
+        reloadFromStore();
         if (!servers.containsKey(id)) return false;
         try {
             if (store != null) store.delete(id);
@@ -124,6 +121,7 @@ public final class McpServerRegistry {
     }
 
     public synchronized McpServerInfo setStatus(String id, String status) {
+        reloadFromStore();
         McpServerInfo current = require(id);
         McpServerInfo updated = new McpServerInfo(current.id(), current.name(), current.transport(),
                 current.endpoint(), current.command(), current.arguments(), current.enabled(), current.approvalRequired(), status,
@@ -133,8 +131,30 @@ public final class McpServerRegistry {
     }
 
     public synchronized McpServerSecrets credentials(String id) {
+        reloadFromStore();
         require(id);
         return secrets.getOrDefault(id, McpServerSecrets.empty());
+    }
+
+    private void reloadFromStore() {
+        if (store == null) return;
+        try {
+            Map<String, McpServerInfo> persisted = new LinkedHashMap<String, McpServerInfo>();
+            Map<String, McpServerSecrets> persistedSecrets = new LinkedHashMap<String, McpServerSecrets>();
+            for (McpServerInfo server : store.list()) {
+                McpServerSecrets value = store.loadSecrets(server.id());
+                McpServerInfo current = servers.get(server.id());
+                String status = current == null ? server.status() : current.status();
+                persisted.put(server.id(), withSecretMetadata(server, value, status));
+                persistedSecrets.put(server.id(), value);
+            }
+            servers.clear();
+            servers.putAll(persisted);
+            secrets.clear();
+            secrets.putAll(persistedSecrets);
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to load MCP server profiles", exception);
+        }
     }
 
     private void save(McpServerInfo server, McpServerSecrets serverSecrets) {
@@ -188,9 +208,9 @@ public final class McpServerRegistry {
                 .filter(key -> key != null && !key.isBlank()).map(String::trim).distinct().toList();
     }
 
-    private static McpServerInfo withSecretMetadata(McpServerInfo server, McpServerSecrets value) {
+    private static McpServerInfo withSecretMetadata(McpServerInfo server, McpServerSecrets value, String status) {
         return new McpServerInfo(server.id(), server.name(), server.transport(), server.endpoint(), server.command(),
-                server.arguments(), server.enabled(), server.approvalRequired(), server.status(), server.credentialRef(),
+                server.arguments(), server.enabled(), server.approvalRequired(), status, server.credentialRef(),
                 names(value.headers()), names(value.environment()));
     }
 }

@@ -16,7 +16,7 @@ const messages = ref([
 ])
 const trace = ref([])
 const history = ref([])
-const runtime = ref({ runtimeStarted: false, pluginCount: 0 })
+const runtime = ref({ runtimeStarted: false, persistenceEnabled: false, pluginCount: 0 })
 const pluginLoading = ref(false)
 const tools = ref([])
 const toolManagerOpen = ref(false)
@@ -192,11 +192,11 @@ const conversations = ref([])
 const conversationListQuery = ref('')
 const conversationListResults = ref([])
 const apiPort = (() => {
-  const target = import.meta.env.VITE_API_TARGET || 'http://localhost:8080'
+  const target = import.meta.env.VITE_API_TARGET || 'http://localhost:18080'
   try {
     return new URL(target).port || '80'
   } catch {
-    return '8080'
+    return '18080'
   }
 })()
 
@@ -210,7 +210,7 @@ async function refreshHealth() {
     if (!response.ok) throw new Error('runtime unavailable')
     runtime.value = await response.json()
   } catch {
-    runtime.value = { runtimeStarted: false, pluginCount: 0 }
+    runtime.value = { runtimeStarted: false, persistenceEnabled: false, pluginCount: 0 }
   }
 }
 
@@ -1756,8 +1756,8 @@ async function sendMessage() {
   draft.value = ''
   error.value = ''
   messages.value.push({ role: 'user', content: prompt })
-  const assistantMessage = { role: 'assistant', content: '', reasoningContent: '' }
-  messages.value.push(assistantMessage)
+  messages.value.push({ role: 'assistant', content: '', reasoningContent: '' })
+  const assistantMessage = messages.value[messages.value.length - 1]
   trace.value = []
   sending.value = true
   await scrollTranscript()
@@ -1765,7 +1765,10 @@ async function sendMessage() {
   try {
     const response = await fetch('/api/v1/chat/stream', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream'
+      },
       body: JSON.stringify({
         message: prompt,
         apiKey: apiKey.value.trim() || null,
@@ -1783,8 +1786,10 @@ async function sendMessage() {
     await consumeSse(response, (event, data) => {
       if (event === 'delta') {
         assistantMessage.content += typeof data === 'string' ? data : ''
+        void scrollTranscript()
       } else if (event === 'reasoning_delta') {
         assistantMessage.reasoningContent += typeof data === 'string' ? data : ''
+        void scrollTranscript()
       } else if (event === 'tool_call') {
         const toolMessage = {
           role: 'tool',
@@ -1911,6 +1916,7 @@ async function approveTool(toolMessage, approved) {
 }
 
 async function consumeSse(response, onEvent) {
+  if (!response.body) throw new Error('流式响应不可用')
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
@@ -1918,17 +1924,18 @@ async function consumeSse(response, onEvent) {
   while (true) {
     const { value, done } = await reader.read()
     buffer += decoder.decode(value || new Uint8Array(), { stream: !done })
-    buffer = buffer.replace(/\r\n/g, '\n')
-    let boundary = buffer.indexOf('\n\n')
-    while (boundary >= 0) {
-      const block = buffer.slice(0, boundary)
-      buffer = buffer.slice(boundary + 2)
+    const blocks = buffer.split(/\r\n\r\n|\n\n|\r\r/)
+    buffer = blocks.pop() || ''
+    for (const block of blocks) {
       const parsed = parseSseBlock(block)
-      if (parsed) onEvent(parsed.event, parsed.data)
-      boundary = buffer.indexOf('\n\n')
+      if (parsed) {
+        onEvent(parsed.event, parsed.data)
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      }
     }
     if (done) break
   }
+  buffer += decoder.decode()
   const trailing = parseSseBlock(buffer.trim())
   if (trailing) onEvent(trailing.event, trailing.data)
 }
@@ -2236,32 +2243,36 @@ onUnmounted(() => {
       </div>
 
       <div class="runtime-card">
-        <div class="eyebrow">RUNTIME</div>
+        <div class="eyebrow">运行时</div>
         <div class="runtime-row">
           <span class="status-dot" :class="{ online: runtime.runtimeStarted }"></span>
-          <strong>{{ runtime.runtimeStarted ? 'Connected' : 'Offline' }}</strong>
+          <strong>{{ runtime.runtimeStarted ? '已连接' : '未连接' }}</strong>
           <span class="runtime-port">:{{ apiPort }}</span>
         </div>
-        <div class="runtime-meta">{{ runtime.pluginCount }} plugins registered</div>
+        <div class="runtime-meta">已注册 {{ runtime.pluginCount }} 个插件</div>
+        <div class="runtime-persistence" :class="{ enabled: runtime.persistenceEnabled }">
+          <span class="persistence-dot"></span>
+          MariaDB 持久化 {{ runtime.persistenceEnabled ? '已开启' : '未开启' }}
+        </div>
         <div class="runtime-plugin-actions">
-          <button class="secondary-button compact runtime-plugin-button" type="button" :disabled="pluginLoading" @click="loadPlugins">{{ pluginLoading ? 'Loading' : 'Load plugins' }}</button>
-          <button v-if="runtime.pluginCount" class="secondary-button compact runtime-plugin-button" type="button" :disabled="pluginLoading" title="Unload dynamic plugins" @click="unloadPlugins">Unload</button>
+          <button class="secondary-button compact runtime-plugin-button" type="button" :disabled="pluginLoading" @click="loadPlugins">{{ pluginLoading ? '加载中' : '加载插件' }}</button>
+          <button v-if="runtime.pluginCount" class="secondary-button compact runtime-plugin-button" type="button" :disabled="pluginLoading" title="卸载动态插件" @click="unloadPlugins">卸载</button>
         </div>
       </div>
 
       <button class="new-run-button" type="button" @click="clearConversation">
         <span class="button-icon">+</span>
-        New run
+        新建会话
       </button>
 
       <div class="sidebar-section conversation-list-section">
         <div class="section-label conversation-list-heading">
-          <span>CONVERSATIONS</span>
-          <button class="icon-button compact-icon" type="button" title="Refresh conversations" aria-label="Refresh conversations" @click="refreshConversations">↻</button>
+          <span>会话</span>
+          <button class="icon-button compact-icon" type="button" title="刷新会话" aria-label="刷新会话" @click="refreshConversations">↻</button>
         </div>
         <form class="conversation-list-search" @submit.prevent="searchAllConversations">
-          <input v-model="conversationListQuery" type="search" placeholder="Search all conversations" :disabled="conversationActionLoading" />
-          <button class="icon-button compact-icon" type="submit" title="Search all conversations" aria-label="Search all conversations" :disabled="conversationActionLoading || !conversationListQuery.trim()">⌕</button>
+          <input v-model="conversationListQuery" type="search" placeholder="搜索全部会话" :disabled="conversationActionLoading" />
+          <button class="icon-button compact-icon" type="submit" title="搜索全部会话" aria-label="搜索全部会话" :disabled="conversationActionLoading || !conversationListQuery.trim()">⌕</button>
         </form>
         <div v-if="conversationListResults.length" class="conversation-list-results">
           <button v-for="result in conversationListResults" :key="`${result.conversationId}-${result.messageIndex}`" class="conversation-list-result" type="button" @click="selectConversation({ id: result.conversationId })">
@@ -2269,31 +2280,31 @@ onUnmounted(() => {
             <span>{{ result.role }} · {{ result.content }}</span>
           </button>
         </div>
-        <p v-else-if="conversations.length === 0" class="empty-history">No conversations yet</p>
+        <p v-else-if="conversations.length === 0" class="empty-history">暂无会话</p>
         <div v-else class="conversation-list">
           <div v-for="conversation in conversations" :key="conversation.id" class="conversation-list-item" :class="{ selected: conversation.id === conversationId }">
             <button class="conversation-list-select" type="button" :disabled="conversationActionLoading" @click="selectConversation(conversation)">
               <strong>{{ conversation.title }}</strong>
-              <span>{{ conversation.messageCount }} messages · {{ formatTime(new Date(conversation.updatedAt)) }}</span>
+              <span>{{ conversation.messageCount }} 条消息 · {{ formatTime(new Date(conversation.updatedAt)) }}</span>
             </button>
-            <button class="icon-button compact-icon conversation-list-action" type="button" title="Rename conversation" aria-label="Rename conversation" :disabled="conversationActionLoading" @click="renameConversation(conversation)">✎</button>
-            <button class="icon-button compact-icon conversation-list-action danger" type="button" title="Delete conversation" aria-label="Delete conversation" :disabled="conversationActionLoading" @click="deleteConversation(conversation)">×</button>
+            <button class="icon-button compact-icon conversation-list-action" type="button" title="重命名会话" aria-label="重命名会话" :disabled="conversationActionLoading" @click="renameConversation(conversation)">✎</button>
+            <button class="icon-button compact-icon conversation-list-action danger" type="button" title="删除会话" aria-label="删除会话" :disabled="conversationActionLoading" @click="deleteConversation(conversation)">×</button>
           </div>
         </div>
       </div>
 
       <div class="sidebar-section">
-        <div class="section-label">RECENT RUNS</div>
-        <div v-if="history.length === 0" class="empty-history">No runs yet</div>
+        <div class="section-label">最近运行</div>
+        <div v-if="history.length === 0" class="empty-history">暂无运行记录</div>
         <button v-for="item in history" :key="item.time.getTime()" class="history-item" type="button">
           <span class="history-title">{{ item.prompt }}</span>
-          <span class="history-meta">{{ item.tools }} tools · {{ formatTime(item.time) }}</span>
+          <span class="history-meta">{{ item.tools }} 个工具 · {{ formatTime(item.time) }}</span>
         </button>
       </div>
 
       <div class="sidebar-footer">
         <span class="footer-label">MODEL</span>
-        <span class="model-name">{{ models.find((item) => item.id === selectedModelId)?.model || 'No model' }}</span>
+        <span class="model-name">{{ models.find((item) => item.id === selectedModelId)?.model || '未选择模型' }}</span>
         <span class="version">v0.1.0</span>
       </div>
     </aside>
@@ -2301,68 +2312,68 @@ onUnmounted(() => {
     <section class="workspace">
       <header class="workspace-header">
         <div>
-          <div class="eyebrow">CONVERSATION DEBUGGER</div>
+          <div class="eyebrow">对话调试台</div>
           <h1>Agent Playground</h1>
         </div>
         <div class="header-actions">
-          <span class="trace-summary">{{ modelCount }} model · {{ toolCount }} tools</span>
-          <button class="tools-button" type="button" title="Manage tools" @click="openToolManager">
+          <span class="trace-summary">{{ modelCount }} Model · {{ toolCount }} Tools</span>
+          <button class="tools-button" type="button" title="管理 Tools" @click="openToolManager">
             <span>Tools</span>
             <span class="tools-button-count">{{ tools.length }}</span>
           </button>
-          <button class="tools-button" type="button" title="Manage MCP servers" @click="openCapabilities('mcp')">
+          <button class="tools-button" type="button" title="管理 MCP Servers" @click="openCapabilities('mcp')">
             <span>MCP</span>
             <span class="tools-button-count">{{ mcpServers.filter((item) => item.status === 'CONNECTED').length }}</span>
           </button>
-          <button class="tools-button" type="button" title="Manage skills" @click="openCapabilities('skills')">
+          <button class="tools-button" type="button" title="管理 Skills" @click="openCapabilities('skills')">
             <span>Skills</span>
             <span class="tools-button-count">{{ skills.filter((item) => item.enabled).length }}</span>
           </button>
           <select v-model="selectedModelId" class="model-picker" title="Select model" :disabled="sending">
             <option v-for="model in models.filter((item) => item.enabled)" :key="model.id" :value="model.id">{{ model.name }} · {{ model.model }}</option>
-            <option v-if="models.filter((item) => item.enabled).length === 0" :value="null">No model</option>
+            <option v-if="models.filter((item) => item.enabled).length === 0" :value="null">未选择模型</option>
           </select>
           <select v-model="selectedAgentId" class="model-picker" title="Select agent profile" :disabled="sending" @change="applyAgentSelection">
             <option v-for="agent in agents.filter((item) => item.enabled)" :key="agent.id" :value="agent.id">{{ agent.name }}</option>
-            <option v-if="agents.filter((item) => item.enabled).length === 0" :value="null">No agent</option>
+            <option v-if="agents.filter((item) => item.enabled).length === 0" :value="null">未选择 Agent</option>
           </select>
           <select v-model="selectedMode" class="mode-picker" title="Select run mode" :disabled="sending">
             <option value="chat">Chat</option>
             <option value="planning">Planning</option>
             <option value="execution">Execution</option>
           </select>
-          <button class="tools-button" type="button" title="Manage models" @click="openCapabilities('models')">
+          <button class="tools-button" type="button" title="管理 Models" @click="openCapabilities('models')">
             <span>Models</span>
             <span class="tools-button-count">{{ models.length }}</span>
           </button>
-          <button class="tools-button" type="button" title="Manage plans" @click="openCapabilities('plans')">
+          <button class="tools-button" type="button" title="管理 Plans" @click="openCapabilities('plans')">
             <span>Plans</span>
             <span class="tools-button-count">{{ plans.length }}</span>
           </button>
           <label class="api-key-control">
-            <span>DEBUG API KEY</span>
+            <span>调试 API KEY</span>
             <input
               v-model="apiKey"
               type="password"
               autocomplete="off"
               spellcheck="false"
-              placeholder="Optional"
+              placeholder="可选"
               :disabled="sending"
             />
           </label>
-          <button class="icon-button" type="button" title="Clear current run" aria-label="Clear current run" @click="clearConversation">⌫</button>
+          <button class="icon-button" type="button" title="清空当前会话" aria-label="清空当前会话" @click="clearConversation">⌫</button>
         </div>
       </header>
 
       <div class="conversation-toolbar">
-        <span class="conversation-id" :title="conversationId || 'A new conversation will be created on the next run'">
-          {{ conversationId ? `conversation ${conversationId}` : 'new conversation' }}
+        <span class="conversation-id" :title="conversationId || '下一次运行时会创建新会话'">
+          {{ conversationId ? `conversation ${conversationId}` : '新会话' }}
         </span>
-        <button class="secondary-button compact" type="button" title="Replay current conversation" :disabled="!conversationId || conversationActionLoading" @click="replayConversation">Replay</button>
+        <button class="secondary-button compact" type="button" title="重放当前会话" :disabled="!conversationId || conversationActionLoading" @click="replayConversation">重放</button>
         <button class="secondary-button compact" type="button" title="Fork current conversation" :disabled="!conversationId || conversationActionLoading" @click="forkConversation">Fork</button>
         <form class="conversation-search" @submit.prevent="searchConversation">
-          <input v-model="conversationSearchQuery" type="search" placeholder="Search current conversation" :disabled="!conversationId || conversationActionLoading" />
-          <button class="icon-button compact-icon" type="submit" title="Search current conversation" aria-label="Search current conversation" :disabled="!conversationId || conversationActionLoading || !conversationSearchQuery.trim()">⌕</button>
+          <input v-model="conversationSearchQuery" type="search" placeholder="搜索当前会话" :disabled="!conversationId || conversationActionLoading" />
+          <button class="icon-button compact-icon" type="submit" title="搜索当前会话" aria-label="搜索当前会话" :disabled="!conversationId || conversationActionLoading || !conversationSearchQuery.trim()">⌕</button>
         </form>
         <span v-if="conversationActionError" class="conversation-action-error">{{ conversationActionError }}</span>
       </div>
@@ -2376,26 +2387,26 @@ onUnmounted(() => {
       <div ref="transcript" class="transcript">
         <div v-if="messages.length === 0" class="empty-state">
           <div class="empty-glyph">↗</div>
-          <h2>Start a tool-aware run</h2>
-          <p>Ask a question and inspect every model turn on the right.</p>
+          <h2>开始一次 Agent 运行</h2>
+          <p>输入任务，并在右侧查看每一轮 Model 与 Tool 调用。</p>
         </div>
 
-        <article v-for="(item, index) in messages" :key="`${item.role}-${index}`" class="message-row" :class="[item.role, { pending: item.role === 'assistant' && !item.content }]">
+        <article v-for="(item, index) in messages" :key="`${item.role}-${index}`" class="message-row" :class="[item.role, { pending: item.role === 'assistant' && !item.content && !item.reasoningContent, streaming: item.role === 'assistant' && sending }]">
           <div class="message-avatar">{{ item.role === 'user' ? 'S' : item.role === 'error' ? '!' : item.role === 'tool' ? 'T' : 'D' }}</div>
           <div class="message-body">
             <div class="message-meta">
-              <strong>{{ item.role === 'user' ? 'You' : item.role === 'error' ? 'Runtime' : item.role === 'tool' ? 'Tool execution' : 'DSH Agent' }}</strong>
-              <span>{{ item.role === 'user' ? 'prompt' : item.role === 'error' ? 'error' : item.role === 'tool' ? item.state : 'answer' }}</span>
+              <strong>{{ item.role === 'user' ? '你' : item.role === 'error' ? '运行时' : item.role === 'tool' ? 'Tool 执行' : 'DSH Agent' }}</strong>
+              <span>{{ item.role === 'user' ? '提问' : item.role === 'error' ? '错误' : item.role === 'tool' ? item.state : '回答' }}</span>
             </div>
             <div v-if="item.role === 'assistant'" class="assistant-message-content">
               <details v-if="item.reasoningContent" class="reasoning-block" :open="sending">
-                <summary>Thinking</summary>
+                <summary>思考过程</summary>
                 <div class="message-content markdown-content reasoning-content" v-html="renderMarkdown(item.reasoningContent)"></div>
               </details>
               <div class="message-content markdown-content" v-html="renderMarkdown(item.content)"></div>
             </div>
             <div v-else-if="item.role === 'tool'" class="tool-message-content">
-              <div class="tool-message-title"><strong>{{ item.name }}</strong><span>{{ item.state === 'running' ? 'Running' : item.state === 'awaiting_approval' || item.state === 'approving' ? 'Approval required' : 'Completed' }}</span></div>
+              <div class="tool-message-title"><strong>{{ item.name }}</strong><span>{{ item.state === 'running' ? '运行中' : item.state === 'awaiting_approval' || item.state === 'approving' ? '需要审批' : '已完成' }}</span></div>
               <div class="tool-message-label">INPUT</div>
               <pre>{{ formatArguments(item.arguments) }}</pre>
               <template v-if="item.result !== null">
@@ -2403,8 +2414,8 @@ onUnmounted(() => {
                 <pre class="result">{{ item.result }}</pre>
               </template>
               <div v-if="item.state === 'awaiting_approval'" class="tool-approval-actions">
-                <button class="secondary-button compact" type="button" @click="approveTool(item, true)">Approve</button>
-                <button class="secondary-button compact" type="button" @click="approveTool(item, false)">Deny</button>
+                <button class="secondary-button compact" type="button" @click="approveTool(item, true)">批准</button>
+                <button class="secondary-button compact" type="button" @click="approveTool(item, false)">拒绝</button>
               </div>
             </div>
             <div v-else class="message-content">{{ item.content }}</div>
@@ -2413,7 +2424,7 @@ onUnmounted(() => {
 
         <div v-if="sending" class="thinking-row">
           <span class="thinking-dots"><i></i><i></i><i></i></span>
-          Agent is working through the run…
+          Agent 正在执行…
         </div>
       </div>
 
@@ -2421,14 +2432,14 @@ onUnmounted(() => {
         <textarea
           v-model="draft"
           rows="3"
-          placeholder="Ask the agent something…"
+          placeholder="输入任务或问题…"
           :disabled="sending"
           @keydown="handleComposerKeydown"
         ></textarea>
         <div class="composer-footer">
-          <span class="composer-hint">Enter to send · Shift + Enter for a new line</span>
+          <span class="composer-hint">Enter 发送 · Shift + Enter 换行</span>
           <button class="send-button" type="submit" :disabled="!canSend">
-            <span>{{ sending ? 'Running' : 'Run agent' }}</span>
+            <span>{{ sending ? '执行中' : '运行 Agent' }}</span>
             <span class="send-arrow">↗</span>
           </button>
         </div>
@@ -2438,15 +2449,15 @@ onUnmounted(() => {
     <aside class="trace-panel">
       <header class="trace-header">
         <div>
-          <div class="eyebrow">OBSERVABILITY</div>
-          <h2>Run trace</h2>
+          <div class="eyebrow">可观测性</div>
+          <h2>Run Trace</h2>
         </div>
         <span class="trace-count">{{ trace.length }}</span>
       </header>
 
       <div v-if="trace.length === 0" class="trace-empty">
         <div class="trace-empty-line"></div>
-        <p>Tool calls and model turns will appear here after a run.</p>
+        <p>运行后，这里会显示 Tool 调用和 Model 轮次。</p>
       </div>
 
       <div v-else class="trace-list">

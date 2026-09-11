@@ -22,18 +22,19 @@ MCP 持久化 Server 在启动恢复失败或工具调用断线后会自动指�
 ## 快速运行
 
 ```bash
+docker compose up -d mariadb
 ./gradlew test
 ./gradlew bootRun
 ```
 
-启动后访问 `http://localhost:8080/api/v1/health`。如果 8080 已被其他服务占用，可以运行 `./gradlew bootRun --args='--server.port=18080'`。
+启动后访问 `http://localhost:18080/api/v1/health`。也可以通过 `SERVER_PORT` 或 `--server.port` 修改端口。
 
 启动 Vue 调试前端：
 
 ```bash
 cd frontend
 npm install
-VITE_API_TARGET=http://localhost:8080 npm run dev
+VITE_API_TARGET=http://localhost:18080 npm run dev
 ```
 
 打开 `http://localhost:5173`。前端开发服务器会把 `/api` 请求代理到 Spring Boot。
@@ -45,7 +46,7 @@ docker compose up -d mariadb
 docker compose ps
 ```
 
-数据库数据挂载到项目旁的 `../venus/mariadb/dsh-java/data`，不会进入 Git。当前数据库初始化表结构用于后续会话、上下文、工具、MCP 和记忆能力接入；应用默认不强制依赖数据库启动。
+数据库数据挂载到项目旁的 `../venus/mariadb/dsh-java/data`，不会进入 Git。MariaDB 用于持久化会话、上下文、工具、MCP、模型、Agent 和记忆配置；应用默认开启持久化。若暂时不需要数据库，可显式设置 `DSH_PERSISTENCE_ENABLED=false`，此时配置只保存在内存中，重启后会丢失。
 
 配置 DeepSeek API Key 后运行智能体：
 
@@ -62,7 +63,7 @@ export DEEPSEEK_PROXY_PORT=7897
 调用：
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/chat \
+curl -X POST http://localhost:18080/api/v1/chat \
   -H 'Content-Type: application/json' \
   -d '{"message":"现在几点？"}'
 ```
@@ -70,12 +71,12 @@ curl -X POST http://localhost:8080/api/v1/chat \
 流式调用：
 
 ```bash
-curl -N -X POST http://localhost:8080/api/v1/chat/stream \
+curl -N -X POST http://localhost:18080/api/v1/chat/stream \
   -H 'Content-Type: application/json' \
   -d '{"message":"请调用 time_now 工具，然后用 Markdown 告诉我当前时间。"}'
 ```
 
-启用 MariaDB 会话上下文：
+显式启用 MariaDB 持久化（默认已开启）：
 
 ```bash
 export DSH_PERSISTENCE_ENABLED=true

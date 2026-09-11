@@ -143,8 +143,10 @@ class ModelRouterTest {
     @Test
     void readsUsageFromStreamingResponses() throws Exception {
         AtomicReference<String> reasoning = new AtomicReference<String>();
+        AtomicReference<String> accept = new AtomicReference<String>();
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/v1/chat/completions", exchange -> {
+            accept.set(exchange.getRequestHeaders().getFirst("Accept"));
             byte[] response = ("data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"think\"}}]}\n\n"
                     + "data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n"
                     + "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],"
@@ -181,6 +183,7 @@ class ModelRouterTest {
             assertEquals(5, result.promptTokens());
             assertEquals(2, result.completionTokens());
             assertEquals(7, registry.usage(profile.id()).totalTokens());
+            assertEquals("text/event-stream", accept.get());
         } finally {
             server.stop(0);
         }

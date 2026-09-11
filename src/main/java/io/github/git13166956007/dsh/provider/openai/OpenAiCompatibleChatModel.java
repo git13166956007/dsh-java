@@ -94,7 +94,7 @@ public final class OpenAiCompatibleChatModel implements ChatModel {
                                  String requestApiKey) throws Exception {
         String effectiveApiKey = resolveApiKey(requestApiKey);
         ObjectNode request = requestJson(messages, tools, false);
-        HttpResponse<String> response = httpClient.send(buildRequest(request, effectiveApiKey),
+        HttpResponse<String> response = httpClient.send(buildRequest(request, effectiveApiKey, false),
                 HttpResponse.BodyHandlers.ofString());
         ensureSuccess(response.statusCode(), response.body());
 
@@ -107,7 +107,7 @@ public final class OpenAiCompatibleChatModel implements ChatModel {
                                 String requestApiKey, ModelStreamListener listener) throws Exception {
         String effectiveApiKey = resolveApiKey(requestApiKey);
         HttpResponse<InputStream> response = httpClient.send(
-                buildRequest(requestJson(messages, tools, true), effectiveApiKey),
+                buildRequest(requestJson(messages, tools, true), effectiveApiKey, true),
                 HttpResponse.BodyHandlers.ofInputStream());
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             String body = new String(response.body().readAllBytes(), StandardCharsets.UTF_8);
@@ -294,11 +294,12 @@ public final class OpenAiCompatibleChatModel implements ChatModel {
         }
     }
 
-    private HttpRequest buildRequest(ObjectNode request, String effectiveApiKey) throws Exception {
+    private HttpRequest buildRequest(ObjectNode request, String effectiveApiKey, boolean streaming) throws Exception {
         return HttpRequest.newBuilder(endpoint)
                 .timeout(Duration.ofSeconds(timeoutSeconds))
                 .header("Authorization", "Bearer " + effectiveApiKey)
                 .header("Content-Type", "application/json")
+                .header("Accept", streaming ? "text/event-stream" : "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(request)))
                 .build();
     }

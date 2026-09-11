@@ -38,6 +38,18 @@ class McpServerRegistryTest {
     }
 
     @Test
+    void refreshesProfilesWrittenByAnotherRegistry() {
+        InMemoryMcpServerStore store = new InMemoryMcpServerStore();
+        McpServerRegistry first = new McpServerRegistry(store);
+        McpServerRegistry second = new McpServerRegistry(store);
+
+        McpServerInfo created = second.create("written-later", "stdio", null, "node", List.of("server.js"));
+
+        assertEquals(created.id(), first.find(created.id()).id());
+        assertEquals(1, first.list().size());
+    }
+
+    @Test
     void keepsCredentialValuesOutOfPublicServerMetadata() {
         InMemoryMcpServerStore store = new InMemoryMcpServerStore();
         McpServerRegistry registry = new McpServerRegistry(store);

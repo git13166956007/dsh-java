@@ -100,6 +100,7 @@ public final class DshController {
     private final ChatModel chatModel;
     private final ObjectMapper objectMapper;
     private final Path pluginDirectory;
+    private final boolean persistenceEnabled;
     private final boolean memoryAutoExtractEnabled;
     private final int memoryAutoExtractMaxRecords;
 
@@ -134,6 +135,7 @@ public final class DshController {
         this.chatModel = chatModel;
         this.objectMapper = objectMapper;
         this.pluginDirectory = Path.of(environment.getProperty("dsh.plugins.directory", "plugins"));
+        this.persistenceEnabled = Boolean.parseBoolean(environment.getProperty("dsh.persistence.enabled", "true"));
         this.memoryAutoExtractEnabled = Boolean.parseBoolean(environment.getProperty("dsh.memory.auto-extract.enabled", "false"));
         this.memoryAutoExtractMaxRecords = Integer.parseInt(environment.getProperty("dsh.memory.auto-extract.max-records", "3"));
     }
@@ -143,6 +145,7 @@ public final class DshController {
         Map<String, Object> result = new LinkedHashMap<String, Object>();
         result.put("name", "dsh-java");
         result.put("runtimeStarted", runtime.isStarted());
+        result.put("persistenceEnabled", persistenceEnabled);
         result.put("pluginCount", runtime.pluginCount());
         result.put("plugins", runtime.pluginIds());
         return result;
@@ -1177,7 +1180,7 @@ public final class DshController {
     }
 
     @PostMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter stream(@RequestBody ChatRequest request) {
+    public ResponseEntity<SseEmitter> stream(@RequestBody ChatRequest request) {
         if (request == null || request.message() == null || request.message().trim().isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "message must not be blank");
         }
@@ -1197,8 +1200,10 @@ public final class DshController {
         }
 
         SseEmitter emitter = new SseEmitter(180_000L);
+        emitter.onTimeout(emitter::complete);
         String finalConversationId = conversationId;
         java.util.List<ChatMessage> finalHistory = history;
+        send(emitter, "ready", Map.of("status", "connected"));
         java.util.concurrent.CompletableFuture.runAsync(() -> {
             try {
                 AgentRunResult result = agentLoop.runStreaming(request.message(), request.apiKey(), finalHistory,
@@ -1243,7 +1248,11 @@ public final class DshController {
                 emitter.complete();
             }
         });
-        return emitter;
+        return ResponseEntity.ok()
+                .contentType(MediaType.TEXT_EVENT_STREAM)
+                .header("Cache-Control", "no-cache, no-transform")
+                .header("X-Accel-Buffering", "no")
+                .body(emitter);
     }
 
     private static void send(SseEmitter emitter, String event, Object data) {
