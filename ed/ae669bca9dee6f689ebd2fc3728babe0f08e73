@@ -1,0 +1,32 @@
+src/main/resources/application.yml
+  h_eb697744b14c1b 6,17
+README.md
+  h_eb697744b14c1b 25,30,37,49,66,74,79
+frontend/src/App.vue
+  h_eb697744b14c1b 19,195,199,213,1759-1760,1768-1771,1789,1792,1919,1927-1929,1931-1934,1938,2246,2249,2252-2256,2258-2259,2265,2270-2271,2274-2275,2283,2288,2290-2291,2297-2298,2301,2307,2315,2319-2320,2324,2328,2334,2338,2345,2349,2354,2360,2364,2369-2370,2372,2375-2376,2390-2391,2394,2398-2399,2403,2409,2417-2418,2427,2435,2440,2442,2452-2453,2460
+frontend/src/style.css
+  h_eb697744b14c1b 339-492
+frontend/vite.config.js
+  h_eb697744b14c1b 9
+src/main/java/io/github/git13166956007/dsh/mcp/McpServerRegistry.java
+  h_eb697744b14c1b 23,42,58,63,84,111,124,134,139-159,211,213
+src/main/java/io/github/git13166956007/dsh/provider/openai/OpenAiCompatibleChatModel.java
+  h_eb697744b14c1b 97,110,297,302
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 103,138,148,1183,1203,1206,1251-1255
+src/test/java/io/github/git13166956007/dsh/mcp/McpServerRegistryTest.java
+  h_eb697744b14c1b 40-51
+src/test/java/io/github/git13166956007/dsh/model/ModelRouterTest.java
+  h_eb697744b14c1b 146,149,186
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "edae669bca9dee6f689ebd2fc3728babe0f08e73",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
