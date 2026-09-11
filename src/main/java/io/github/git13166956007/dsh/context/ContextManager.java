@@ -223,6 +223,10 @@ public final class ContextManager {
         store.append(conversationId, message);
     }
 
+    public void append(String conversationId, String eventId, ChatMessage message) throws Exception {
+        store.append(conversationId, eventId, message);
+    }
+
     /**
      * Create or advance a rolling model-generated summary without rewriting the raw conversation.
      */

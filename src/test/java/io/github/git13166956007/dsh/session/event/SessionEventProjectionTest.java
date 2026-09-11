@@ -142,6 +142,33 @@ public final class SessionEventProjectionTest {
     }
 
     @Test
+    void deterministicEventIdsAreStableAndNamespaced() {
+        String first = SessionEventIds.deterministic("chat-user", "conversation:request");
+        assertEquals(first, SessionEventIds.deterministic("chat-user", "conversation:request"));
+        assertTrue(!first.equals(SessionEventIds.deterministic("run-message", "conversation:request")));
+    }
+
+    @Test
+    void readsSessionEventsIncrementallyBySequence() throws Exception {
+        InMemorySessionEventLog log = new InMemorySessionEventLog();
+        for (int index = 0; index < 5; index++) {
+            log.append("paged", SessionEventTypes.USER_MESSAGE,
+                    new ObjectMapper().createObjectNode().put("index", index));
+        }
+
+        SessionEventPage first = log.read("paged", 0, 2);
+        SessionEventPage second = log.read("paged", first.nextSequence(), 2);
+        SessionEventPage third = log.read("paged", second.nextSequence(), 2);
+
+        assertEquals(List.of(1L, 2L), first.events().stream().map(SessionEvent::sequence).toList());
+        assertEquals(List.of(3L, 4L), second.events().stream().map(SessionEvent::sequence).toList());
+        assertEquals(List.of(5L), third.events().stream().map(SessionEvent::sequence).toList());
+        assertTrue(first.hasMore());
+        assertTrue(second.hasMore());
+        assertTrue(!third.hasMore());
+    }
+
+    @Test
     void summaryProjectionDoesNotRegressWhenOlderCompactionFinishesLater() throws Exception {
         ObjectMapper mapper = new ObjectMapper();
         InMemorySessionEventLog log = new InMemorySessionEventLog();

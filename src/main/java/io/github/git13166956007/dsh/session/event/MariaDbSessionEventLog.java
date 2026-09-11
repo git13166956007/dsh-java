@@ -139,6 +139,37 @@ public final class MariaDbSessionEventLog implements SessionEventLog {
         }
     }
 
+    @Override
+    public synchronized SessionEventPage read(String sessionId, long afterSequence, int limit) throws Exception {
+        if (sessionId == null || sessionId.isBlank()) throw new IllegalArgumentException("session ID is required");
+        if (afterSequence < 0) throw new IllegalArgumentException("session event sequence must not be negative");
+        if (limit <= 0) throw new IllegalArgumentException("session event page size must be positive");
+        List<SessionEvent> result = new ArrayList<SessionEvent>();
+        long nextSequence = afterSequence;
+        try (Connection connection = connection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "SELECT id, sequence_no, occurred_at, event_type, payload_json FROM dsh_session_event "
+                             + "WHERE session_id=? AND sequence_no>? ORDER BY sequence_no LIMIT ?")) {
+            statement.setString(1, sessionId);
+            statement.setLong(2, afterSequence);
+            statement.setInt(3, limit + 1);
+            try (ResultSet rows = statement.executeQuery()) {
+                boolean hasMore = false;
+                while (rows.next()) {
+                    if (result.size() == limit) {
+                        hasMore = true;
+                        break;
+                    }
+                    nextSequence = rows.getLong("sequence_no");
+                    result.add(new SessionEvent(rows.getString("id"), sessionId, nextSequence,
+                            rows.getTimestamp("occurred_at").toInstant(), rows.getString("event_type"),
+                            objectMapper.readTree(rows.getString("payload_json"))));
+                }
+                return new SessionEventPage(result, nextSequence, hasMore);
+            }
+        }
+    }
+
     public synchronized List<SessionEvent> read(Connection connection, String sessionId) throws Exception {
         List<SessionEvent> result = new ArrayList<SessionEvent>();
         try (PreparedStatement statement = connection.prepareStatement(

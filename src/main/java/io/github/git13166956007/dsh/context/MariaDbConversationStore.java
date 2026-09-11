@@ -175,6 +175,11 @@ public final class MariaDbConversationStore implements ConversationStore {
 
     @Override
     public void append(String conversationId, ChatMessage message) throws Exception {
+        append(conversationId, UUID.randomUUID().toString(), message);
+    }
+
+    @Override
+    public void append(String conversationId, String eventId, ChatMessage message) throws Exception {
         if (message.role() == ChatMessage.Role.SYSTEM) return;
         try (Connection connection = connection()) {
             connection.setAutoCommit(false);
@@ -191,7 +196,7 @@ public final class MariaDbConversationStore implements ConversationStore {
                     case TOOL -> SessionEventTypes.TOOL_MESSAGE;
                     case SYSTEM -> null;
                 };
-                if (eventType != null) eventLog.append(connection, conversationId, eventType,
+                if (eventType != null) eventLog.append(connection, conversationId, eventId, eventType,
                         SessionEventCodec.message(objectMapper, message));
                 connection.commit();
             } catch (Exception exception) {

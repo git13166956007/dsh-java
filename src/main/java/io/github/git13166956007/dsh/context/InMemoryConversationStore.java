@@ -77,6 +77,11 @@ public final class InMemoryConversationStore implements ConversationStore {
 
     @Override
     public synchronized void append(String conversationId, ChatMessage message) throws Exception {
+        append(conversationId, java.util.UUID.randomUUID().toString(), message);
+    }
+
+    @Override
+    public synchronized void append(String conversationId, String eventId, ChatMessage message) throws Exception {
         if (!exists(conversationId)) throw new IllegalArgumentException("unknown or deleted conversation: " + conversationId);
         String eventType = switch (message.role()) {
             case USER -> SessionEventTypes.USER_MESSAGE;
@@ -84,7 +89,11 @@ public final class InMemoryConversationStore implements ConversationStore {
             case TOOL -> SessionEventTypes.TOOL_MESSAGE;
             case SYSTEM -> null;
         };
-        if (eventType != null) eventLog.append(conversationId, eventType, SessionEventCodec.message(objectMapper, message));
+        if (eventType != null) {
+            int before = eventLog.read(conversationId).size();
+            eventLog.append(conversationId, eventId, eventType, SessionEventCodec.message(objectMapper, message));
+            if (eventLog.read(conversationId).size() == before) return;
+        }
         if (eventType == null) return;
         ConversationInfo current = infos.get(conversationId);
         infos.put(conversationId, new ConversationInfo(current.id(), current.title(), current.messageCount() + 1,

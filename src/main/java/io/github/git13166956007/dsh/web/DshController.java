@@ -27,6 +27,7 @@ import io.github.git13166956007.dsh.context.ContextSnapshot;
 import io.github.git13166956007.dsh.context.ContextWindow;
 import io.github.git13166956007.dsh.context.ConversationInfo;
 import io.github.git13166956007.dsh.context.ConversationSearchResult;
+import io.github.git13166956007.dsh.session.event.SessionEventIds;
 import io.github.git13166956007.dsh.mcp.McpServerInfo;
 import io.github.git13166956007.dsh.mcp.McpServerRegistry;
 import io.github.git13166956007.dsh.mcp.McpClientManager;
@@ -1170,7 +1171,7 @@ public final class DshController {
             java.util.List<ChatMessage> history = contextManager.history(conversationId,
                     modelContextWindow(request.modelId(), request.agentId()),
                     modelTokenizer(request.modelId(), request.agentId()));
-            contextManager.append(conversationId, ChatMessage.user(request.message()));
+            appendUserMessage(conversationId, request);
             AgentRunResult result = agentLoop.runDetailed(request.message(), request.apiKey(), history, request.modelId(),
                     request.agentId(), mode, "conversation", conversationId,
                     io.github.git13166956007.dsh.agent.AgentRunContext.chat(conversationId, request.agentId()));
@@ -1204,7 +1205,7 @@ public final class DshController {
             history = contextManager.history(conversationId,
                     modelContextWindow(request.modelId(), request.agentId()),
                     modelTokenizer(request.modelId(), request.agentId()));
-            contextManager.append(conversationId, ChatMessage.user(request.message()));
+            appendUserMessage(conversationId, request);
         } catch (Exception exception) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, exception.getMessage(), exception);
         }
@@ -1275,9 +1276,37 @@ public final class DshController {
 
     private void appendConversationMessages(String conversationId, AgentRunResult result) throws Exception {
         if (conversationId == null || result == null) return;
-        for (ChatMessage message : result.conversationMessages()) {
-            contextManager.append(conversationId, message);
+        for (int index = 0; index < result.conversationMessages().size(); index++) {
+            ChatMessage message = result.conversationMessages().get(index);
+            if (result.runId() == null || result.runId().isBlank()) {
+                contextManager.append(conversationId, message);
+            } else {
+                contextManager.append(conversationId,
+                        SessionEventIds.deterministic("run-message", result.runId() + ":" + index + ":" + messageKey(message)),
+                        message);
+            }
         }
+    }
+
+    private void appendUserMessage(String conversationId, ChatRequest request) throws Exception {
+        String requestId = request.requestId();
+        if (requestId == null || requestId.isBlank()) {
+            contextManager.append(conversationId, ChatMessage.user(request.message()));
+            return;
+        }
+        contextManager.append(conversationId,
+                SessionEventIds.deterministic("chat-user", conversationId + ":" + requestId.trim()),
+                ChatMessage.user(request.message()));
+    }
+
+    private static String messageKey(ChatMessage message) {
+        StringBuilder key = new StringBuilder(message.role().value()).append('|')
+                .append(message.content()).append('|').append(message.reasoningContent()).append('|')
+                .append(message.toolCallId());
+        for (ToolCall call : message.toolCalls()) {
+            key.append('|').append(call.id()).append('|').append(call.name()).append('|').append(call.arguments());
+        }
+        return key.toString();
     }
 
     private static AgentMode requestedMode(String value) {
@@ -1350,7 +1379,11 @@ public final class DshController {
     }
 
     public record ChatRequest(String message, String apiKey, String conversationId, String modelId,
-                              String agentId, String mode) {
+                              String agentId, String mode, String requestId) {
+        public ChatRequest(String message, String apiKey, String conversationId, String modelId,
+                           String agentId, String mode) {
+            this(message, apiKey, conversationId, modelId, agentId, mode, null);
+        }
     }
 
     public record ToolUpdateRequest(Boolean enabled, Boolean approvalRequired) {

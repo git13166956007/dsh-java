@@ -125,6 +125,17 @@ class InMemoryConversationStoreTest {
     }
 
     @Test
+    void appendingWithTheSameEventIdDoesNotDuplicateTheMessage() throws Exception {
+        InMemoryConversationStore store = new InMemoryConversationStore();
+        String id = store.open(null, "idempotent");
+
+        store.append(id, "message-event-1", ChatMessage.user("once"));
+        store.append(id, "message-event-1", ChatMessage.user("once"));
+
+        assertEquals(List.of("once"), store.replay(id).stream().map(ChatMessage::content).toList());
+    }
+
+    @Test
     void usesProviderTokenizerForContextBudget() throws Exception {
         InMemoryConversationStore store = new InMemoryConversationStore();
         ContextManager context = new ContextManager(store, 10, 100);

@@ -15,6 +15,19 @@ public interface SessionEventLog {
 
     List<SessionEvent> read(String sessionId) throws Exception;
 
+    /** Reads a bounded page after a session sequence number. */
+    default SessionEventPage read(String sessionId, long afterSequence, int limit) throws Exception {
+        if (sessionId == null || sessionId.isBlank()) throw new IllegalArgumentException("session ID is required");
+        if (afterSequence < 0) throw new IllegalArgumentException("session event sequence must not be negative");
+        if (limit <= 0) throw new IllegalArgumentException("session event page size must be positive");
+        List<SessionEvent> all = read(sessionId);
+        int from = 0;
+        while (from < all.size() && all.get(from).sequence() <= afterSequence) from++;
+        int to = Math.min(all.size(), from + limit);
+        long next = to == from ? afterSequence : all.get(to - 1).sequence();
+        return new SessionEventPage(all.subList(from, to), next, to < all.size());
+    }
+
     default Registration subscribe(String sessionId, Consumer<SessionEvent> consumer) {
         return Registration.NOOP;
     }

@@ -170,5 +170,28 @@ public final class EventBusTest {
         assertEquals(1, journal.read().size());
     }
 
+    @Test
+    void readsJournalPagesWithoutReplayingRecords() throws Exception {
+        InMemoryEventJournal journal = new InMemoryEventJournal();
+        for (int index = 0; index < 5; index++) {
+            journal.append(new EventRecord("event-" + index, TEXT.name(), "value-" + index, null,
+                    true, null, null, java.time.Instant.now()));
+        }
+
+        EventJournalPage first = journal.read(0, 2);
+        EventJournalPage second = journal.read(first.nextCursor(), 2);
+        EventJournalPage third = journal.read(second.nextCursor(), 2);
+
+        assertEquals(java.util.List.of("value-0", "value-1"), first.records().stream()
+                .map(EventRecord::payload).toList());
+        assertEquals(java.util.List.of("value-2", "value-3"), second.records().stream()
+                .map(EventRecord::payload).toList());
+        assertEquals(java.util.List.of("value-4"), third.records().stream()
+                .map(EventRecord::payload).toList());
+        assertTrue(first.hasMore());
+        assertTrue(second.hasMore());
+        assertTrue(!third.hasMore());
+    }
+
     private record CredentialPayload(String apiKey, String authorization, String value) { }
 }

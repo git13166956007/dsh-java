@@ -67,6 +67,19 @@ public final class InMemorySessionEventLog implements SessionEventLog {
     }
 
     @Override
+    public SessionEventPage read(String sessionId, long afterSequence, int limit) {
+        if (sessionId == null || sessionId.isBlank()) throw new IllegalArgumentException("session ID is required");
+        if (afterSequence < 0) throw new IllegalArgumentException("session event sequence must not be negative");
+        if (limit <= 0) throw new IllegalArgumentException("session event page size must be positive");
+        List<SessionEvent> all = read(sessionId);
+        int from = 0;
+        while (from < all.size() && all.get(from).sequence() <= afterSequence) from++;
+        int to = Math.min(all.size(), from + limit);
+        long next = to == from ? afterSequence : all.get(to - 1).sequence();
+        return new SessionEventPage(all.subList(from, to), next, to < all.size());
+    }
+
+    @Override
     public Registration subscribe(String sessionId, Consumer<SessionEvent> consumer) {
         CopyOnWriteArrayList<Consumer<SessionEvent>> values = subscribers.computeIfAbsent(sessionId,
                 ignored -> new CopyOnWriteArrayList<Consumer<SessionEvent>>());

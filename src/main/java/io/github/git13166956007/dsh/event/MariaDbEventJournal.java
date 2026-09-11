@@ -70,6 +70,38 @@ public final class MariaDbEventJournal implements EventJournal {
         return List.copyOf(result);
     }
 
+    @Override
+    public synchronized EventJournalPage read(long afterCursor, int limit) throws Exception {
+        if (afterCursor < 0) throw new IllegalArgumentException("event journal cursor must not be negative");
+        if (limit <= 0) throw new IllegalArgumentException("event journal page size must be positive");
+        List<EventRecord> result = new ArrayList<EventRecord>();
+        long nextCursor = afterCursor;
+        try (Connection connection = connection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "SELECT id, event_id, event_name, payload_json, value_json, accepted, reason, error, occurred_at "
+                             + "FROM dsh_event_journal WHERE id>? ORDER BY id LIMIT ?")) {
+            statement.setLong(1, afterCursor);
+            statement.setInt(2, limit + 1);
+            try (ResultSet rows = statement.executeQuery()) {
+                boolean hasMore = false;
+                while (rows.next()) {
+                    if (result.size() == limit) {
+                        hasMore = true;
+                        break;
+                    }
+                    nextCursor = rows.getLong("id");
+                    JsonNode payload = objectMapper.readTree(rows.getString("payload_json"));
+                    String valueJson = rows.getString("value_json");
+                    JsonNode value = valueJson == null ? null : objectMapper.readTree(valueJson);
+                    result.add(new EventRecord(rows.getString("event_id"), rows.getString("event_name"), payload, value,
+                            rows.getBoolean("accepted"), rows.getString("reason"), rows.getString("error"),
+                            rows.getTimestamp("occurred_at").toInstant()));
+                }
+                return new EventJournalPage(result, nextCursor, hasMore);
+            }
+        }
+    }
+
     private Connection connection() throws SQLException {
         return DriverManager.getConnection(jdbcUrl, username, password);
     }

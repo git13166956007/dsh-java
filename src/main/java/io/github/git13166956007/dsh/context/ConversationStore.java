@@ -33,6 +33,11 @@ public interface ConversationStore {
 
     void append(String conversationId, ChatMessage message) throws Exception;
 
+    /** Appends a message with a caller-owned idempotency key when the transport has one. */
+    default void append(String conversationId, String eventId, ChatMessage message) throws Exception {
+        append(conversationId, message);
+    }
+
     default boolean exists(String conversationId) throws Exception {
         return !load(conversationId, 1).isEmpty();
     }
