@@ -3,7 +3,6 @@ package io.github.git13166956007.dsh.session.event;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
@@ -12,19 +11,37 @@ import tools.jackson.databind.JsonNode;
 public final class InMemorySessionEventLog implements SessionEventLog {
     private final ConcurrentHashMap<String, CopyOnWriteArrayList<SessionEvent>> events =
             new ConcurrentHashMap<String, CopyOnWriteArrayList<SessionEvent>>();
+    private final ConcurrentHashMap<String, SessionEvent> byId = new ConcurrentHashMap<String, SessionEvent>();
     private final ConcurrentHashMap<String, CopyOnWriteArrayList<Consumer<SessionEvent>>> subscribers =
             new ConcurrentHashMap<String, CopyOnWriteArrayList<Consumer<SessionEvent>>>();
 
     @Override
     public SessionEvent append(String sessionId, String type, JsonNode payload) {
+        return append(sessionId, java.util.UUID.randomUUID().toString(), type, payload);
+    }
+
+    @Override
+    public SessionEvent append(String sessionId, String eventId, String type, JsonNode payload) {
+        if (eventId == null || eventId.isBlank()) throw new IllegalArgumentException("event ID must not be blank");
         CopyOnWriteArrayList<SessionEvent> stream = events.computeIfAbsent(sessionId,
                 ignored -> new CopyOnWriteArrayList<SessionEvent>());
         SessionEvent event;
-        synchronized (stream) {
-            event = new SessionEvent(UUID.randomUUID().toString(), sessionId, stream.size() + 1,
-                    Instant.now(), type, payload.deepCopy());
-            stream.add(event);
+        boolean appended = false;
+        synchronized (byId) {
+            event = byId.get(eventId);
+            if (event != null) {
+                verifyIdempotent(event, sessionId, type, payload);
+            } else {
+                synchronized (stream) {
+                    event = new SessionEvent(eventId, sessionId, stream.size() + 1,
+                            Instant.now(), type, payload);
+                    stream.add(event);
+                    byId.put(eventId, event);
+                    appended = true;
+                }
+            }
         }
+        if (!appended) return event;
         for (Consumer<SessionEvent> consumer : subscribers.getOrDefault(sessionId,
                 new CopyOnWriteArrayList<Consumer<SessionEvent>>())) {
             try {
@@ -34,6 +51,13 @@ public final class InMemorySessionEventLog implements SessionEventLog {
             }
         }
         return event;
+    }
+
+    private static void verifyIdempotent(SessionEvent existing, String sessionId, String type, JsonNode payload) {
+        if (!existing.sessionId().equals(sessionId) || !existing.type().equals(type)
+                || !existing.payload().equals(payload)) {
+            throw new IllegalArgumentException("event ID was already used with different content: " + existing.id());
+        }
     }
 
     @Override

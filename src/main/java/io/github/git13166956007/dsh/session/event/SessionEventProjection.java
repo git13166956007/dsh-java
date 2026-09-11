@@ -42,8 +42,11 @@ public final class SessionEventProjection {
                     || SessionEventTypes.TOOL_MESSAGE.equals(event.type())) {
                 if (!deleted) messages.add(SessionEventCodec.readMessage(event.payload()));
             } else if (SessionEventTypes.SUMMARY_UPDATED.equals(event.type()) && !deleted) {
-                summary = new ConversationSummary(event.payload().path("content").asString(""),
-                        event.payload().path("coveredMessageCount").asInt(0));
+                int coveredMessageCount = event.payload().path("coveredMessageCount").asInt(0);
+                if (summary == null || coveredMessageCount >= summary.coveredMessageCount()) {
+                    summary = new ConversationSummary(event.payload().path("content").asString(""),
+                            coveredMessageCount);
+                }
             }
         }
         return new Snapshot(title, messages, summary, createdAt, updatedAt, deleted);

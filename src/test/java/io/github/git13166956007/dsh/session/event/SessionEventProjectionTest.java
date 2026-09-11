@@ -1,15 +1,18 @@
 package io.github.git13166956007.dsh.session.event;
 
 import io.github.git13166956007.dsh.agent.ChatMessage;
+import io.github.git13166956007.dsh.context.ConversationSummary;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public final class SessionEventProjectionTest {
@@ -113,5 +116,43 @@ public final class SessionEventProjectionTest {
         assertEquals(true, called.get());
         assertEquals(List.of("persisted"), SessionEventProjection.messages(log.read("observer")).stream()
                 .map(ChatMessage::content).toList());
+    }
+
+    @Test
+    void appendIsIdempotentAndPayloadIsImmutable() throws Exception {
+        InMemorySessionEventLog log = new InMemorySessionEventLog();
+        AtomicInteger notifications = new AtomicInteger();
+        log.subscribe("idempotent", event -> notifications.incrementAndGet());
+        ObjectMapper mapper = new ObjectMapper();
+        var payload = mapper.createObjectNode().put("value", "stable");
+
+        SessionEvent first = log.append("idempotent", "event-1", SessionEventTypes.USER_MESSAGE, payload);
+        payload.put("value", "mutated-after-append");
+        assertEquals("stable", first.payload().path("value").asString());
+        SessionEvent retry = log.append("idempotent", "event-1", SessionEventTypes.USER_MESSAGE,
+                mapper.createObjectNode().put("value", "stable"));
+
+        assertEquals(first, retry);
+        assertEquals(1, log.read("idempotent").size());
+        assertEquals(1, notifications.get());
+        assertThrows(IllegalArgumentException.class, () -> log.append("idempotent", "event-1",
+                SessionEventTypes.USER_MESSAGE, mapper.createObjectNode().put("value", "different")));
+        assertThrows(IllegalArgumentException.class, () -> log.append("other-session", "event-1",
+                SessionEventTypes.USER_MESSAGE, mapper.createObjectNode().put("value", "stable")));
+    }
+
+    @Test
+    void summaryProjectionDoesNotRegressWhenOlderCompactionFinishesLater() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        InMemorySessionEventLog log = new InMemorySessionEventLog();
+        log.append("summary-race", SessionEventTypes.CREATED, mapper.createObjectNode());
+        log.append("summary-race", SessionEventTypes.SUMMARY_UPDATED,
+                mapper.createObjectNode().put("content", "newer").put("coveredMessageCount", 10));
+        log.append("summary-race", SessionEventTypes.SUMMARY_UPDATED,
+                mapper.createObjectNode().put("content", "older").put("coveredMessageCount", 4));
+
+        ConversationSummary summary = SessionEventProjection.project(log.read("summary-race")).summary();
+        assertEquals("newer", summary.content());
+        assertEquals(10, summary.coveredMessageCount());
     }
 }

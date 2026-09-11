@@ -19,6 +19,7 @@ import io.github.git13166956007.dsh.service.ServiceKey;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
@@ -48,6 +49,30 @@ public final class DshRuntimeTest {
         assertEquals("hello", runtime.service(GREETING));
         runtime.events().emit("ping", "ok");
         assertEquals(1, events.get());
+        assertTrue(runtime.isStarted());
+        runtime.close();
+    }
+
+    @Test
+    void rejectedStartedLifecycleDoesNotLeaveRuntimeMarkedStarted() {
+        DshRuntime runtime = new DshRuntime();
+        runtime.events().on(io.github.git13166956007.dsh.event.RuntimeEvents.LIFECYCLE,
+                (event, next) -> {
+                    if (event.phase() == io.github.git13166956007.dsh.event.RuntimeEvents.LifecycleEvent.Phase.STARTED) {
+                        return io.github.git13166956007.dsh.event.EventOutcome.reject("fixture rejection");
+                    }
+                    return next.proceed(event);
+                });
+        assertThrows(IllegalStateException.class, runtime::start);
+        assertEquals(false, runtime.isStarted());
+        runtime.close();
+    }
+
+    @Test
+    void repeatedStartIsIdempotent() {
+        DshRuntime runtime = new DshRuntime();
+        runtime.start();
+        runtime.start();
         assertTrue(runtime.isStarted());
         runtime.close();
     }

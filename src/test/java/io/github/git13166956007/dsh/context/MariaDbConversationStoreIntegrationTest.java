@@ -3,6 +3,7 @@ package io.github.git13166956007.dsh.context;
 import io.github.git13166956007.dsh.agent.ChatMessage;
 import io.github.git13166956007.dsh.session.event.SessionEventTypes;
 import io.github.git13166956007.dsh.session.event.MariaDbSessionEventLog;
+import io.github.git13166956007.dsh.session.event.SessionEvent;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -106,6 +107,40 @@ class MariaDbConversationStoreIntegrationTest {
             assertEquals(96, log.read(sessionId).size());
             assertEquals(java.util.stream.LongStream.rangeClosed(1, 96).boxed().toList(),
                     log.read(sessionId).stream().map(event -> event.sequence()).toList());
+        } finally {
+            try (Connection connection = DriverManager.getConnection(url, user, password);
+                 PreparedStatement events = connection.prepareStatement("DELETE FROM dsh_session_event WHERE session_id=?");
+                 PreparedStatement head = connection.prepareStatement("DELETE FROM dsh_session_event_head WHERE session_id=?")) {
+                events.setString(1, sessionId);
+                events.executeUpdate();
+                head.setString(1, sessionId);
+                head.executeUpdate();
+            }
+        }
+    }
+
+    @Test
+    void retriesTheSameEventIdWithoutAppendingTwice() throws Exception {
+        String url = System.getenv().getOrDefault("DSH_DB_URL", "jdbc:mariadb://127.0.0.1:3307/dsh");
+        String user = System.getenv().getOrDefault("DSH_DB_USER", "dsh");
+        String password = System.getenv().getOrDefault("DSH_DB_PASSWORD", "dsh-local-password");
+        try (Connection ignored = DriverManager.getConnection(url, user, password)) {
+            // Database is available; the test below is authoritative.
+        } catch (Exception exception) {
+            assumeTrue(false, "MariaDB integration test skipped: " + exception.getMessage());
+            return;
+        }
+
+        String sessionId = UUID.randomUUID().toString();
+        String eventId = UUID.randomUUID().toString();
+        MariaDbSessionEventLog log = new MariaDbSessionEventLog(url, user, password, new ObjectMapper());
+        try {
+            var payload = new ObjectMapper().createObjectNode().put("value", "once");
+            SessionEvent first = log.append(sessionId, eventId, SessionEventTypes.USER_MESSAGE, payload);
+            SessionEvent retry = log.append(sessionId, eventId, SessionEventTypes.USER_MESSAGE,
+                    new ObjectMapper().createObjectNode().put("value", "once"));
+            assertEquals(first, retry);
+            assertEquals(1, log.read(sessionId).size());
         } finally {
             try (Connection connection = DriverManager.getConnection(url, user, password);
                  PreparedStatement events = connection.prepareStatement("DELETE FROM dsh_session_event WHERE session_id=?");

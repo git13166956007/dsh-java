@@ -7,6 +7,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -29,11 +30,17 @@ public final class MariaDbSessionEventLog implements SessionEventLog {
 
     @Override
     public synchronized SessionEvent append(String sessionId, String type, JsonNode payload) throws Exception {
+        return append(sessionId, UUID.randomUUID().toString(), type, payload);
+    }
+
+    @Override
+    public synchronized SessionEvent append(String sessionId, String eventId, String type,
+                                            JsonNode payload) throws Exception {
         for (int attempt = 0; ; attempt++) {
             try (Connection connection = connection()) {
                 connection.setAutoCommit(false);
                 try {
-                    SessionEvent event = append(connection, sessionId, type, payload);
+                    SessionEvent event = append(connection, sessionId, eventId, type, payload);
                     connection.commit();
                     return event;
                 } catch (Exception exception) {
@@ -53,6 +60,16 @@ public final class MariaDbSessionEventLog implements SessionEventLog {
     /** Appends to an existing transaction; the caller owns commit/rollback. */
     public synchronized SessionEvent append(Connection connection, String sessionId, String type,
                                             JsonNode payload) throws Exception {
+        return append(connection, sessionId, UUID.randomUUID().toString(), type, payload);
+    }
+
+    /** Appends to an existing transaction with an idempotency key; the caller owns commit/rollback. */
+    public synchronized SessionEvent append(Connection connection, String sessionId, String eventId,
+                                            String type, JsonNode payload) throws Exception {
+        if (eventId == null || eventId.isBlank()) throw new IllegalArgumentException("event ID must not be blank");
+        SessionEvent existing = readById(connection, eventId);
+        if (existing != null) return verifyIdempotent(existing, sessionId, type, payload);
+
         long sequence;
         try (PreparedStatement statement = connection.prepareStatement(
                 "INSERT IGNORE INTO dsh_session_event_head (session_id, sequence_no) VALUES (?, 0)")) {
@@ -67,6 +84,8 @@ public final class MariaDbSessionEventLog implements SessionEventLog {
                 sequence = rows.getLong(1) + 1;
             }
         }
+        existing = readById(connection, eventId);
+        if (existing != null) return verifyIdempotent(existing, sessionId, type, payload);
         if (sequence == 1) {
             try (PreparedStatement statement = connection.prepareStatement(
                     "SELECT COALESCE(MAX(sequence_no), 0) FROM dsh_session_event WHERE session_id=?")) {
@@ -83,18 +102,32 @@ public final class MariaDbSessionEventLog implements SessionEventLog {
             statement.setString(2, sessionId);
             statement.executeUpdate();
         }
-        String id = UUID.randomUUID().toString();
-        Instant occurredAt = Instant.now();
-        try (PreparedStatement statement = connection.prepareStatement(
-                "INSERT INTO dsh_session_event (id, session_id, sequence_no, occurred_at, event_type, payload_json) "
-                        + "VALUES (?, ?, ?, ?, ?, ?)")) {
-            statement.setString(1, id);
-            statement.setString(2, sessionId);
-            statement.setLong(3, sequence);
-            statement.setTimestamp(4, Timestamp.from(occurredAt));
-            statement.setString(5, type);
-            statement.setString(6, objectMapper.writeValueAsString(payload));
-            statement.executeUpdate();
+        String id = eventId;
+        Instant occurredAt = Instant.now().truncatedTo(ChronoUnit.MILLIS);
+        try {
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "INSERT INTO dsh_session_event (id, session_id, sequence_no, occurred_at, event_type, payload_json) "
+                            + "VALUES (?, ?, ?, ?, ?, ?)")) {
+                statement.setString(1, id);
+                statement.setString(2, sessionId);
+                statement.setLong(3, sequence);
+                statement.setTimestamp(4, Timestamp.from(occurredAt));
+                statement.setString(5, type);
+                statement.setString(6, objectMapper.writeValueAsString(payload));
+                statement.executeUpdate();
+            }
+        } catch (SQLException exception) {
+            if (!isDuplicateKey(exception)) throw exception;
+            SessionEvent duplicate = readById(connection, eventId);
+            if (duplicate == null) throw exception;
+            try (PreparedStatement rollbackHead = connection.prepareStatement(
+                    "UPDATE dsh_session_event_head SET sequence_no=sequence_no-1 "
+                            + "WHERE session_id=? AND sequence_no=?")) {
+                rollbackHead.setString(1, sessionId);
+                rollbackHead.setLong(2, sequence);
+                rollbackHead.executeUpdate();
+            }
+            return verifyIdempotent(duplicate, sessionId, type, payload);
         }
         return new SessionEvent(id, sessionId, sequence, occurredAt, type, payload.deepCopy());
     }
@@ -118,16 +151,27 @@ public final class MariaDbSessionEventLog implements SessionEventLog {
         return List.copyOf(result);
     }
 
-    private String readId(Connection connection, String sessionId, long sequence) throws SQLException {
+    private SessionEvent readById(Connection connection, String eventId) throws Exception {
         try (PreparedStatement statement = connection.prepareStatement(
-                "SELECT id FROM dsh_session_event WHERE session_id=? AND sequence_no=?")) {
-            statement.setString(1, sessionId);
-            statement.setLong(2, sequence);
+                "SELECT id, session_id, sequence_no, occurred_at, event_type, payload_json "
+                        + "FROM dsh_session_event WHERE id=?")) {
+            statement.setString(1, eventId);
             try (ResultSet rows = statement.executeQuery()) {
-                if (!rows.next()) throw new SQLException("session event was not persisted");
-                return rows.getString(1);
+                if (!rows.next()) return null;
+                return new SessionEvent(rows.getString("id"), rows.getString("session_id"),
+                        rows.getLong("sequence_no"), rows.getTimestamp("occurred_at").toInstant(),
+                        rows.getString("event_type"), objectMapper.readTree(rows.getString("payload_json")));
             }
         }
+    }
+
+    private static SessionEvent verifyIdempotent(SessionEvent existing, String sessionId, String type,
+                                                 JsonNode payload) {
+        if (!existing.sessionId().equals(sessionId) || !existing.type().equals(type)
+                || !existing.payload().equals(payload)) {
+            throw new IllegalArgumentException("event ID was already used with different content: " + existing.id());
+        }
+        return existing;
     }
 
     private Connection connection() throws SQLException {
@@ -163,5 +207,9 @@ public final class MariaDbSessionEventLog implements SessionEventLog {
                     || sql.getErrorCode() == 1213)) return true;
         }
         return false;
+    }
+
+    private static boolean isDuplicateKey(SQLException exception) {
+        return exception.getErrorCode() == 1062 || exception.getErrorCode() == 1586;
     }
 }

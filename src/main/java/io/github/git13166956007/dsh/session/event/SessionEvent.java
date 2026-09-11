@@ -17,5 +17,11 @@ public record SessionEvent(
         if (occurredAt == null) occurredAt = Instant.now();
         if (type == null || type.isBlank()) throw new IllegalArgumentException("session event type must not be blank");
         if (payload == null) throw new IllegalArgumentException("session event payload must not be null");
+        payload = payload.deepCopy();
+    }
+
+    @Override
+    public JsonNode payload() {
+        return payload.deepCopy();
     }
 }

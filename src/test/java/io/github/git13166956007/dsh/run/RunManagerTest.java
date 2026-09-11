@@ -5,6 +5,12 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import java.util.List;
 import java.util.ArrayList;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 
 class RunManagerTest {
@@ -54,5 +60,73 @@ class RunManagerTest {
         assertEquals("done", saved.output());
         assertEquals(List.of("run_started", "run_completed"),
                 manager.events(runId).stream().map(RunEvent::type).toList());
+    }
+
+    @Test
+    void slowListenerDoesNotHoldTheRunManagerLock() throws Exception {
+        RunManager manager = new RunManager(new InMemoryRunStore());
+        String runId = manager.start(new RunSpec(null, RunKind.AGENT, null, null, null, null, null));
+        String otherRunId = manager.start(new RunSpec(null, RunKind.AGENT, null, null, null, null, null));
+        CountDownLatch listenerStarted = new CountDownLatch(1);
+        CountDownLatch releaseListener = new CountDownLatch(1);
+        AtomicBoolean firstNotification = new AtomicBoolean(true);
+        manager.subscribe(runId, event -> {
+            if (!firstNotification.compareAndSet(true, false)) return;
+            listenerStarted.countDown();
+            try {
+                releaseListener.await(5, TimeUnit.SECONDS);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+            }
+        });
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            CompletableFuture<Void> slow = CompletableFuture.runAsync(() -> {
+                try {
+                    manager.event(runId, "slow", null);
+                } catch (Exception exception) {
+                    throw new RuntimeException(exception);
+                }
+            }, executor);
+            assertEquals(true, listenerStarted.await(2, TimeUnit.SECONDS));
+            CompletableFuture<Void> fast = CompletableFuture.runAsync(() -> {
+                try {
+                    manager.event(otherRunId, "fast", null);
+                } catch (Exception exception) {
+                    throw new RuntimeException(exception);
+                }
+            }, executor);
+            fast.get(2, TimeUnit.SECONDS);
+            releaseListener.countDown();
+            slow.get(2, TimeUnit.SECONDS);
+            assertEquals(List.of("run_started", "slow"), manager.events(runId).stream()
+                    .map(RunEvent::type).toList());
+            assertEquals(List.of("run_started", "fast"), manager.events(otherRunId).stream()
+                    .map(RunEvent::type).toList());
+        } finally {
+            releaseListener.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void listenerCanAppendAReentrantEventWithoutDeadlocking() throws Exception {
+        RunManager manager = new RunManager(new InMemoryRunStore());
+        String runId = manager.start(new RunSpec(null, RunKind.AGENT, null, null, null, null, null));
+        AtomicBoolean appended = new AtomicBoolean();
+        manager.subscribe(runId, event -> {
+            if ("outer".equals(event.type()) && appended.compareAndSet(false, true)) {
+                try {
+                    manager.event(runId, "inner", null);
+                } catch (Exception exception) {
+                    throw new RuntimeException(exception);
+                }
+            }
+        });
+
+        manager.event(runId, "outer", null);
+        assertEquals(List.of("run_started", "outer", "inner"), manager.events(runId).stream()
+                .map(RunEvent::type).toList());
     }
 }

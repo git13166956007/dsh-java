@@ -33,7 +33,7 @@ public final class DshRuntime implements AutoCloseable {
     private final List<PluginHandle> plugins = new ArrayList<PluginHandle>();
     private final Set<Path> loadedPluginJars = new HashSet<Path>();
     private final long quiesceTimeoutMillis = 5000;
-    private boolean started;
+    private volatile boolean started;
 
     public DshRuntime() {
         this(new Scope("runtime"), null);
@@ -204,19 +204,21 @@ public final class DshRuntime implements AutoCloseable {
         }
     }
 
-    public void start() {
+    public synchronized void start() {
+        if (started) return;
         try {
             eventBus.rewrite(RuntimeEvents.LIFECYCLE,
                     new RuntimeEvents.LifecycleEvent(RuntimeEvents.LifecycleEvent.Phase.STARTING, "dsh-java"));
         } catch (Exception exception) {
             throw new IllegalStateException("runtime start rejected", exception);
         }
-        started = true;
-        eventBus.emit("runtime.started", this);
         try {
+            started = true;
+            eventBus.emit("runtime.started", this);
             eventBus.rewrite(RuntimeEvents.LIFECYCLE,
                     new RuntimeEvents.LifecycleEvent(RuntimeEvents.LifecycleEvent.Phase.STARTED, "dsh-java"));
         } catch (Exception exception) {
+            started = false;
             throw new IllegalStateException("runtime start lifecycle failed", exception);
         }
     }
