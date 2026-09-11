@@ -20,6 +20,12 @@ public final class InMemoryMcpServerStore implements McpServerStore {
     }
 
     @Override
+    public synchronized void save(McpServerInfo server, McpServerSecrets value) {
+        servers.put(server.id(), server);
+        secrets.put(server.id(), value == null ? McpServerSecrets.empty() : value);
+    }
+
+    @Override
     public synchronized void delete(String id) {
         servers.remove(id);
         secrets.remove(id);

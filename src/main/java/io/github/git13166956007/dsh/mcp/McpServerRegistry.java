@@ -159,8 +159,7 @@ public final class McpServerRegistry {
 
     private void save(McpServerInfo server, McpServerSecrets serverSecrets) {
         try {
-            if (store != null) store.save(server);
-            if (store != null) store.saveSecrets(server.id(), serverSecrets);
+            if (store != null) store.save(server, serverSecrets);
             secrets.put(server.id(), serverSecrets);
             servers.put(server.id(), server);
         } catch (Exception exception) {

@@ -67,6 +67,13 @@ class ModelRegistryTest {
     }
 
     @Test
+    void refusesToPersistNewPlaintextSecretsWithoutMasterKey() {
+        SecretCipher cipher = new SecretCipher(null);
+        assertThrows(IllegalStateException.class, () -> cipher.encrypt("api-key-value"));
+        assertEquals("legacy-plain", cipher.decrypt("legacy-plain"));
+    }
+
+    @Test
     void patchDistinguishesOmittedFieldsFromExplicitNulls() throws Exception {
         InMemoryModelProfileStore store = new InMemoryModelProfileStore();
         ModelRegistry registry = new ModelRegistry(store, "https://api.deepseek.com", "deepseek",

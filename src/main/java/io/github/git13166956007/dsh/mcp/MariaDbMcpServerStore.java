@@ -73,6 +73,39 @@ public final class MariaDbMcpServerStore implements McpServerStore {
     }
 
     @Override
+    public void save(McpServerInfo server, McpServerSecrets value) throws SQLException {
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "INSERT INTO dsh_mcp_server (id, name, transport, endpoint, command, arguments_json, "
+                            + "headers_json, environment_json, credential_ref, enabled, approval_required) "
+                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=VALUES(name), "
+                            + "transport=VALUES(transport), endpoint=VALUES(endpoint), command=VALUES(command), "
+                            + "arguments_json=VALUES(arguments_json), headers_json=VALUES(headers_json), "
+                            + "environment_json=VALUES(environment_json), credential_ref=VALUES(credential_ref), "
+                            + "enabled=VALUES(enabled), approval_required=VALUES(approval_required)")) {
+                statement.setString(1, server.id());
+                statement.setString(2, server.name());
+                statement.setString(3, server.transport());
+                statement.setString(4, server.endpoint());
+                statement.setString(5, server.command());
+                statement.setString(6, objectMapper.writeValueAsString(server.arguments()));
+                statement.setString(7, writeMap(value == null ? Map.of() : value.headers()));
+                statement.setString(8, writeMap(value == null ? Map.of() : value.environment()));
+                statement.setString(9, server.credentialRef());
+                statement.setBoolean(10, server.enabled());
+                statement.setBoolean(11, server.approvalRequired());
+                statement.executeUpdate();
+                connection.commit();
+            } catch (Exception exception) {
+                connection.rollback();
+                if (exception instanceof SQLException sql) throw sql;
+                throw new SQLException("failed to persist MCP server and secrets", exception);
+            }
+        }
+    }
+
+    @Override
     public McpServerSecrets loadSecrets(String id) throws SQLException {
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(

@@ -28,7 +28,8 @@ public final class SecretCipher {
     }
 
     public String encrypt(String value) {
-        if (value == null || value.isBlank() || key == null || value.startsWith(PREFIX)) return value;
+        if (value == null || value.isBlank() || value.startsWith(PREFIX)) return value;
+        if (key == null) throw new IllegalStateException("DSH_SECRET_KEY is required to persist secrets");
         try {
             byte[] nonce = new byte[12];
             random.nextBytes(nonce);

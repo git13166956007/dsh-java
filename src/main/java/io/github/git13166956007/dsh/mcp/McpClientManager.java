@@ -23,6 +23,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 import reactor.core.publisher.Mono;
@@ -40,6 +41,8 @@ public final class McpClientManager implements AutoCloseable {
     private final ExecutorService restoreExecutor = Executors.newCachedThreadPool();
     private final ScheduledExecutorService reconnectExecutor = Executors.newScheduledThreadPool(1);
     private final Map<String, ScheduledFuture<?>> reconnects = new ConcurrentHashMap<String, ScheduledFuture<?>>();
+    private final Map<String, Object> serverLocks = new ConcurrentHashMap<String, Object>();
+    private final Map<String, McpAsyncClient> connecting = new ConcurrentHashMap<String, McpAsyncClient>();
     private final long reconnectInitialDelayMs;
     private final long reconnectMaxDelayMs;
     private final int reconnectMaxAttempts;
@@ -81,7 +84,9 @@ public final class McpClientManager implements AutoCloseable {
         restoreSubscriptionState();
     }
 
-    public synchronized McpServerInfo connect(String id) {
+    public McpServerInfo connect(String id) {
+        synchronized (serverLock(id)) {
+        if (closed) throw new IllegalStateException("MCP client manager is closed");
         McpServerInfo server = servers.find(id);
         if (server == null) throw new IllegalArgumentException("unknown MCP server: " + id);
         if (!server.enabled()) throw new IllegalStateException("MCP server is disabled: " + server.name());
@@ -92,23 +97,28 @@ public final class McpClientManager implements AutoCloseable {
         long started = System.nanoTime();
         try {
             client = buildClient(server);
+            connecting.put(id, client);
             client.initialize().block();
             registerTools(server, client);
             connected.put(id, new ConnectedServer(client, source));
+            connecting.remove(id, client);
             restoreSubscriptions(server.id(), client);
             reconnects.remove(id);
             recordSuccess(id, elapsedMs(started));
             return servers.setStatus(id, "CONNECTED");
         } catch (RuntimeException exception) {
             if (client != null) client.close();
+            if (client != null) connecting.remove(id, client);
             tools.removeBySource(source);
             recordFailure(id, elapsedMs(started), exception);
             servers.setStatus(id, "ERROR");
             throw new IllegalStateException(connectionError(server, exception), exception);
         }
+        }
     }
 
-    public synchronized McpServerInfo refresh(String id) {
+    public McpServerInfo refresh(String id) {
+        synchronized (serverLock(id)) {
         if (servers.find(id) == null) throw new IllegalArgumentException("unknown MCP server: " + id);
         ConnectedServer connection = connected.get(id);
         if (connection == null) return connect(id);
@@ -122,6 +132,7 @@ public final class McpClientManager implements AutoCloseable {
             recordFailure(id, elapsedMs(started), exception);
             throw exception;
         }
+        }
     }
 
     public synchronized void restoreEnabled() {
@@ -131,7 +142,8 @@ public final class McpClientManager implements AutoCloseable {
         }
     }
 
-    public synchronized List<McpResourceInfo> resources(String id) {
+    public List<McpResourceInfo> resources(String id) {
+        synchronized (serverLock(id)) {
         McpServerInfo server = requireServer(id);
         McpAsyncClient client = requireClient(id);
         List<McpResourceInfo> result = new ArrayList<McpResourceInfo>();
@@ -148,9 +160,11 @@ public final class McpClientManager implements AutoCloseable {
         } while (cursor != null && !cursor.isBlank());
         resourceCatalog.put(id, List.copyOf(result));
         return result;
+        }
     }
 
-    public synchronized List<McpPromptInfo> prompts(String id) {
+    public List<McpPromptInfo> prompts(String id) {
+        synchronized (serverLock(id)) {
         McpServerInfo server = requireServer(id);
         McpAsyncClient client = requireClient(id);
         List<McpPromptInfo> result = new ArrayList<McpPromptInfo>();
@@ -167,9 +181,11 @@ public final class McpClientManager implements AutoCloseable {
             cursor = page.nextCursor();
         } while (cursor != null && !cursor.isBlank());
         return result;
+        }
     }
 
-    public synchronized List<McpResourceContent> readResource(String id, String uri) {
+    public List<McpResourceContent> readResource(String id, String uri) {
+        synchronized (serverLock(id)) {
         requireServer(id);
         McpSchema.ReadResourceResult result = requireClient(id)
                 .readResource(new McpSchema.ReadResourceRequest(uri)).block();
@@ -184,9 +200,11 @@ public final class McpClientManager implements AutoCloseable {
             }
         }
         return content;
+        }
     }
 
-    public synchronized McpPromptResult getPrompt(String id, String name, Map<String, Object> arguments) {
+    public McpPromptResult getPrompt(String id, String name, Map<String, Object> arguments) {
+        synchronized (serverLock(id)) {
         requireServer(id);
         McpSchema.GetPromptResult result = requireClient(id).getPrompt(new McpSchema.GetPromptRequest(name,
                 arguments == null ? Map.of() : arguments)).block();
@@ -198,12 +216,15 @@ public final class McpClientManager implements AutoCloseable {
             }
         }
         return new McpPromptResult(result.description(), messages);
+        }
     }
 
-    public synchronized McpServerInfo disconnect(String id) {
+    public McpServerInfo disconnect(String id) {
+        synchronized (serverLock(id)) {
         McpServerInfo server = servers.find(id);
         if (server == null) throw new IllegalArgumentException("unknown MCP server: " + id);
         cancelReconnect(id);
+        connecting.remove(id);
         ConnectedServer connection = connected.remove(id);
         tools.removeBySource(source(id));
         resourceCatalog.remove(id);
@@ -211,27 +232,31 @@ public final class McpClientManager implements AutoCloseable {
         if (connection != null) connection.client().close();
         if (connection != null) recordDisconnected(id);
         return servers.setStatus(server.id(), "DISCONNECTED");
-    }
-
-    public synchronized void remove(String id) {
-        if (servers.find(id) != null) disconnect(id);
-        subscriptions.remove(id);
-        try {
-            subscriptionStore.deleteServer(id);
-        } catch (Exception exception) {
-            throw new IllegalStateException("failed to delete MCP resource subscriptions", exception);
-        }
-        resourceUpdates.remove(id);
-        resourceCatalog.remove(id);
-        servers.delete(id);
-        try {
-            healthStore.delete(id);
-        } catch (Exception exception) {
-            throw new IllegalStateException("failed to delete MCP health", exception);
         }
     }
 
-    public synchronized McpResourceSubscription subscribeResource(String id, String uri) {
+    public void remove(String id) {
+        synchronized (serverLock(id)) {
+            if (servers.find(id) != null) disconnect(id);
+            subscriptions.remove(id);
+            try {
+                subscriptionStore.deleteServer(id);
+            } catch (Exception exception) {
+                throw new IllegalStateException("failed to delete MCP resource subscriptions", exception);
+            }
+            resourceUpdates.remove(id);
+            resourceCatalog.remove(id);
+            servers.delete(id);
+            try {
+                healthStore.delete(id);
+            } catch (Exception exception) {
+                throw new IllegalStateException("failed to delete MCP health", exception);
+            }
+        }
+    }
+
+    public McpResourceSubscription subscribeResource(String id, String uri) {
+        synchronized (serverLock(id)) {
         requireServer(id);
         String normalizedUri = requiredUri(uri);
         McpAsyncClient client = requireClient(id);
@@ -244,9 +269,11 @@ public final class McpClientManager implements AutoCloseable {
         }
         subscriptions.computeIfAbsent(id, ignored -> ConcurrentHashMap.newKeySet()).add(normalizedUri);
         return subscription;
+        }
     }
 
-    public synchronized McpResourceSubscription unsubscribeResource(String id, String uri) {
+    public McpResourceSubscription unsubscribeResource(String id, String uri) {
+        synchronized (serverLock(id)) {
         requireServer(id);
         String normalizedUri = requiredUri(uri);
         requireClient(id).unsubscribeResource(new McpSchema.UnsubscribeRequest(normalizedUri)).block();
@@ -261,6 +288,7 @@ public final class McpClientManager implements AutoCloseable {
             if (values.isEmpty()) subscriptions.remove(id);
         }
         return new McpResourceSubscription(id, normalizedUri, java.time.Instant.now());
+        }
     }
 
     public synchronized List<String> subscriptions(String id) {
@@ -280,40 +308,49 @@ public final class McpClientManager implements AutoCloseable {
             ServerParameters parameters = ServerParameters.builder(server.command()).args(server.arguments())
                     .env(resolveEnvironment(server, credentials)).build();
             StdioClientTransport transport = new StdioClientTransport(parameters, McpJsonMapper.getDefault());
-            return McpClient.async(transport).requestTimeout(Duration.ofSeconds(30))
+            AtomicReference<McpAsyncClient> reference = new AtomicReference<McpAsyncClient>();
+            McpAsyncClient client = McpClient.async(transport).requestTimeout(Duration.ofSeconds(30))
                     .clientInfo(new McpSchema.Implementation("dsh-java", "0.1.0"))
-                    .toolsChangeConsumer(updated -> Mono.fromRunnable(() -> refreshTools(server, updated)))
-                    .resourcesChangeConsumer(updated -> Mono.fromRunnable(() -> refreshResourceCatalog(server, updated)))
-                    .resourcesUpdateConsumer(updated -> Mono.fromRunnable(() -> resourceUpdated(server, updated)))
+                    .toolsChangeConsumer(updated -> Mono.fromRunnable(() -> refreshTools(server, reference.get(), updated)))
+                    .resourcesChangeConsumer(updated -> Mono.fromRunnable(() -> refreshResourceCatalog(server, reference.get(), updated)))
+                    .resourcesUpdateConsumer(updated -> Mono.fromRunnable(() -> resourceUpdated(server, reference.get(), updated)))
                     .build();
+            reference.set(client);
+            return client;
         }
         if ("sse".equals(server.transport())) {
             ResolvedEndpoint endpoint = resolveEndpoint(server.endpoint(), "/sse");
             HttpClientSseClientTransport transport = HttpClientSseClientTransport.builder(endpoint.baseUri())
                     .sseEndpoint(endpoint.endpoint())
                     .customizeRequest(builder -> applyHeaders(builder, resolveHeaders(server, credentials))).build();
-            return McpClient.async(transport).requestTimeout(Duration.ofSeconds(30))
+            AtomicReference<McpAsyncClient> reference = new AtomicReference<McpAsyncClient>();
+            McpAsyncClient client = McpClient.async(transport).requestTimeout(Duration.ofSeconds(30))
                     .clientInfo(new McpSchema.Implementation("dsh-java", "0.1.0"))
-                    .toolsChangeConsumer(updated -> Mono.fromRunnable(() -> refreshTools(server, updated)))
-                    .resourcesChangeConsumer(updated -> Mono.fromRunnable(() -> refreshResourceCatalog(server, updated)))
-                    .resourcesUpdateConsumer(updated -> Mono.fromRunnable(() -> resourceUpdated(server, updated)))
+                    .toolsChangeConsumer(updated -> Mono.fromRunnable(() -> refreshTools(server, reference.get(), updated)))
+                    .resourcesChangeConsumer(updated -> Mono.fromRunnable(() -> refreshResourceCatalog(server, reference.get(), updated)))
+                    .resourcesUpdateConsumer(updated -> Mono.fromRunnable(() -> resourceUpdated(server, reference.get(), updated)))
                     .build();
+            reference.set(client);
+            return client;
         }
         ResolvedEndpoint endpoint = resolveEndpoint(server.endpoint(), "/mcp");
         HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport.builder(endpoint.baseUri())
                 .endpoint(endpoint.endpoint())
                 .customizeRequest(builder -> applyHeaders(builder, resolveHeaders(server, credentials))).build();
-        return McpClient.async(transport).requestTimeout(Duration.ofSeconds(30))
+        AtomicReference<McpAsyncClient> reference = new AtomicReference<McpAsyncClient>();
+        McpAsyncClient client = McpClient.async(transport).requestTimeout(Duration.ofSeconds(30))
                 .clientInfo(new McpSchema.Implementation("dsh-java", "0.1.0"))
-                .toolsChangeConsumer(updated -> Mono.fromRunnable(() -> refreshTools(server, updated)))
-                .resourcesChangeConsumer(updated -> Mono.fromRunnable(() -> refreshResourceCatalog(server, updated)))
-                .resourcesUpdateConsumer(updated -> Mono.fromRunnable(() -> resourceUpdated(server, updated)))
+                .toolsChangeConsumer(updated -> Mono.fromRunnable(() -> refreshTools(server, reference.get(), updated)))
+                .resourcesChangeConsumer(updated -> Mono.fromRunnable(() -> refreshResourceCatalog(server, reference.get(), updated)))
+                .resourcesUpdateConsumer(updated -> Mono.fromRunnable(() -> resourceUpdated(server, reference.get(), updated)))
                 .build();
+        reference.set(client);
+        return client;
     }
 
     private void registerTools(McpServerInfo server, McpAsyncClient client) {
         McpSchema.ListToolsResult result = client.listTools().block();
-        refreshTools(server, result == null ? List.of() : result.tools());
+        refreshTools(server, client, result == null ? List.of() : result.tools());
     }
 
     private void restoreSubscriptions(String id, McpAsyncClient client) {
@@ -340,7 +377,9 @@ public final class McpClientManager implements AutoCloseable {
         }
     }
 
-    private void refreshResourceCatalog(McpServerInfo server, List<McpSchema.Resource> resources) {
+    private void refreshResourceCatalog(McpServerInfo server, McpAsyncClient client,
+                                        List<McpSchema.Resource> resources) {
+        if (!isCurrentClient(server.id(), client)) return;
         List<McpResourceInfo> result = new ArrayList<McpResourceInfo>();
         if (resources != null) {
             for (McpSchema.Resource resource : resources) {
@@ -351,7 +390,9 @@ public final class McpClientManager implements AutoCloseable {
         resourceCatalog.put(server.id(), List.copyOf(result));
     }
 
-    private void resourceUpdated(McpServerInfo server, List<McpSchema.ResourceContents> contents) {
+    private void resourceUpdated(McpServerInfo server, McpAsyncClient client,
+                                 List<McpSchema.ResourceContents> contents) {
+        if (!isCurrentClient(server.id(), client)) return;
         if (contents == null || contents.isEmpty()) return;
         String uri = contents.get(0).uri();
         if (uri == null || uri.isBlank()) return;
@@ -371,14 +412,21 @@ public final class McpClientManager implements AutoCloseable {
         return result;
     }
 
-    private void refreshTools(McpServerInfo server, List<McpSchema.Tool> remoteTools) {
+    private void refreshTools(McpServerInfo server, McpAsyncClient client, List<McpSchema.Tool> remoteTools) {
+        if (!isCurrentClient(server.id(), client)) return;
         String source = source(server.id());
         tools.removeBySource(source);
-        for (McpSchema.Tool remote : remoteTools) {
+        for (McpSchema.Tool remote : remoteTools == null ? List.<McpSchema.Tool>of() : remoteTools) {
             String exposedName = exposedName(server, remote.name());
             tools.registerExternal(new ToolDefinition(exposedName, description(server, remote), schema(remote)),
-                    arguments -> call(clientFor(server.id()), remote.name(), arguments), source, server.approvalRequired());
+                    arguments -> call(client, remote.name(), arguments), source, server.approvalRequired());
         }
+    }
+
+    private boolean isCurrentClient(String id, McpAsyncClient client) {
+        if (client == null) return false;
+        ConnectedServer active = connected.get(id);
+        return (active != null && active.client() == client) || connecting.get(id) == client;
     }
 
     private String call(McpAsyncClient client, String remoteName, tools.jackson.databind.JsonNode arguments) {
@@ -417,6 +465,11 @@ public final class McpClientManager implements AutoCloseable {
         ConnectedServer connection = connected.get(id);
         if (connection == null) throw new IllegalStateException("MCP server is not connected: " + id);
         return connection.client();
+    }
+
+    private Object serverLock(String id) {
+        if (id == null || id.isBlank()) throw new IllegalArgumentException("MCP server id must not be blank");
+        return serverLocks.computeIfAbsent(id, ignored -> new Object());
     }
 
     private static String requiredUri(String uri) {
