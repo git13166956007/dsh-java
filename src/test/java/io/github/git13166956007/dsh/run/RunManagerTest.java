@@ -66,11 +66,14 @@ class RunManagerTest {
     void runEventKeysAreIdempotentAndRejectConflictingRetries() throws Exception {
         RunManager manager = new RunManager(new InMemoryRunStore());
         String runId = manager.start(RunSpec.standalone());
+        java.util.concurrent.atomic.AtomicInteger notifications = new java.util.concurrent.atomic.AtomicInteger();
+        manager.subscribe(runId, ignored -> notifications.incrementAndGet());
 
         manager.event(runId, "tool:1", "tool_call", "weather");
         manager.event(runId, "tool:1", "tool_call", "weather");
 
         assertEquals(2, manager.events(runId).size());
+        assertEquals(1, notifications.get());
         org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
                 () -> manager.event(runId, "tool:1", "tool_call", "different"));
     }

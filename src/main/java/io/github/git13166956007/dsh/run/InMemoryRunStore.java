@@ -37,15 +37,27 @@ public final class InMemoryRunStore implements RunStore {
 
     @Override
     public synchronized RunEventData compareAndSetStatusAndEvent(RunData expected, RunData next, RunEventData event) {
+        RunEventSaveResult result = compareAndSetStatusAndEventResult(expected, next, event);
+        return result == null ? null : result.event();
+    }
+
+    @Override
+    public synchronized RunEventSaveResult compareAndSetStatusAndEventResult(RunData expected, RunData next,
+                                                                                RunEventData event) {
         RunData current = runs.get(expected.id());
         if (current == null || current.status() != expected.status()) return null;
-        RunEventData saved = saveEvent(event);
+        RunEventSaveResult saved = saveEventResult(event);
         runs.put(next.id(), next);
         return saved;
     }
 
     @Override
     public synchronized RunEventData saveEvent(RunEventData event) {
+        return saveEventResult(event).event();
+    }
+
+    @Override
+    public synchronized RunEventSaveResult saveEventResult(RunEventData event) {
         List<RunEventData> stream = events.computeIfAbsent(event.runId(), ignored -> new ArrayList<RunEventData>());
         if (event.eventKey() != null && !event.eventKey().isBlank()) {
             for (RunEventData existing : stream) {
@@ -54,11 +66,11 @@ public final class InMemoryRunStore implements RunStore {
                     throw new IllegalArgumentException("run event key was already used with different content: "
                             + event.eventKey());
                 }
-                return existing;
+                return new RunEventSaveResult(existing, false);
             }
         }
         stream.add(event);
-        return event;
+        return new RunEventSaveResult(event, true);
     }
 
     public long nextEventId() {

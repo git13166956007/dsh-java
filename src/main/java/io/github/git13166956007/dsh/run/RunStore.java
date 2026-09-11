@@ -21,5 +21,15 @@ public interface RunStore {
         return saveEvent(event);
     }
 
+    default RunEventSaveResult compareAndSetStatusAndEventResult(RunData expected, RunData next,
+                                                                   RunEventData event) throws Exception {
+        RunEventData saved = compareAndSetStatusAndEvent(expected, next, event);
+        return saved == null ? null : new RunEventSaveResult(saved, true);
+    }
+
     RunEventData saveEvent(RunEventData event) throws Exception;
+
+    default RunEventSaveResult saveEventResult(RunEventData event) throws Exception {
+        return new RunEventSaveResult(saveEvent(event), true);
+    }
 }

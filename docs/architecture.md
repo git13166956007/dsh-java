@@ -18,7 +18,7 @@ web -> core
 
 ## Runtime Composition
 
-`DshRuntime` owns a root `Scope`. Every plugin receives a child Scope; services, event subscriptions, and cleanup effects are owned by that Scope and released together during uninstall or shutdown. The built-in services are installed through `RuntimeServicePlugin`, so `ToolRegistry`, `ModelRegistry`, `ContextManager`, `ConversationStore`, and `AgentLoop` can be replaced without changing the host API.
+`DshRuntime` owns a root `Scope`. Every plugin receives a child Scope; services, event subscriptions, and cleanup effects are owned by that Scope and released together during uninstall or shutdown. The built-in services are installed through `RuntimeServicePlugin`, and `AgentLoop` resolves them from the active execution Scope. This makes the kernel-facing runtime services replaceable without changing the host API; Spring transport/orchestration beans still capture constructor references and need a runtime service reference bridge before safe hot replacement during live traffic.
 
 `AgentLoop` creates one child Scope per execution. It resolves runtime services from that Scope with constructor-injected dependencies as a compatibility fallback. `RuntimeProfile` is immutable and `ProfilePatch` is a sparse overlay for model selection, system instructions, tool/Skill capabilities, and permissions.
 
@@ -27,6 +27,8 @@ web -> core
 `EventBus` has a typed `EventKey<T>` contract. Handlers receive `(event, next)` and may continue the waterfall with a rewritten payload, return an accepted result, or reject the event. Runtime and Agent lifecycle events use this API; the legacy string broadcast API remains only for compatibility.
 
 Conversation state is represented by append-only `SessionEvent` records. `ConversationStore` keeps the existing read/write API while exposing `eventLog()` for replay and subscriptions. MariaDB writes message materialization and the corresponding SessionEvent in the same JDBC transaction, and projections rebuild chat messages from the event stream.
+
+MCP HTTP endpoints are normalized before persistence. Sensitive query parameters such as `key`, `apiKey`, `token`, `secret`, and `password` are encrypted with the configured master key and reconstructed only while opening the connection. Public profile metadata never returns those values.
 
 ## Package naming
 

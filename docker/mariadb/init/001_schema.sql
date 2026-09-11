@@ -80,6 +80,7 @@ CREATE TABLE IF NOT EXISTS dsh_mcp_server (
     arguments_json TEXT NULL,
     headers_json LONGTEXT NULL,
     environment_json LONGTEXT NULL,
+    query_params_json LONGTEXT NULL,
     credential_ref VARCHAR(255) NULL,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
     approval_required BOOLEAN NOT NULL DEFAULT TRUE,
@@ -130,10 +131,12 @@ CREATE TABLE IF NOT EXISTS dsh_run (
 CREATE TABLE IF NOT EXISTS dsh_run_event (
     event_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     run_id CHAR(36) NOT NULL,
+    event_key VARCHAR(191) NULL,
     event_type VARCHAR(64) NOT NULL,
     payload LONGTEXT NULL,
     created_at TIMESTAMP(3) NOT NULL,
     CONSTRAINT fk_dsh_run_event_run FOREIGN KEY (run_id) REFERENCES dsh_run (id) ON DELETE CASCADE,
+    UNIQUE KEY uq_dsh_run_event_key (run_id, event_key),
     INDEX idx_dsh_run_event_run (run_id, event_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

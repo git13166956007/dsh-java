@@ -62,8 +62,10 @@ public final class RunManager {
         RunEvent event;
         synchronized (this) {
             long id = store instanceof InMemoryRunStore memory ? memory.nextEventId() : 0;
-            RunEventData data = store.saveEvent(new RunEventData(id, runId, eventKey, type, payload, Instant.now()));
-            event = RunEvent.from(data);
+            RunEventSaveResult result = store.saveEventResult(
+                    new RunEventData(id, runId, eventKey, type, payload, Instant.now()));
+            if (!result.inserted()) return;
+            event = RunEvent.from(result.event());
         }
         notifyEvent(event);
     }
@@ -124,14 +126,14 @@ public final class RunManager {
                 status.terminal() ? Instant.now() : null, error, output);
         String eventKey = "lifecycle:" + eventType + ":" + store.listEvents(id).size();
         long eventId = store instanceof InMemoryRunStore memory ? memory.nextEventId() : 0;
-        RunEventData saved = store.compareAndSetStatusAndEvent(current, next,
+        RunEventSaveResult result = store.compareAndSetStatusAndEventResult(current, next,
                 new RunEventData(eventId, id, eventKey, eventType, payload, Instant.now()));
-        if (saved == null) {
+        if (result == null) {
             RunData observed = store.listRuns().stream().filter(run -> run.id().equals(id)).findFirst().orElse(null);
             if (observed != null && (observed.status() == status || observed.status().terminal())) return false;
             throw new IllegalStateException("concurrent run state update rejected: " + id);
         }
-        notifyEvent(RunEvent.from(saved));
+        if (result.inserted()) notifyEvent(RunEvent.from(result.event()));
         return true;
     }
 

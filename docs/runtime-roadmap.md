@@ -13,14 +13,14 @@
 | Plans | Persisted Plan/PlanStep state, approval, generated/manual dependencies, dependency-aware asynchronous execution, bounded parallelism, retries, cancellation API, durable parent-child run IDs and restart recovery that requeues interrupted steps | Richer dependency policies |
 | Context | Conversation IDs, persisted messages including assistant tool calls and tool results, conversation listing/rename/delete/search/fork/replay, configurable message/token budgets, newest-first truncation, rolling model-generated summaries, Provider tokenizer hooks, dynamic ContextProvider registration, priority/budget collection, failure isolation, and context inspection/compaction APIs | Exact provider tokenizer implementations |
 | Memory | MariaDB/in-memory explicit memories, namespace isolation, keyword retrieval, conversation-context injection and opt-in model-based extraction with validation/deduplication | User/workspace namespaces, forgetting/update rules and semantic retrieval |
-| Security | API key can be supplied for debugging | Authentication, tool approval, secret references, execution sandbox and audit trail |
+| Security | Profile permissions and tool approval are enforced inside AgentLoop; model keys and MCP credentials are encrypted at rest; sensitive MCP endpoint query parameters are separated from public metadata | Authentication, tenant/resource isolation, key rotation/KMS, execution sandbox, structured audit trail, and DNS rebinding protection |
 | Operations | Health endpoint, durable Run IDs, parent-child run tree and persisted audit events | Structured logs, metrics, timeout and failure replay |
 
 ## Delivery Order
 
 1. **Persistence foundation**: MariaDB, migrations, conversation/message repository, and run IDs.
 2. **Context service**: build the model input from persisted messages with a token/turn budget and compaction hook.
-3. **MCP manager**: synchronize remote tools into the same `ToolRegistry` boundary and expose connect/refresh/disconnect lifecycle controls.
+3. **MCP manager**: synchronize remote tools into the same `ToolRegistry` boundary and expose connect/refresh/disconnect lifecycle controls. HTTP endpoint secrets are kept outside the persisted public endpoint and restored only for the connection request.
 4. **Tool management**: expose registry metadata and enable/disable state; add approval policies before destructive tools.
 5. **Memory service**: start with explicit durable memories and MariaDB full-text retrieval; add embeddings only when keyword retrieval is insufficient.
 6. **Agent orchestration**: persist Agent Profiles and run modes first, then add Plan/PlanStep state, approval and execution APIs.

@@ -12,6 +12,8 @@ import io.modelcontextprotocol.json.McpJsonMapper;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.time.Duration;
 import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -330,7 +332,7 @@ public final class McpClientManager implements AutoCloseable {
         }
         if ("sse".equals(server.transport())) {
             endpointPolicy.validateForConnection(server.endpoint());
-            ResolvedEndpoint endpoint = resolveEndpoint(server.endpoint(), "/sse");
+            ResolvedEndpoint endpoint = resolveEndpoint(server.endpoint(), "/sse", credentials.queryParameters());
             HttpClientSseClientTransport transport = HttpClientSseClientTransport.builder(endpoint.baseUri())
                     .sseEndpoint(endpoint.endpoint())
                     .customizeRequest(builder -> applyHeaders(builder, resolveHeaders(server, credentials))).build();
@@ -345,7 +347,7 @@ public final class McpClientManager implements AutoCloseable {
             return client;
         }
         endpointPolicy.validateForConnection(server.endpoint());
-        ResolvedEndpoint endpoint = resolveEndpoint(server.endpoint(), "/mcp");
+        ResolvedEndpoint endpoint = resolveEndpoint(server.endpoint(), "/mcp", credentials.queryParameters());
         HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport.builder(endpoint.baseUri())
                 .endpoint(endpoint.endpoint())
                 .customizeRequest(builder -> applyHeaders(builder, resolveHeaders(server, credentials))).build();
@@ -560,6 +562,10 @@ public final class McpClientManager implements AutoCloseable {
     }
 
     static ResolvedEndpoint resolveEndpoint(String endpoint, String defaultPath) {
+        return resolveEndpoint(endpoint, defaultPath, Map.of());
+    }
+
+    static ResolvedEndpoint resolveEndpoint(String endpoint, String defaultPath, Map<String, String> queryParameters) {
         try {
             URI uri = URI.create(endpoint.trim());
             if (!uri.isAbsolute() || uri.getHost() == null) {
@@ -569,6 +575,15 @@ public final class McpClientManager implements AutoCloseable {
             if (path == null || path.isBlank() || "/".equals(path)) path = defaultPath;
             if (!path.startsWith("/")) path = "/" + path;
             if (uri.getRawQuery() != null && !uri.getRawQuery().isBlank()) path += "?" + uri.getRawQuery();
+            if (queryParameters != null) {
+                for (Map.Entry<String, String> entry : queryParameters.entrySet()) {
+                    String value = resolveValue(entry.getValue());
+                    if (value == null || value.isBlank()) continue;
+                    path += path.contains("?") ? "&" : "?";
+                    path += URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8)
+                            + "=" + URLEncoder.encode(value, StandardCharsets.UTF_8);
+                }
+            }
             return new ResolvedEndpoint(uri.getScheme() + "://" + uri.getRawAuthority(), path);
         } catch (IllegalArgumentException exception) {
             throw new IllegalArgumentException("invalid MCP endpoint: " + endpoint, exception);

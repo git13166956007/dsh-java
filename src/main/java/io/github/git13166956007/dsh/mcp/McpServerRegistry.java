@@ -6,6 +6,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.net.URI;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.util.Objects;
 
 public final class McpServerRegistry {
     private static final List<String> SUPPORTED_TRANSPORTS = List.of("stdio", "sse", "streamable_http");
@@ -43,14 +47,15 @@ public final class McpServerRegistry {
         String normalizedName = required(name, "name");
         String normalizedTransport = normalizeTransport(transport);
         validateTransport(normalizedTransport, endpoint, command);
+        EndpointConfig endpointConfig = endpointConfig(endpoint);
         if (servers.values().stream().anyMatch(server -> server.name().equalsIgnoreCase(normalizedName))) {
             throw new IllegalArgumentException("duplicate MCP server: " + normalizedName);
         }
         McpServerInfo server = new McpServerInfo(UUID.randomUUID().toString(), normalizedName,
-                normalizedTransport, blankToNull(endpoint), blankToNull(command), arguments, true,
+                normalizedTransport, endpointConfig.endpoint(), blankToNull(command), arguments, true,
                 approvalRequired == null || approvalRequired, "DISCONNECTED",
                 blankToNull(credentialRef), names(headers), names(environment));
-        save(server, new McpServerSecrets(headers, environment));
+        save(server, new McpServerSecrets(headers, environment, endpointConfig.queryParameters()));
         return server;
     }
 
@@ -84,14 +89,17 @@ public final class McpServerRegistry {
         reloadFromStore();
         McpServerInfo current = require(id);
         McpServerSecrets currentSecrets = secrets.getOrDefault(id, McpServerSecrets.empty());
-        McpServerSecrets nextSecrets = new McpServerSecrets(
-                headers == null ? currentSecrets.headers() : headers,
-                environment == null ? currentSecrets.environment() : environment);
         String nextName = name == null ? current.name() : required(name, "name");
         String nextTransport = transport == null ? current.transport() : normalizeTransport(transport);
-        String nextEndpoint = endpoint == null ? current.endpoint() : blankToNull(endpoint);
+        EndpointConfig endpointConfig = endpoint == null ? new EndpointConfig(current.endpoint(), Map.of())
+                : endpointConfig(endpoint);
+        String nextEndpoint = endpointConfig.endpoint();
         String nextCommand = command == null ? current.command() : blankToNull(command);
         validateTransport(nextTransport, nextEndpoint, nextCommand);
+        McpServerSecrets nextSecrets = new McpServerSecrets(
+                headers == null ? currentSecrets.headers() : headers,
+                environment == null ? currentSecrets.environment() : environment,
+                endpoint == null ? currentSecrets.queryParameters() : endpointConfig.queryParameters());
         if (servers.values().stream().anyMatch(server -> !server.id().equals(id)
                 && server.name().equalsIgnoreCase(nextName))) {
             throw new IllegalArgumentException("duplicate MCP server: " + nextName);
@@ -142,10 +150,19 @@ public final class McpServerRegistry {
             Map<String, McpServerInfo> persisted = new LinkedHashMap<String, McpServerInfo>();
             Map<String, McpServerSecrets> persistedSecrets = new LinkedHashMap<String, McpServerSecrets>();
             for (McpServerInfo server : store.list()) {
-                McpServerSecrets value = store.loadSecrets(server.id());
+                McpServerSecrets loaded = store.loadSecrets(server.id());
+                EndpointConfig endpointConfig = endpointConfig(server.endpoint());
+                Map<String, String> queryParameters = new LinkedHashMap<String, String>(loaded.queryParameters());
+                endpointConfig.queryParameters().forEach(queryParameters::putIfAbsent);
+                McpServerSecrets value = new McpServerSecrets(loaded.headers(), loaded.environment(), queryParameters);
                 McpServerInfo current = servers.get(server.id());
                 String status = current == null ? server.status() : current.status();
-                persisted.put(server.id(), withSecretMetadata(server, value, status));
+                McpServerInfo normalized = withSecretMetadata(server, value, status, endpointConfig.endpoint());
+                if (!Objects.equals(server.endpoint(), normalized.endpoint())
+                        || !Objects.equals(loaded.queryParameters(), value.queryParameters())) {
+                    store.save(normalized, value);
+                }
+                persisted.put(server.id(), normalized);
                 persistedSecrets.put(server.id(), value);
             }
             servers.clear();
@@ -208,9 +225,62 @@ public final class McpServerRegistry {
                 .filter(key -> key != null && !key.isBlank()).map(String::trim).distinct().toList();
     }
 
-    private static McpServerInfo withSecretMetadata(McpServerInfo server, McpServerSecrets value, String status) {
-        return new McpServerInfo(server.id(), server.name(), server.transport(), server.endpoint(), server.command(),
+    private static McpServerInfo withSecretMetadata(McpServerInfo server, McpServerSecrets value, String status,
+                                                     String endpoint) {
+        return new McpServerInfo(server.id(), server.name(), server.transport(), endpoint, server.command(),
                 server.arguments(), server.enabled(), server.approvalRequired(), status, server.credentialRef(),
                 names(value.headers()), names(value.environment()));
+    }
+
+    private static EndpointConfig endpointConfig(String endpoint) {
+        String normalized = blankToNull(endpoint);
+        if (normalized == null) return new EndpointConfig(null, Map.of());
+        try {
+            URI uri = URI.create(normalized);
+            new McpEndpointPolicy(true).validateSyntax(normalized);
+            String rawQuery = uri.getRawQuery();
+            if (rawQuery == null || rawQuery.isBlank()) return new EndpointConfig(normalized, Map.of());
+            StringBuilder safeQuery = new StringBuilder();
+            Map<String, String> querySecrets = new LinkedHashMap<String, String>();
+            for (String part : rawQuery.split("&")) {
+                if (part.isBlank()) continue;
+                int separator = part.indexOf('=');
+                String rawName = separator < 0 ? part : part.substring(0, separator);
+                String rawValue = separator < 0 ? "" : part.substring(separator + 1);
+                String name = decode(rawName);
+                String value = decode(rawValue);
+                if (sensitiveQueryName(name) && !value.isBlank()) {
+                    querySecrets.put(name, value);
+                } else {
+                    if (safeQuery.length() > 0) safeQuery.append('&');
+                    safeQuery.append(part);
+                }
+            }
+            String path = uri.getRawPath() == null ? "" : uri.getRawPath();
+            String safeEndpoint = uri.getScheme() + "://" + uri.getRawAuthority() + path
+                    + (safeQuery.length() == 0 ? "" : "?" + safeQuery);
+            return new EndpointConfig(safeEndpoint, querySecrets);
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("invalid MCP endpoint: " + endpoint, exception);
+        }
+    }
+
+    private static boolean sensitiveQueryName(String name) {
+        String normalized = name == null ? "" : name.trim().toLowerCase(Locale.ROOT).replace('-', '_');
+        return normalized.equals("key") || normalized.equals("apikey") || normalized.endsWith("_key")
+                || normalized.contains("token")
+                || normalized.contains("secret") || normalized.contains("password")
+                || normalized.contains("passwd") || normalized.contains("auth")
+                || normalized.contains("credential");
+    }
+
+    private static String decode(String value) {
+        return URLDecoder.decode(value == null ? "" : value, StandardCharsets.UTF_8);
+    }
+
+    private record EndpointConfig(String endpoint, Map<String, String> queryParameters) {
+        private EndpointConfig {
+            queryParameters = Map.copyOf(queryParameters == null ? Map.of() : queryParameters);
+        }
     }
 }

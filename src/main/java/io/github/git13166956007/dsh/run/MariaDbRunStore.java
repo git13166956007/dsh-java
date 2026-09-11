@@ -107,6 +107,13 @@ public final class MariaDbRunStore implements RunStore {
     @Override
     public RunEventData compareAndSetStatusAndEvent(RunData expected, RunData next, RunEventData event)
             throws SQLException {
+        RunEventSaveResult result = compareAndSetStatusAndEventResult(expected, next, event);
+        return result == null ? null : result.event();
+    }
+
+    @Override
+    public RunEventSaveResult compareAndSetStatusAndEventResult(RunData expected, RunData next, RunEventData event)
+            throws SQLException {
         try (Connection connection = connection()) {
             connection.setAutoCommit(false);
             try {
@@ -135,7 +142,7 @@ public final class MariaDbRunStore implements RunStore {
                     connection.rollback();
                     return null;
                 }
-                RunEventData saved = saveEvent(connection, event);
+                RunEventSaveResult saved = saveEventResult(connection, event);
                 connection.commit();
                 return saved;
             } catch (Exception exception) {
@@ -147,15 +154,20 @@ public final class MariaDbRunStore implements RunStore {
 
     @Override
     public RunEventData saveEvent(RunEventData event) throws SQLException {
+        return saveEventResult(event).event();
+    }
+
+    @Override
+    public RunEventSaveResult saveEventResult(RunEventData event) throws SQLException {
         try (Connection connection = connection()) {
-            return saveEvent(connection, event);
+            return saveEventResult(connection, event);
         }
     }
 
-    private RunEventData saveEvent(Connection connection, RunEventData event) throws SQLException {
+    private RunEventSaveResult saveEventResult(Connection connection, RunEventData event) throws SQLException {
         if (event.eventKey() != null && !event.eventKey().isBlank()) {
             RunEventData existing = findEventByKey(connection, event.runId(), event.eventKey());
-            if (existing != null) return verifyIdempotent(existing, event);
+            if (existing != null) return new RunEventSaveResult(verifyIdempotent(existing, event), false);
         }
         try (PreparedStatement statement = connection.prepareStatement(
                      "INSERT INTO dsh_run_event (run_id, event_key, event_type, payload, created_at) VALUES (?, ?, ?, ?, ?)",
@@ -171,16 +183,16 @@ public final class MariaDbRunStore implements RunStore {
                 if (event.eventKey() == null || event.eventKey().isBlank() || !isDuplicateKey(exception)) throw exception;
                 RunEventData existing = findEventByKey(connection, event.runId(), event.eventKey());
                 if (existing == null) throw exception;
-                return verifyIdempotent(existing, event);
+                return new RunEventSaveResult(verifyIdempotent(existing, event), false);
             }
             try (ResultSet keys = statement.getGeneratedKeys()) {
                 if (keys.next()) {
-                    return new RunEventData(keys.getLong(1), event.runId(), event.eventKey(), event.type(),
-                            event.payload(), event.createdAt());
+                    return new RunEventSaveResult(new RunEventData(keys.getLong(1), event.runId(), event.eventKey(),
+                            event.type(), event.payload(), event.createdAt()), true);
                 }
             }
         }
-        return event;
+        return new RunEventSaveResult(event, true);
     }
 
     private RunEventData findEventByKey(Connection connection, String runId, String eventKey) throws SQLException {

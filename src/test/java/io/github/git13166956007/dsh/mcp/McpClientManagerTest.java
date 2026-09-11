@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class McpClientManagerTest {
@@ -17,6 +18,13 @@ class McpClientManagerTest {
 
         assertEquals("https://mcp.amap.com", endpoint.baseUri());
         assertEquals("/mcp?key=debug-key", endpoint.endpoint());
+    }
+
+    @Test
+    void appendsResolvedQuerySecretsOnlyWhenConnecting() {
+        McpClientManager.ResolvedEndpoint endpoint = McpClientManager.resolveEndpoint(
+                "https://mcp.example/mcp?version=1", "/mcp", Map.of("key", "secret value"));
+        assertEquals("/mcp?version=1&key=secret+value", endpoint.endpoint());
     }
 
     @Test

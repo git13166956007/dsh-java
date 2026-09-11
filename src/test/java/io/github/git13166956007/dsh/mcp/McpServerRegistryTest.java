@@ -69,6 +69,30 @@ class McpServerRegistryTest {
     }
 
     @Test
+    void movesSensitiveEndpointQueryValuesIntoSecrets() {
+        InMemoryMcpServerStore store = new InMemoryMcpServerStore();
+        McpServerRegistry registry = new McpServerRegistry(store);
+        McpServerInfo created = registry.create("query-secured", "streamable_http",
+                "https://example.test/mcp?key=secret-value&version=1", null, List.of());
+
+        assertEquals("https://example.test/mcp?version=1", created.endpoint());
+        assertEquals("secret-value", registry.credentials(created.id()).queryParameters().get("key"));
+        McpServerRegistry restoredRegistry = new McpServerRegistry(store);
+        assertEquals("https://example.test/mcp?version=1", restoredRegistry.find(created.id()).endpoint());
+        assertEquals("secret-value", restoredRegistry.credentials(created.id()).queryParameters().get("key"));
+    }
+
+    @Test
+    void treatsApiKeyQueryNamesAsSensitive() {
+        McpServerRegistry registry = new McpServerRegistry();
+        McpServerInfo created = registry.create("apikey-secured", "sse",
+                "https://example.test/sse?apiKey=secret-value", null, List.of());
+
+        assertEquals("https://example.test/sse", created.endpoint());
+        assertEquals("secret-value", registry.credentials(created.id()).queryParameters().get("apiKey"));
+    }
+
+    @Test
     void persistsServerToolApprovalPolicy() {
         InMemoryMcpServerStore store = new InMemoryMcpServerStore();
         McpServerRegistry first = new McpServerRegistry(store);

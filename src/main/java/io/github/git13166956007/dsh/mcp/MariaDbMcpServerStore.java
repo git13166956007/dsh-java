@@ -77,13 +77,14 @@ public final class MariaDbMcpServerStore implements McpServerStore {
         try (Connection connection = connection()) {
             connection.setAutoCommit(false);
             try (PreparedStatement statement = connection.prepareStatement(
-                    "INSERT INTO dsh_mcp_server (id, name, transport, endpoint, command, arguments_json, "
-                            + "headers_json, environment_json, credential_ref, enabled, approval_required) "
-                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=VALUES(name), "
+                     "INSERT INTO dsh_mcp_server (id, name, transport, endpoint, command, arguments_json, "
+                            + "headers_json, environment_json, query_params_json, credential_ref, enabled, approval_required) "
+                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=VALUES(name), "
                             + "transport=VALUES(transport), endpoint=VALUES(endpoint), command=VALUES(command), "
                             + "arguments_json=VALUES(arguments_json), headers_json=VALUES(headers_json), "
-                            + "environment_json=VALUES(environment_json), credential_ref=VALUES(credential_ref), "
-                            + "enabled=VALUES(enabled), approval_required=VALUES(approval_required)")) {
+                            + "environment_json=VALUES(environment_json), query_params_json=VALUES(query_params_json), "
+                            + "credential_ref=VALUES(credential_ref), enabled=VALUES(enabled), "
+                            + "approval_required=VALUES(approval_required)")) {
                 statement.setString(1, server.id());
                 statement.setString(2, server.name());
                 statement.setString(3, server.transport());
@@ -92,9 +93,10 @@ public final class MariaDbMcpServerStore implements McpServerStore {
                 statement.setString(6, objectMapper.writeValueAsString(server.arguments()));
                 statement.setString(7, writeMap(value == null ? Map.of() : value.headers()));
                 statement.setString(8, writeMap(value == null ? Map.of() : value.environment()));
-                statement.setString(9, server.credentialRef());
-                statement.setBoolean(10, server.enabled());
-                statement.setBoolean(11, server.approvalRequired());
+                statement.setString(9, writeMap(value == null ? Map.of() : value.queryParameters()));
+                statement.setString(10, server.credentialRef());
+                statement.setBoolean(11, server.enabled());
+                statement.setBoolean(12, server.approvalRequired());
                 statement.executeUpdate();
                 connection.commit();
             } catch (Exception exception) {
@@ -109,12 +111,12 @@ public final class MariaDbMcpServerStore implements McpServerStore {
     public McpServerSecrets loadSecrets(String id) throws SQLException {
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(
-                     "SELECT headers_json, environment_json FROM dsh_mcp_server WHERE id=?")) {
+                     "SELECT headers_json, environment_json, query_params_json FROM dsh_mcp_server WHERE id=?")) {
             statement.setString(1, id);
             try (ResultSet rows = statement.executeQuery()) {
                 if (!rows.next()) return McpServerSecrets.empty();
                 return new McpServerSecrets(readMap(rows.getString("headers_json")),
-                        readMap(rows.getString("environment_json")));
+                        readMap(rows.getString("environment_json")), readMap(rows.getString("query_params_json")));
             }
         }
     }
@@ -123,10 +125,11 @@ public final class MariaDbMcpServerStore implements McpServerStore {
     public void saveSecrets(String id, McpServerSecrets value) throws SQLException {
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(
-                     "UPDATE dsh_mcp_server SET headers_json=?, environment_json=? WHERE id=?")) {
+                     "UPDATE dsh_mcp_server SET headers_json=?, environment_json=?, query_params_json=? WHERE id=?")) {
             statement.setString(1, writeMap(value == null ? Map.of() : value.headers()));
             statement.setString(2, writeMap(value == null ? Map.of() : value.environment()));
-            statement.setString(3, id);
+            statement.setString(3, writeMap(value == null ? Map.of() : value.queryParameters()));
+            statement.setString(4, id);
             statement.executeUpdate();
         }
     }
@@ -146,6 +149,7 @@ public final class MariaDbMcpServerStore implements McpServerStore {
                      "CREATE TABLE IF NOT EXISTS dsh_mcp_server (id VARCHAR(64) NOT NULL PRIMARY KEY, name VARCHAR(128) NOT NULL UNIQUE, "
                              + "transport VARCHAR(16) NOT NULL, endpoint VARCHAR(1000) NULL, command VARCHAR(1000) NULL, "
                              + "arguments_json TEXT NULL, headers_json LONGTEXT NULL, environment_json LONGTEXT NULL, "
+                             + "query_params_json LONGTEXT NULL, "
                              + "credential_ref VARCHAR(255) NULL, enabled BOOLEAN NOT NULL DEFAULT TRUE, "
                              + "approval_required BOOLEAN NOT NULL DEFAULT TRUE, "
                              + "created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), updated_at TIMESTAMP(3) NOT NULL "
@@ -156,6 +160,8 @@ public final class MariaDbMcpServerStore implements McpServerStore {
                 alter.executeUpdate();
             }
             addColumn(connection, "headers_json LONGTEXT NULL");
+            addColumn(connection, "environment_json LONGTEXT NULL");
+            addColumn(connection, "query_params_json LONGTEXT NULL");
             addColumn(connection, "credential_ref VARCHAR(255) NULL");
             addColumn(connection, "approval_required BOOLEAN NOT NULL DEFAULT TRUE");
         } catch (SQLException exception) {
