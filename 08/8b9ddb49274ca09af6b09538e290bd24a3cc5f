@@ -1,0 +1,36 @@
+src/main/java/io/github/git13166956007/dsh/agent/AgentLoop.java
+  h_eb697744b14c1b 21,783,827-836,861-864
+src/main/java/io/github/git13166956007/dsh/agent/AgentProfile.java
+  h_eb697744b14c1b 3-5,17-20,23-31,37
+src/main/java/io/github/git13166956007/dsh/agent/AgentProfileData.java
+  h_eb697744b14c1b 3-5,17-20,23-37
+src/main/java/io/github/git13166956007/dsh/agent/AgentProfileRegistry.java
+  h_eb697744b14c1b 8,62-69,79-80,93-101,115-118,129-130,158-159,218-239
+src/main/java/io/github/git13166956007/dsh/agent/MariaDbAgentProfileStore.java
+  h_eb697744b14c1b 10-11,17,31,39-41,52-53,58-59,71-73,105-107,123-153
+src/main/java/io/github/git13166956007/dsh/context/InMemoryConversationStore.java
+  h_eb697744b14c1b 45,47-52,80-83,115,120,134-136,152-163
+src/main/java/io/github/git13166956007/dsh/context/MariaDbConversationStore.java
+  h_eb697744b14c1b 13,77-79,81-90,93-94,143-158,168-170,253-254,298-331
+src/main/java/io/github/git13166956007/dsh/session/event/SessionEventProjection.java
+  h_eb697744b14c1b 4,6,10-11,15-18,20-25,27-28,30,32-36,38-40,43-46,49-57
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 615-616,627-628,1404-1406
+src/test/java/io/github/git13166956007/dsh/agent/AgentProfileRegistryTest.java
+  h_eb697744b14c1b 7-9,64-77
+src/test/java/io/github/git13166956007/dsh/context/InMemoryConversationStoreTest.java
+  h_eb697744b14c1b 205-232
+src/test/java/io/github/git13166956007/dsh/session/event/SessionEventProjectionTest.java
+  h_eb697744b14c1b 9,36-73
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "088b9ddb49274ca09af6b09538e290bd24a3cc5f",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
