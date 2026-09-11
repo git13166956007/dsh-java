@@ -1,0 +1,46 @@
+docker/mariadb/init/001_schema.sql
+  h_eb697744b14c1b 83,134,139
+docs/architecture.md
+  h_eb697744b14c1b 21,31-32
+docs/kernel-audit.md
+  h_eb697744b14c1b 1-31
+docs/runtime-roadmap.md
+  h_eb697744b14c1b 16,23
+src/main/java/io/github/git13166956007/dsh/mcp/MariaDbMcpServerStore.java
+  h_eb697744b14c1b 80-82,85-87,96-99,114,119,128,131-132,152,163-164
+src/main/java/io/github/git13166956007/dsh/mcp/McpClientManager.java
+  h_eb697744b14c1b 15-16,335,350,565-568,578-586
+src/main/java/io/github/git13166956007/dsh/mcp/McpServerRegistry.java
+  h_eb697744b14c1b 9-12,50,55,58,94-96,99-102,153-157,160-165,228-230,234-285
+src/main/java/io/github/git13166956007/dsh/mcp/McpServerSecrets.java
+  h_eb697744b14c1b 6-11,15,19
+src/main/java/io/github/git13166956007/dsh/run/InMemoryRunStore.java
+  h_eb697744b14c1b 40-46,49,56-60,69,73
+src/main/java/io/github/git13166956007/dsh/run/MariaDbRunStore.java
+  h_eb697744b14c1b 110-116,145,157-161,163,167,170,186,190-191,195
+src/main/java/io/github/git13166956007/dsh/run/RunEventSaveResult.java
+  h_eb697744b14c1b 1-8
+src/main/java/io/github/git13166956007/dsh/run/RunManager.java
+  h_eb697744b14c1b 65-68,129,131,136
+src/main/java/io/github/git13166956007/dsh/run/RunStore.java
+  h_eb697744b14c1b 24-29,31-34
+src/test/java/io/github/git13166956007/dsh/mcp/MariaDbMcpServerStoreIntegrationTest.java
+  h_eb697744b14c1b 1-69
+src/test/java/io/github/git13166956007/dsh/mcp/McpClientManagerTest.java
+  h_eb697744b14c1b 10,23-29
+src/test/java/io/github/git13166956007/dsh/mcp/McpServerRegistryTest.java
+  h_eb697744b14c1b 71-94
+src/test/java/io/github/git13166956007/dsh/run/RunManagerTest.java
+  h_eb697744b14c1b 69-70,76
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "c016459c34bc371947bf84ff95dd09fe8161a8d2",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
