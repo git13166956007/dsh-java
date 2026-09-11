@@ -1,0 +1,34 @@
+src/main/java/io/github/git13166956007/dsh/core/DshRuntime.java
+  h_eb697744b14c1b 36,207-208,216-217,221
+src/main/java/io/github/git13166956007/dsh/run/RunManager.java
+  h_eb697744b14c1b 12,17-18,24-31,36,40,44,48,52,56-86
+src/main/java/io/github/git13166956007/dsh/session/event/InMemorySessionEventLog.java
+  h_eb697744b14c1b 14,20-25,29-42,44,56-62
+src/main/java/io/github/git13166956007/dsh/session/event/MariaDbSessionEventLog.java
+  h_eb697744b14c1b 10,33-38,43,63-72,87-88,105-130,154,156-158,160-163,168-176,211-214
+src/main/java/io/github/git13166956007/dsh/session/event/SessionEvent.java
+  h_eb697744b14c1b 20-25
+src/main/java/io/github/git13166956007/dsh/session/event/SessionEventLog.java
+  h_eb697744b14c1b 4,9-14
+src/main/java/io/github/git13166956007/dsh/session/event/SessionEventProjection.java
+  h_eb697744b14c1b 45-49
+src/test/java/io/github/git13166956007/dsh/context/MariaDbConversationStoreIntegrationTest.java
+  h_eb697744b14c1b 6,121-154
+src/test/java/io/github/git13166956007/dsh/core/DshRuntimeTest.java
+  h_eb697744b14c1b 22,56-79
+src/test/java/io/github/git13166956007/dsh/run/RunManagerTest.java
+  h_eb697744b14c1b 8-13,64-131
+src/test/java/io/github/git13166956007/dsh/session/event/SessionEventProjectionTest.java
+  h_eb697744b14c1b 4,10,15,120-157
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "230956af281ede92775c571a52afe57b0987c93d",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
