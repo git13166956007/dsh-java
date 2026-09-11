@@ -91,4 +91,80 @@ public final class DshRuntimeTest {
         runtime.close();
     }
 
+    @Test
+    void replacementCannotRemoveCapabilityRequiredByAnInstalledConsumer() throws Exception {
+        DshRuntime runtime = new DshRuntime();
+        runtime.install(new DshPlugin() {
+            @Override public String id() { return "cap-provider"; }
+            @Override public Set<String> capabilities() { return Set.of("maps"); }
+            @Override public void start(PluginContext context) { }
+        });
+        runtime.install(new DshPlugin() {
+            @Override public String id() { return "cap-consumer"; }
+            @Override public Set<String> dependencies() { return Set.of("cap-provider"); }
+            @Override public Set<String> requiredCapabilities() { return Set.of("maps"); }
+            @Override public void start(PluginContext context) { }
+        });
+
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> runtime.replace("cap-provider",
+                new DshPlugin() {
+                    @Override public String id() { return "cap-provider"; }
+                    @Override public String version() { return "2.0.0"; }
+                    @Override public void start(PluginContext context) { }
+                }));
+        assertEquals(Set.of("cap-provider", "cap-consumer"), Set.copyOf(runtime.pluginIds()));
+        runtime.close();
+    }
+
+    @Test
+    void duplicateLeaseCloseDoesNotCorruptQuiescence() throws Exception {
+        DshRuntime runtime = new DshRuntime();
+        runtime.install(new DshPlugin() {
+            @Override public String id() { return "lease-plugin"; }
+            @Override public void start(PluginContext context) { }
+        });
+        PluginLease lease = runtime.acquirePlugin("lease-plugin");
+        lease.close();
+        lease.close();
+        assertTrue(runtime.uninstall("lease-plugin"));
+        runtime.close();
+    }
+
+    @Test
+    void replacementFailureRestoresThePreviousPlugin() throws Exception {
+        DshRuntime runtime = new DshRuntime();
+        runtime.install(new io.github.git13166956007.dsh.plugin.RuntimeServicePlugin<>(
+                "replaceable", GREETING, "old"));
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class, () -> runtime.replace("replaceable",
+                new DshPlugin() {
+                    @Override public String id() { return "replaceable"; }
+                    @Override public void start(PluginContext context) {
+                        throw new IllegalStateException("replacement failed");
+                    }
+                }));
+        assertEquals("old", runtime.service(GREETING));
+        assertEquals(java.util.List.of("replaceable"), runtime.pluginIds());
+        runtime.close();
+    }
+
+    @Test
+    void capabilityProviderCannotBeRemovedWhileAConsumerRequiresIt() throws Exception {
+        DshRuntime runtime = new DshRuntime();
+        runtime.install(new DshPlugin() {
+            @Override public String id() { return "capability-source"; }
+            @Override public Set<String> capabilities() { return Set.of("filesystem"); }
+            @Override public void start(PluginContext context) { }
+        });
+        runtime.install(new DshPlugin() {
+            @Override public String id() { return "capability-user"; }
+            @Override public Set<String> requiredCapabilities() { return Set.of("filesystem"); }
+            @Override public void start(PluginContext context) { }
+        });
+
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
+                () -> runtime.uninstall("capability-source"));
+        assertEquals(2, runtime.pluginCount());
+        runtime.close();
+    }
+
 }

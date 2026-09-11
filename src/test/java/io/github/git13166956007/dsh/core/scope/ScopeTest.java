@@ -22,6 +22,7 @@ public final class ScopeTest {
 
         assertEquals("root-value", child.resolve(VALUE));
         assertEquals("model-a", child.profile().modelId());
+        assertEquals("root", child.profile().parentId());
         assertEquals("read", child.profile().permissions().get("filesystem"));
         child.close();
         assertTrue(closed.get());

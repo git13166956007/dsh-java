@@ -93,10 +93,20 @@ public final class MariaDbConversationStore implements ConversationStore {
         try (Connection connection = connection()) {
             connection.setAutoCommit(false);
             try (PreparedStatement statement = connection.prepareStatement(
-                    "UPDATE dsh_conversation SET title=? WHERE id=?")) {
-                statement.setString(1, shorten(title));
-                statement.setString(2, conversationId);
-                if (statement.executeUpdate() == 0) throw new IllegalArgumentException("unknown conversation: " + conversationId);
+                    "SELECT 1 FROM dsh_conversation WHERE id=? FOR UPDATE")) {
+                statement.setString(1, conversationId);
+                try (ResultSet rows = statement.executeQuery()) {
+                    if (!rows.next()) throw new IllegalArgumentException("unknown conversation: " + conversationId);
+                }
+                if (isDeleted(connection, conversationId)) {
+                    throw new IllegalStateException("conversation is deleted: " + conversationId);
+                }
+                try (PreparedStatement update = connection.prepareStatement(
+                        "UPDATE dsh_conversation SET title=? WHERE id=?")) {
+                    update.setString(1, shorten(title));
+                    update.setString(2, conversationId);
+                    update.executeUpdate();
+                }
                 eventLog.append(connection, conversationId, SessionEventTypes.RENAMED,
                         objectMapper.createObjectNode().put("title", shorten(title)));
                 connection.commit();
@@ -111,18 +121,18 @@ public final class MariaDbConversationStore implements ConversationStore {
     public boolean delete(String conversationId) throws Exception {
         try (Connection connection = connection()) {
             connection.setAutoCommit(false);
-            try (PreparedStatement messages = connection.prepareStatement(
-                    "DELETE FROM dsh_message WHERE conversation_id=?");
-                 PreparedStatement conversation = connection.prepareStatement(
-                         "DELETE FROM dsh_conversation WHERE id=?")) {
-                messages.setString(1, conversationId);
-                messages.executeUpdate();
+            try (PreparedStatement conversation = connection.prepareStatement(
+                    "SELECT 1 FROM dsh_conversation WHERE id=? FOR UPDATE")) {
                 conversation.setString(1, conversationId);
-                boolean deleted = conversation.executeUpdate() > 0;
-                if (deleted) eventLog.append(connection, conversationId, SessionEventTypes.DELETED,
-                        objectMapper.createObjectNode());
+                try (ResultSet rows = conversation.executeQuery()) {
+                    if (!rows.next() || isDeleted(connection, conversationId)) {
+                        connection.commit();
+                        return false;
+                    }
+                }
+                eventLog.append(connection, conversationId, SessionEventTypes.DELETED, objectMapper.createObjectNode());
                 connection.commit();
-                return deleted;
+                return true;
             } catch (SQLException | RuntimeException exception) {
                 connection.rollback();
                 throw exception;
@@ -169,6 +179,12 @@ public final class MariaDbConversationStore implements ConversationStore {
         try (Connection connection = connection()) {
             connection.setAutoCommit(false);
             try {
+                if (!conversationExists(connection, conversationId)) {
+                    throw new IllegalArgumentException("unknown conversation: " + conversationId);
+                }
+                if (isDeleted(connection, conversationId)) {
+                    throw new IllegalStateException("conversation is deleted: " + conversationId);
+                }
                 String eventType = switch (message.role()) {
                     case USER -> SessionEventTypes.USER_MESSAGE;
                     case ASSISTANT -> SessionEventTypes.ASSISTANT_MESSAGE;
@@ -187,14 +203,8 @@ public final class MariaDbConversationStore implements ConversationStore {
 
     @Override
     public boolean exists(String conversationId) throws SQLException {
-        try (Connection connection = connection();
-             PreparedStatement statement = connection.prepareStatement(
-                     "SELECT 1 FROM dsh_conversation WHERE id=?")) {
-            statement.setString(1, conversationId);
-            try (ResultSet result = statement.executeQuery()) {
-                return result.next();
-            }
-        }
+        SessionEventProjection.Snapshot snapshot = projection(conversationId);
+        return snapshot.updatedAt() != null && !snapshot.deleted();
     }
 
     @Override
@@ -208,6 +218,12 @@ public final class MariaDbConversationStore implements ConversationStore {
         try (Connection connection = connection()) {
             connection.setAutoCommit(false);
             try {
+                if (!conversationExists(connection, conversationId)) {
+                    throw new IllegalArgumentException("unknown conversation: " + conversationId);
+                }
+                if (isDeleted(connection, conversationId)) {
+                    throw new IllegalStateException("conversation is deleted: " + conversationId);
+                }
                 eventLog.append(connection, conversationId, SessionEventTypes.SUMMARY_UPDATED,
                         objectMapper.createObjectNode().put("content", summary.content())
                                 .put("coveredMessageCount", summary.coveredMessageCount()));
@@ -260,7 +276,7 @@ public final class MariaDbConversationStore implements ConversationStore {
     private void migrateLegacyMessages() {
         try (Connection connection = connection();
              PreparedStatement conversations = connection.prepareStatement(
-                     "SELECT DISTINCT conversation_id FROM dsh_message ORDER BY conversation_id")) {
+                     "SELECT id FROM dsh_conversation ORDER BY id")) {
             try (ResultSet rows = conversations.executeQuery()) {
                 while (rows.next()) migrateLegacyConversation(rows.getString(1));
             }
@@ -279,7 +295,7 @@ public final class MariaDbConversationStore implements ConversationStore {
                 }
                 String title;
                 try (PreparedStatement statement = connection.prepareStatement(
-                        "SELECT title, summary_text, summary_message_count FROM dsh_conversation WHERE id=?")) {
+                        "SELECT title, summary_text, summary_message_count FROM dsh_conversation WHERE id=? FOR UPDATE")) {
                     statement.setString(1, conversationId);
                     try (ResultSet rows = statement.executeQuery()) {
                         if (!rows.next()) {
@@ -336,6 +352,23 @@ public final class MariaDbConversationStore implements ConversationStore {
                 "SELECT 1 FROM dsh_session_event WHERE session_id=? AND event_type=? LIMIT 1")) {
             statement.setString(1, conversationId);
             statement.setString(2, eventType);
+            try (ResultSet rows = statement.executeQuery()) { return rows.next(); }
+        }
+    }
+
+    private boolean conversationExists(Connection connection, String conversationId) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT 1 FROM dsh_conversation WHERE id=?")) {
+            statement.setString(1, conversationId);
+            try (ResultSet rows = statement.executeQuery()) { return rows.next(); }
+        }
+    }
+
+    private boolean isDeleted(Connection connection, String conversationId) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT 1 FROM dsh_session_event WHERE session_id=? AND event_type=? LIMIT 1")) {
+            statement.setString(1, conversationId);
+            statement.setString(2, SessionEventTypes.DELETED);
             try (ResultSet rows = statement.executeQuery()) { return rows.next(); }
         }
     }

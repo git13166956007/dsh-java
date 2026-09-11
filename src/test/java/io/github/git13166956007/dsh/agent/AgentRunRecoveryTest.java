@@ -1,5 +1,6 @@
 package io.github.git13166956007.dsh.agent;
 
+import io.github.git13166956007.dsh.test.AgentTestSupport;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -33,7 +34,7 @@ class AgentRunRecoveryTest {
         ContextManager contexts = new ContextManager(new InMemoryConversationStore(), 20, 10_000);
         ModelRegistry models = new ModelRegistry(new InMemoryModelProfileStore(), "http://localhost", "deepseek",
                 "test-model", null, "", 0);
-        AgentLoop loop = AgentLoop.compatibility((messages, definitions) -> new ModelResponse("recovered answer", List.of(), "stop"),
+        AgentLoop loop = AgentTestSupport.loop((messages, definitions) -> new ModelResponse("recovered answer", List.of(), "stop"),
                 new ToolRegistry(), null, null, null, runs, continuations, mapper, 2);
         SubAgentRunner runner = new SubAgentRunner(loop, profiles);
         SubAgentSessionManager sessions = new SubAgentSessionManager(new InMemorySubAgentSessionStore(), contexts,

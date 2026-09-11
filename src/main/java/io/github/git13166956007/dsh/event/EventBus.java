@@ -168,6 +168,7 @@ public final class EventBus implements AutoCloseable {
         try {
             return future.get(handler.options.timeout().toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
         } catch (java.util.concurrent.TimeoutException exception) {
+            future.cancel(true);
             throw exception;
         }
     }

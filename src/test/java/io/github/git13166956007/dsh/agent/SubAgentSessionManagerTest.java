@@ -1,5 +1,6 @@
 package io.github.git13166956007.dsh.agent;
 
+import io.github.git13166956007.dsh.test.AgentTestSupport;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -25,7 +26,7 @@ class SubAgentSessionManagerTest {
             return new ModelResponse("answer-" + requests.size(), List.of(), "stop");
         };
         RunManager runs = new RunManager(new InMemoryRunStore());
-        AgentLoop loop = AgentLoop.compatibility(model, new ToolRegistry(), null, null, null, runs, null, null, 2);
+        AgentLoop loop = AgentTestSupport.loop(model, new ToolRegistry(), null, null, null, runs, null, null, 2);
         SubAgentProfileRegistry profiles = new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 2);
         SubAgentProfile profile = profiles.create("Persistent worker", AgentMode.EXECUTION, null, "", 2,
                 List.of(), List.of(), true);
@@ -54,7 +55,7 @@ class SubAgentSessionManagerTest {
     @Test
     void closesSessionAndRejectsFurtherMessages() throws Exception {
         RunManager runs = new RunManager(new InMemoryRunStore());
-        AgentLoop loop = AgentLoop.compatibility((messages, definitions) -> new ModelResponse("done", List.of(), "stop"),
+        AgentLoop loop = AgentTestSupport.loop((messages, definitions) -> new ModelResponse("done", List.of(), "stop"),
                 new ToolRegistry(), null, null, null, runs, null, null, 2);
         SubAgentProfileRegistry profiles = new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 2);
         SubAgentProfile profile = profiles.create("Closable worker", AgentMode.EXECUTION, null, "", 2,

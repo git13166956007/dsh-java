@@ -61,8 +61,7 @@ public final class InMemoryConversationStore implements ConversationStore {
 
     @Override
     public synchronized boolean delete(String conversationId) throws Exception {
-        if (!infos.containsKey(conversationId)) return false;
-        infos.remove(conversationId);
+        if (!exists(conversationId)) return false;
         eventLog.append(conversationId, SessionEventTypes.DELETED, objectMapper.createObjectNode());
         return true;
     }
@@ -78,6 +77,7 @@ public final class InMemoryConversationStore implements ConversationStore {
 
     @Override
     public synchronized void append(String conversationId, ChatMessage message) throws Exception {
+        if (!exists(conversationId)) throw new IllegalArgumentException("unknown or deleted conversation: " + conversationId);
         String eventType = switch (message.role()) {
             case USER -> SessionEventTypes.USER_MESSAGE;
             case ASSISTANT -> SessionEventTypes.ASSISTANT_MESSAGE;
@@ -86,17 +86,14 @@ public final class InMemoryConversationStore implements ConversationStore {
         };
         if (eventType != null) eventLog.append(conversationId, eventType, SessionEventCodec.message(objectMapper, message));
         ConversationInfo current = infos.get(conversationId);
-        if (current == null) {
-            Instant now = Instant.now();
-            current = new ConversationInfo(conversationId, "New conversation", 0, now, now);
-        }
         infos.put(conversationId, new ConversationInfo(current.id(), current.title(), current.messageCount() + 1,
                 current.createdAt(), Instant.now()));
     }
 
     @Override
     public boolean exists(String conversationId) {
-        return infos.containsKey(conversationId);
+        try { return projectedInfo(conversationId) != null; }
+        catch (Exception exception) { throw new IllegalStateException("failed to project conversation", exception); }
     }
 
     @Override
@@ -126,6 +123,7 @@ public final class InMemoryConversationStore implements ConversationStore {
 
     @Override
     public void saveSummary(String conversationId, ConversationSummary summary) throws Exception {
+        if (!exists(conversationId)) throw new IllegalArgumentException("unknown or deleted conversation: " + conversationId);
         eventLog.append(conversationId, SessionEventTypes.SUMMARY_UPDATED,
                 objectMapper.createObjectNode().put("content", summary.content())
                         .put("coveredMessageCount", summary.coveredMessageCount()));
@@ -134,6 +132,14 @@ public final class InMemoryConversationStore implements ConversationStore {
     private ConversationInfo requireInfo(String conversationId) {
         ConversationInfo info = infos.get(conversationId);
         if (info == null) throw new IllegalArgumentException("unknown conversation: " + conversationId);
+        try {
+            if (SessionEventProjection.project(eventLog.read(conversationId)).deleted()) {
+                throw new IllegalStateException("conversation is deleted: " + conversationId);
+            }
+        } catch (Exception exception) {
+            if (exception instanceof IllegalStateException state) throw state;
+            throw new IllegalStateException("failed to project conversation", exception);
+        }
         return info;
     }
 

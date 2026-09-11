@@ -1,5 +1,6 @@
 package io.github.git13166956007.dsh.plan;
 
+import io.github.git13166956007.dsh.test.AgentTestSupport;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import io.github.git13166956007.dsh.agent.AgentLoop;
@@ -44,7 +45,7 @@ class AdaptivePlanServiceTest {
             }
         };
         AtomicReference<String> output = new AtomicReference<String>("");
-        AdaptivePlanService service = new AdaptivePlanService(AgentLoop.compatibility(model, new ToolRegistry(), 2),
+        AdaptivePlanService service = new AdaptivePlanService(AgentTestSupport.loop(model, new ToolRegistry(), 2),
                 new PlanRegistry(new InMemoryPlanStore()),
                 new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 8), new ObjectMapper());
 
@@ -81,7 +82,7 @@ class AdaptivePlanServiceTest {
         SubAgentProfileRegistry subAgents = new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 8);
         subAgents.create("Research worker", AgentMode.EXECUTION, null, "Research repository files", 4,
                 List.of(), List.of(), true);
-        AdaptivePlanService service = new AdaptivePlanService(AgentLoop.compatibility(model, new ToolRegistry(), 2),
+        AdaptivePlanService service = new AdaptivePlanService(AgentTestSupport.loop(model, new ToolRegistry(), 2),
                 new PlanRegistry(new InMemoryPlanStore()), subAgents, new ObjectMapper());
 
         Plan plan = service.create("Inspect the repository", null, null, null, false, 4, 1);
@@ -105,7 +106,7 @@ class AdaptivePlanServiceTest {
         };
         ToolRegistry tools = new ToolRegistry();
         SubAgentProfileRegistry subAgents = new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 8);
-        AdaptivePlanService service = new AdaptivePlanService(AgentLoop.compatibility(model, tools, 2),
+        AdaptivePlanService service = new AdaptivePlanService(AgentTestSupport.loop(model, tools, 2),
                 new PlanRegistry(new InMemoryPlanStore()), subAgents, new ObjectMapper(), tools, null);
 
         Plan plan = service.create("Deploy the service", null, null, "model-1", false, 4, 1, true);
@@ -123,7 +124,7 @@ class AdaptivePlanServiceTest {
                         + "\"maxToolCalls\":7,\"timeoutSeconds\":41,\"maxDepth\":2}}]}",
                 List.of(), "stop");
         SubAgentProfileRegistry subAgents = new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 8);
-        AdaptivePlanService service = new AdaptivePlanService(AgentLoop.compatibility(model, new ToolRegistry(), 2),
+        AdaptivePlanService service = new AdaptivePlanService(AgentTestSupport.loop(model, new ToolRegistry(), 2),
                 new PlanRegistry(new InMemoryPlanStore()), subAgents, new ObjectMapper());
 
         Plan plan = service.create("Analyze the input", null, null, "model-1", false, 4, 1, true);
@@ -143,7 +144,7 @@ class AdaptivePlanServiceTest {
                         + "{\"title\":\"Build\",\"instruction\":\"Build the project\",\"maxAttempts\":3,\"dependsOn\":[]},"
                         + "{\"title\":\"Verify\",\"instruction\":\"Verify the build\",\"dependsOn\":[1]}]}",
                 List.of(), "stop");
-        Plan plan = new AdaptivePlanService(AgentLoop.compatibility(model, new ToolRegistry(), 2),
+        Plan plan = new AdaptivePlanService(AgentTestSupport.loop(model, new ToolRegistry(), 2),
                 new PlanRegistry(new InMemoryPlanStore()),
                 new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 8), new ObjectMapper())
                 .create("Build and verify", null, null, null, false, 4, 2);
@@ -161,7 +162,7 @@ class AdaptivePlanServiceTest {
         SubAgentProfileRegistry subAgents = new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 8);
         subAgents.create("数据库迁移 Worker", AgentMode.EXECUTION, null, "负责数据库迁移检查", 4,
                 List.of(), List.of(), true);
-        Plan plan = new AdaptivePlanService(AgentLoop.compatibility(model, new ToolRegistry(), 2),
+        Plan plan = new AdaptivePlanService(AgentTestSupport.loop(model, new ToolRegistry(), 2),
                 new PlanRegistry(new InMemoryPlanStore()), subAgents, new ObjectMapper())
                 .create("执行数据库迁移", null, null, null, false, 4, 1);
 
@@ -177,7 +178,7 @@ class AdaptivePlanServiceTest {
                 List.of(), List.of(), true, 64, 300, 4, 20, 0.1, 1, List.of("database"));
         RunManager runs = new RunManager(new InMemoryRunStore());
         String runId = runs.start(new RunSpec(null, RunKind.SUB_AGENT, null, null, null, cheap.id(), null));
-        AdaptivePlanService service = new AdaptivePlanService(AgentLoop.compatibility((messages, definitions) ->
+        AdaptivePlanService service = new AdaptivePlanService(AgentTestSupport.loop((messages, definitions) ->
                 new ModelResponse("ok", List.of(), "stop"), new ToolRegistry(), 2),
                 new PlanRegistry(new InMemoryPlanStore()), subAgents, new ObjectMapper(), null, null, runs, null);
 
@@ -207,7 +208,7 @@ class AdaptivePlanServiceTest {
         var cheap = subAgents.create("Database worker", AgentMode.EXECUTION, cheapModel.id(),
                 "database migration", 4, List.of(), List.of(), true, 64, 300, 4, 50, 1.0, 1,
                 List.of("database"));
-        AdaptivePlanService service = new AdaptivePlanService(AgentLoop.compatibility((messages, definitions) ->
+        AdaptivePlanService service = new AdaptivePlanService(AgentTestSupport.loop((messages, definitions) ->
                 new ModelResponse("ok", List.of(), "stop"), new ToolRegistry(), 2),
                 new PlanRegistry(new InMemoryPlanStore()), subAgents, mapper, null, null, null, models);
 
@@ -237,7 +238,7 @@ class AdaptivePlanServiceTest {
         var healthy = subAgents.create("Database worker", AgentMode.EXECUTION, healthyModel.id(),
                 "database migration", 4, List.of(), List.of(), true, 64, 300, 4, 50, 1.0, 1,
                 List.of("database"));
-        AdaptivePlanService service = new AdaptivePlanService(AgentLoop.compatibility((messages, definitions) ->
+        AdaptivePlanService service = new AdaptivePlanService(AgentTestSupport.loop((messages, definitions) ->
                 new ModelResponse("ok", List.of(), "stop"), new ToolRegistry(), 2),
                 new PlanRegistry(new InMemoryPlanStore()), subAgents, new ObjectMapper(), null, null, null, models);
 
@@ -257,7 +258,7 @@ class AdaptivePlanServiceTest {
         SubAgentProfileRegistry subAgents = new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 8);
         subAgents.create("Broken worker", AgentMode.EXECUTION, "missing-model", "database migration", 4,
                 List.of(), List.of(), true, 64, 300, 4, 50, 1.0, 1, List.of("database"));
-        AdaptivePlanService service = new AdaptivePlanService(AgentLoop.compatibility((messages, definitions) ->
+        AdaptivePlanService service = new AdaptivePlanService(AgentTestSupport.loop((messages, definitions) ->
                 new ModelResponse("ok", List.of(), "stop"), new ToolRegistry(), 2),
                 new PlanRegistry(new InMemoryPlanStore()), subAgents, new ObjectMapper(), null, null, null, models);
 

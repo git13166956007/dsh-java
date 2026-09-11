@@ -1,5 +1,6 @@
 package io.github.git13166956007.dsh.agent;
 
+import io.github.git13166956007.dsh.test.AgentTestSupport;
 import tools.jackson.databind.node.JsonNodeFactory;
 import io.github.git13166956007.dsh.tool.ToolDefinition;
 import io.github.git13166956007.dsh.tool.ToolRegistry;
@@ -38,7 +39,7 @@ class AgentLoopTest {
             return new ModelResponse("late result", List.of(), "stop");
         };
         RunManager runs = new RunManager(new InMemoryRunStore());
-        AgentLoop loop = AgentLoop.compatibility(model, new ToolRegistry(), null, null, null, runs, null,
+        AgentLoop loop = AgentTestSupport.loop(model, new ToolRegistry(), null, null, null, runs, null,
                 new ObjectMapper(), 2);
         try {
             AgentRunHandle handle = loop.runAsync("background task", null, List.of(),
@@ -85,7 +86,7 @@ class AgentLoopTest {
             }
         };
 
-        AgentRunResult result = AgentLoop.compatibility(model, tools, 2).runDetailed("hello");
+        AgentRunResult result = AgentTestSupport.loop(model, tools, 2).runDetailed("hello");
         assertEquals("done", result.answer());
         assertEquals(1, executions.get());
         assertEquals(3, result.conversationMessages().size());
@@ -122,7 +123,7 @@ class AgentLoopTest {
             }
         };
 
-        AgentLoop loop = AgentLoop.compatibility(model, tools, null, null, null, runs, null,
+        AgentLoop loop = AgentTestSupport.loop(model, tools, null, null, null, runs, null,
                 new ObjectMapper(), 4);
         loop.setSubAgentRunner(new SubAgentRunner(loop, profiles));
 
@@ -171,7 +172,7 @@ class AgentLoopTest {
                 }
             }
         };
-        AgentLoop loop = AgentLoop.compatibility(model, tools, null, null, null, runs, continuations,
+        AgentLoop loop = AgentTestSupport.loop(model, tools, null, null, null, runs, continuations,
                 new ObjectMapper(), 4);
         loop.setSubAgentRunner(new SubAgentRunner(loop, profiles));
 
@@ -219,7 +220,7 @@ class AgentLoopTest {
                 return new ModelResponse("parent streamed answer", List.of(), "stop");
             }
         };
-        AgentLoop loop = AgentLoop.compatibility(model, tools, null, null, null, null, null,
+        AgentLoop loop = AgentTestSupport.loop(model, tools, null, null, null, null, null,
                 new ObjectMapper(), 4);
         loop.setSubAgentRunner(new SubAgentRunner(loop, profiles));
         List<String> events = new ArrayList<>();
@@ -267,7 +268,7 @@ class AgentLoopTest {
                 return new ModelResponse("parent recovered", List.of(), "stop");
             }
         };
-        AgentLoop loop = AgentLoop.compatibility(model, tools, null, null, null, runs, null,
+        AgentLoop loop = AgentTestSupport.loop(model, tools, null, null, null, runs, null,
                 new ObjectMapper(), 4);
         loop.setSubAgentRunner(new SubAgentRunner(loop, profiles));
 
@@ -311,7 +312,7 @@ class AgentLoopTest {
             }
         };
 
-        AgentRunResult result = AgentLoop.compatibility(model, tools, 2).runStreaming("hello", null,
+        AgentRunResult result = AgentTestSupport.loop(model, tools, 2).runStreaming("hello", null,
                 new AgentStreamListener() {
                     @Override
                     public void onText(String delta) {
@@ -351,7 +352,7 @@ class AgentLoopTest {
         AgentProfileRegistry profiles = new AgentProfileRegistry(new InMemoryAgentProfileStore(), 8);
         profiles.update("default", null, AgentMode.PLANNING, null, null, null, null, null);
 
-        AgentRunResult result = AgentLoop.compatibility(model, tools, null, profiles, 8)
+        AgentRunResult result = AgentTestSupport.loop(model, tools, null, profiles, 8)
                 .runDetailed("plan this", null, List.of(), null, null, null);
 
         assertEquals("1. Plan\n2. Verify", result.answer());
@@ -378,7 +379,7 @@ class AgentLoopTest {
             return new ModelResponse("done", List.of(), "stop");
         };
 
-        AgentLoop loop = AgentLoop.compatibility(model, new ToolRegistry(), null, null, null, null, null,
+        AgentLoop loop = AgentTestSupport.loop(model, new ToolRegistry(), null, null, null, null, null,
                 new ObjectMapper(), contexts, 2);
         AgentRunResult result = loop.runDetailed("check status", null, List.of());
 
@@ -416,7 +417,7 @@ class AgentLoopTest {
         SubAgentProfile profile = profiles.create("Worker", AgentMode.EXECUTION, null, "", 2,
                 List.of("allowed_tool"), List.of(), true);
 
-        AgentRunResult result = new SubAgentRunner(AgentLoop.compatibility(model, tools, 2), profiles)
+        AgentRunResult result = new SubAgentRunner(AgentTestSupport.loop(model, tools, 2), profiles)
                 .run("do work", null, profile.id());
 
         assertEquals("finished", result.answer());
@@ -450,7 +451,7 @@ class AgentLoopTest {
             }
         };
         RunManager runs = new RunManager(new InMemoryRunStore());
-        AgentLoop loop = AgentLoop.compatibility(model, tools, null, null, null, runs, 2);
+        AgentLoop loop = AgentTestSupport.loop(model, tools, null, null, null, runs, 2);
 
         AgentRunResult pending = loop.runDetailed("approve this", null, List.of());
         assertNotNull(pending.pendingApproval());
@@ -489,7 +490,7 @@ class AgentLoopTest {
                         JsonNodeFactory.instance.objectNode())), "tool_calls");
             }
         };
-        AgentLoop firstLoop = AgentLoop.compatibility(firstModel, tools, null, null, null, runs,
+        AgentLoop firstLoop = AgentTestSupport.loop(firstModel, tools, null, null, null, runs,
                 continuations, new ObjectMapper(), 2);
         AgentRunResult pending = firstLoop.runDetailed("restart", null, List.of());
         assertNotNull(continuations.load(pending.runId()));
@@ -500,7 +501,7 @@ class AgentLoopTest {
                 return new ModelResponse("resumed", List.of(), "stop");
             }
         };
-        AgentLoop restartedLoop = AgentLoop.compatibility(restartedModel, tools, null, null, null, runs,
+        AgentLoop restartedLoop = AgentTestSupport.loop(restartedModel, tools, null, null, null, runs,
                 continuations, new ObjectMapper(), 2);
 
         AgentRunResult result = restartedLoop.resumeApproval(pending.runId(), true);
@@ -537,7 +538,7 @@ class AgentLoopTest {
                 return new ModelResponse("resumed", List.of(), "stop");
             }
         };
-        AgentLoop loop = AgentLoop.compatibility(model, tools, null, null, null, null, continuations,
+        AgentLoop loop = AgentTestSupport.loop(model, tools, null, null, null, null, continuations,
                 new ObjectMapper(), 2);
 
         AgentRunResult pending = loop.runDetailed("debug key", null, List.of());
@@ -568,7 +569,7 @@ class AgentLoopTest {
             }
         };
         RunManager runs = new RunManager(new InMemoryRunStore());
-        AgentRunResult result = AgentLoop.compatibility(model, tools, null, null, null, runs, 2)
+        AgentRunResult result = AgentTestSupport.loop(model, tools, null, null, null, runs, 2)
                 .runDetailed("hello");
 
         assertNotNull(result.runId());
@@ -593,7 +594,7 @@ class AgentLoopTest {
         AgentExecutionOptions options = new AgentExecutionOptions(null, AgentMode.EXECUTION, "", 2,
                 null, null, 0, 300, 4);
         assertThrows(AgentBudgetExceededException.class,
-                () -> AgentLoop.compatibility(model, tools, 2).runDetailed("loop", null, List.of(), options));
+                () -> AgentTestSupport.loop(model, tools, 2).runDetailed("loop", null, List.of(), options));
     }
 
     @Test
@@ -607,7 +608,7 @@ class AgentLoopTest {
         AgentExecutionOptions options = new AgentExecutionOptions(null, AgentMode.EXECUTION, "", 2,
                 Set.of("restricted_tool"), null, 4, 300, 4, Map.of("tool.restricted_tool", "deny"));
         assertThrows(IllegalStateException.class,
-                () -> AgentLoop.compatibility(model, tools, 2).runDetailed("blocked", null, List.of(), options));
+                () -> AgentTestSupport.loop(model, tools, 2).runDetailed("blocked", null, List.of(), options));
     }
 
     @Test
@@ -624,7 +625,7 @@ class AgentLoopTest {
                 io.github.git13166956007.dsh.run.RunKind.SUB_AGENT, null, null, null, "parent", null));
         AgentExecutionOptions options = new AgentExecutionOptions(null, AgentMode.EXECUTION, "", 2,
                 null, null, 4, 300, 1);
-        assertThrows(AgentBudgetExceededException.class, () -> AgentLoop.compatibility(model, tools, null, null, null, runs, 2)
+        assertThrows(AgentBudgetExceededException.class, () -> AgentTestSupport.loop(model, tools, null, null, null, runs, 2)
                 .runDetailed("nested", null, List.of(), options,
                         AgentRunContext.child(parent, io.github.git13166956007.dsh.run.RunKind.SUB_AGENT,
                                 null, null, null, "child")));

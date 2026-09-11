@@ -19,7 +19,7 @@ public final class Scope implements AutoCloseable {
     private boolean closed;
 
     public Scope(String id) {
-        this(id, null, null);
+        this(id, null, RuntimeProfile.empty(id));
     }
 
     private Scope(String id, Scope parent, RuntimeProfile profile) {
@@ -65,12 +65,16 @@ public final class Scope implements AutoCloseable {
 
     public synchronized Scope child(String childId) {
         ensureOpen();
-        return new Scope(childId, this, profile);
+        RuntimeProfile inherited = profile();
+        RuntimeProfile childProfile = inherited == null ? null : new RuntimeProfile(childId, inherited.id(),
+                inherited.modelId(), inherited.systemPrompt(), inherited.allowedToolNames(),
+                inherited.allowedSkillIds(), inherited.permissions());
+        return new Scope(childId, this, childProfile);
     }
 
     public synchronized Scope child(String childId, ProfilePatch patch) {
         Scope child = child(childId);
-        if (patch != null) child.withProfile(patch.apply(child.profile(), childId));
+        if (patch != null) child.withProfile(patch.apply(profile(), childId));
         return child;
     }
 

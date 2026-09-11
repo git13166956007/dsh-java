@@ -14,7 +14,7 @@ public record ProfilePatch(
         RuntimeProfile source = base == null ? RuntimeProfile.empty(id) : base;
         return new RuntimeProfile(
                 id == null || id.isBlank() ? source.id() : id,
-                source.parentId(),
+                source.id(),
                 modelId == null ? source.modelId() : modelId,
                 systemPrompt == null ? source.systemPrompt() : systemPrompt,
                 allowedToolNames == null ? source.allowedToolNames() : allowedToolNames,

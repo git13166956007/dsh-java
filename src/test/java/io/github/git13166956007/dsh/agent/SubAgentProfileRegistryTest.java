@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class SubAgentProfileRegistryTest {
@@ -59,5 +60,19 @@ class SubAgentProfileRegistryTest {
 
         assertThrows(IllegalArgumentException.class, () -> registry.create("Bad", AgentMode.CHAT, null, "", 8,
                 List.of("not allowed"), List.of(), true));
+    }
+
+    @Test
+    void persistsToolPermissionsAlongsideToolAndSkillAllowLists() {
+        InMemorySubAgentProfileStore store = new InMemorySubAgentProfileStore();
+        SubAgentProfileRegistry registry = new SubAgentProfileRegistry(store, 8);
+        SubAgentProfile created = registry.create("Permission worker", AgentMode.EXECUTION, null, "", 8,
+                List.of("restricted_tool"), List.of("safe-skill"), true, 4, 30, 2,
+                50, 1.0, 1, List.of("security"), Map.of("tool.restricted_tool", "deny"));
+
+        SubAgentProfile restored = new SubAgentProfileRegistry(store, 8).find(created.id());
+        assertEquals(List.of("restricted_tool"), restored.allowedToolNames());
+        assertEquals(List.of("safe-skill"), restored.skillIds());
+        assertEquals("deny", restored.permissions().get("tool.restricted_tool"));
     }
 }

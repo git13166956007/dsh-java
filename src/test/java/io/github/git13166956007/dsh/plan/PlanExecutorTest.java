@@ -1,5 +1,6 @@
 package io.github.git13166956007.dsh.plan;
 
+import io.github.git13166956007.dsh.test.AgentTestSupport;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -43,9 +44,9 @@ class PlanExecutorTest {
         Plan plan = registry.create("Parallel", "Run two", null, null, false, 2,
                 List.of(new PlanRegistry.PlanStepInput("A", "A", 1),
                         new PlanRegistry.PlanStepInput("B", "B", 1)));
-        try (PlanExecutor executor = new PlanExecutor(registry, AgentLoop.compatibility(model, new ToolRegistry(), 1),
+        try (PlanExecutor executor = new PlanExecutor(registry, AgentTestSupport.loop(model, new ToolRegistry(), 1),
                 new io.github.git13166956007.dsh.agent.SubAgentRunner(
-                        AgentLoop.compatibility(model, new ToolRegistry(), 1),
+                        AgentTestSupport.loop(model, new ToolRegistry(), 1),
                         new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 1)))) {
             executor.execute(plan.id(), null);
             long deadline = System.currentTimeMillis() + 3000;
@@ -72,10 +73,10 @@ class PlanExecutorTest {
         Plan plan = registry.create("Trace", "Run one", null, null, false, 1,
                 List.of(new PlanRegistry.PlanStepInput("A", "A", 1)));
         RunManager runs = new RunManager(new InMemoryRunStore());
-        AgentLoop tracedAgent = AgentLoop.compatibility(model, new ToolRegistry(), null, null, null, runs, 1);
+        AgentLoop tracedAgent = AgentTestSupport.loop(model, new ToolRegistry(), null, null, null, runs, 1);
         try (PlanExecutor executor = new PlanExecutor(registry, tracedAgent,
                 new io.github.git13166956007.dsh.agent.SubAgentRunner(
-                        AgentLoop.compatibility(model, new ToolRegistry(), 1),
+                        AgentTestSupport.loop(model, new ToolRegistry(), 1),
                         new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 1)), runs)) {
             executor.execute(plan.id(), null);
             long deadline = System.currentTimeMillis() + 3000;
@@ -106,9 +107,9 @@ class PlanExecutorTest {
         Plan plan = registry.create("Dependency", "Pass results", null, null, false, 2,
                 List.of(new PlanRegistry.PlanStepInput("First", "Produce evidence", 1),
                         new PlanRegistry.PlanStepInput("Second", "Use the evidence", 1, null, List.of(1))));
-        try (PlanExecutor executor = new PlanExecutor(registry, AgentLoop.compatibility(model, new ToolRegistry(), 1),
+        try (PlanExecutor executor = new PlanExecutor(registry, AgentTestSupport.loop(model, new ToolRegistry(), 1),
                 new io.github.git13166956007.dsh.agent.SubAgentRunner(
-                        AgentLoop.compatibility(model, new ToolRegistry(), 1),
+                        AgentTestSupport.loop(model, new ToolRegistry(), 1),
                         new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 1)))) {
             executor.execute(plan.id(), null);
             long deadline = System.currentTimeMillis() + 3000;
@@ -148,7 +149,7 @@ class PlanExecutorTest {
                 List.of(new PlanRegistry.PlanStepInput("Approved step", "Use the approval tool", 1)));
         RunManager runs = new RunManager(new InMemoryRunStore());
         InMemoryAgentContinuationStore continuations = new InMemoryAgentContinuationStore();
-        AgentLoop agent = AgentLoop.compatibility(model, tools, null, null, null, runs, continuations, new ObjectMapper(), 2);
+        AgentLoop agent = AgentTestSupport.loop(model, tools, null, null, null, runs, continuations, new ObjectMapper(), 2);
         Run waiting;
         try (PlanExecutor executor = new PlanExecutor(registry, agent,
                 new io.github.git13166956007.dsh.agent.SubAgentRunner(agent,
@@ -165,7 +166,7 @@ class PlanExecutorTest {
             assertEquals(0, executions.get());
         }
 
-        AgentLoop restartedAgent = AgentLoop.compatibility(model, tools, null, null, null, runs,
+        AgentLoop restartedAgent = AgentTestSupport.loop(model, tools, null, null, null, runs,
                 continuations, new ObjectMapper(), 2);
         try (PlanExecutor restartedExecutor = new PlanExecutor(registry, restartedAgent,
                 new io.github.git13166956007.dsh.agent.SubAgentRunner(restartedAgent,
@@ -199,7 +200,7 @@ class PlanExecutorTest {
         String staleAgentRunId = runs.start(new RunSpec(staleStepRunId, RunKind.AGENT, null, plan.id(),
                 plan.steps().get(1).id(), null, null));
 
-        AgentLoop agent = AgentLoop.compatibility(model, new ToolRegistry(), null, null, null, runs, 1);
+        AgentLoop agent = AgentTestSupport.loop(model, new ToolRegistry(), null, null, null, runs, 1);
         SubAgentProfileRegistry profiles = new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 1);
         try (PlanExecutor executor = new PlanExecutor(registry, agent,
                 new io.github.git13166956007.dsh.agent.SubAgentRunner(agent, profiles), runs)) {

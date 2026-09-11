@@ -121,13 +121,26 @@ public final class DshRuntime implements AutoCloseable {
     }
 
     public synchronized List<String> unloadPlugins() {
-        List<String> removed = new ArrayList<String>();
-        for (int index = plugins.size() - 1; index >= 0; index--) {
-            PluginHandle handle = plugins.get(index);
-            if (handle.loader() == null) continue;
-            if (!handle.quiesce(quiesceTimeoutMillis)) {
-                throw new IllegalStateException("plugin is still in use: " + handle.plugin().id());
+        List<PluginHandle> dynamic = plugins.stream().filter(handle -> handle.loader() != null).toList();
+        Set<String> unloading = dynamic.stream().map(handle -> handle.plugin().id()).collect(java.util.stream.Collectors.toSet());
+        for (PluginHandle handle : dynamic) {
+            ensureNoCapabilityDependents(handle.plugin(), unloading);
+        }
+        List<PluginHandle> quiesced = new ArrayList<PluginHandle>();
+        try {
+            for (PluginHandle handle : dynamic) {
+                if (!handle.quiesce(quiesceTimeoutMillis)) {
+                    throw new IllegalStateException("plugin is still in use: " + handle.plugin().id());
+                }
+                quiesced.add(handle);
             }
+        } catch (RuntimeException exception) {
+            quiesced.forEach(PluginHandle::resume);
+            throw exception;
+        }
+        List<String> removed = new ArrayList<String>();
+        for (int index = quiesced.size() - 1; index >= 0; index--) {
+            PluginHandle handle = quiesced.get(index);
             removed.add(handle.plugin().id());
             removePlugin(handle.plugin().id());
             loadedPluginJars.remove(handle.jar());
@@ -149,6 +162,7 @@ public final class DshRuntime implements AutoCloseable {
                 throw new IllegalStateException("plugin is required by " + handle.plugin().id() + ": " + pluginId);
             }
         }
+        ensureNoCapabilityDependents(target.plugin(), Set.of(pluginId));
         if (!target.quiesce(quiesceTimeoutMillis)) {
             throw new IllegalStateException("plugin is still in use: " + pluginId);
         }
@@ -167,6 +181,7 @@ public final class DshRuntime implements AutoCloseable {
         PluginHandle old = plugins.stream().filter(handle -> pluginId.equals(handle.plugin().id())).findFirst().orElse(null);
         if (old == null) throw new IllegalArgumentException("unknown plugin: " + pluginId);
         validateReplacementDependencies(pluginId, replacement);
+        validateReplacementCapabilities(pluginId, replacement);
         if (!old.quiesce(quiesceTimeoutMillis)) throw new IllegalStateException("plugin is still in use: " + pluginId);
         removePlugin(pluginId);
         boolean replacementInstalled = false;
@@ -342,8 +357,31 @@ public final class DshRuntime implements AutoCloseable {
             }
             visit(dependencyCandidate, byId, installed, states, result);
         }
+        Set<String> availableCapabilities = new HashSet<String>();
+        for (String installedId : installed) {
+            PluginCandidate installedCandidate = byId.get(installedId);
+            if (installedCandidate != null) availableCapabilities.addAll(installedCandidate.plugin().capabilities());
+            else {
+                for (PluginHandle handle : plugins) {
+                    if (installedId.equals(handle.plugin().id())) availableCapabilities.addAll(handle.plugin().capabilities());
+                }
+            }
+        }
+        for (PluginCandidate resolved : result) availableCapabilities.addAll(resolved.plugin().capabilities());
+        availableCapabilities.addAll(candidate.plugin().capabilities());
+        for (String required : candidate.plugin().requiredCapabilities()) {
+            if (availableCapabilities.contains(required)) continue;
+            PluginCandidate provider = byId.values().stream()
+                    .filter(value -> !value.plugin().id().equals(id))
+                    .filter(value -> value.plugin().capabilities().contains(required))
+                    .findFirst().orElseThrow(() -> new IllegalArgumentException(
+                            "missing plugin capability: " + id + " -> " + required));
+            visit(provider, byId, installed, states, result);
+            availableCapabilities.addAll(provider.plugin().capabilities());
+        }
         states.put(id, VisitState.DONE);
         result.add(candidate);
+        installed.add(id);
     }
 
     private void validatePlugin(DshPlugin plugin) {
@@ -410,6 +448,42 @@ public final class DshRuntime implements AutoCloseable {
         }
     }
 
+    private void validateReplacementCapabilities(String id, DshPlugin replacement) {
+        Set<String> available = new HashSet<String>();
+        for (PluginHandle handle : plugins) {
+            if (!handle.plugin().id().equals(id)) available.addAll(handle.plugin().capabilities());
+        }
+        for (String required : replacement.requiredCapabilities()) {
+            if (!available.contains(required)) {
+                throw new IllegalArgumentException("replacement requires missing capability: " + required);
+            }
+        }
+        available.addAll(replacement.capabilities());
+        for (PluginHandle handle : plugins) {
+            if (handle.plugin().id().equals(id)) continue;
+            for (String required : handle.plugin().requiredCapabilities()) {
+                if (!available.contains(required)) {
+                    throw new IllegalArgumentException("replacement removes capability " + required
+                            + " required by " + handle.plugin().id());
+                }
+            }
+        }
+    }
+
+    private void ensureNoCapabilityDependents(DshPlugin target, Set<String> removing) {
+        Set<String> capabilities = target.capabilities();
+        if (capabilities == null || capabilities.isEmpty()) return;
+        for (PluginHandle handle : plugins) {
+            if (removing.contains(handle.plugin().id())) continue;
+            for (String required : handle.plugin().requiredCapabilities()) {
+                if (capabilities.contains(required)) {
+                    throw new IllegalStateException("plugin " + handle.plugin().id()
+                            + " requires capability " + required + " from " + target.id());
+                }
+            }
+        }
+    }
+
     private static Set<String> normalizedDependencies(DshPlugin plugin) {
         if (plugin.dependencies() == null) return Set.of();
         Set<String> result = new HashSet<String>();
@@ -466,7 +540,9 @@ public final class DshRuntime implements AutoCloseable {
         private synchronized PluginLease acquire() {
             if (quiescing) throw new IllegalStateException("plugin is quiescing: " + plugin.id());
             leases.incrementAndGet();
+            java.util.concurrent.atomic.AtomicBoolean released = new java.util.concurrent.atomic.AtomicBoolean();
             return () -> {
+                if (!released.compareAndSet(false, true)) return;
                 synchronized (this) {
                     leases.decrementAndGet();
                     notifyAll();
@@ -484,7 +560,13 @@ public final class DshRuntime implements AutoCloseable {
                     return false;
                 }
             }
-            return leases.get() == 0;
+            boolean idle = leases.get() == 0;
+            if (!idle) quiescing = false;
+            return idle;
+        }
+
+        private synchronized void resume() {
+            quiescing = false;
         }
     }
 

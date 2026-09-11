@@ -52,7 +52,7 @@ public final class MariaDbSubAgentProfileStore implements SubAgentProfileStore {
                      "INSERT INTO dsh_sub_agent_profile "
                              + "(id, name, mode, model_id, system_prompt, max_turns, allowed_tools, skill_ids, enabled, "
                              + "max_tool_calls, timeout_seconds, max_depth, priority, cost_weight, max_concurrent_runs, capability_tags, permissions_json) "
-                             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=VALUES(name), "
+                             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=VALUES(name), "
                              + "mode=VALUES(mode), model_id=VALUES(model_id), system_prompt=VALUES(system_prompt), "
                              + "max_turns=VALUES(max_turns), allowed_tools=VALUES(allowed_tools), skill_ids=VALUES(skill_ids), "
                              + "enabled=VALUES(enabled), max_tool_calls=VALUES(max_tool_calls), "

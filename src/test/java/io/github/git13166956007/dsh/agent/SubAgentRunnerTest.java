@@ -1,5 +1,6 @@
 package io.github.git13166956007.dsh.agent;
 
+import io.github.git13166956007.dsh.test.AgentTestSupport;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -25,7 +26,7 @@ class SubAgentRunnerTest {
     void startsExecutionAndPersistsCompletedRun() throws Exception {
         RunManager runs = new RunManager(new InMemoryRunStore());
         SubAgentProfileRegistry profiles = profiles();
-        AgentLoop loop = AgentLoop.compatibility((messages, definitions) -> new ModelResponse("completed", List.of(), "stop"),
+        AgentLoop loop = AgentTestSupport.loop((messages, definitions) -> new ModelResponse("completed", List.of(), "stop"),
                 new ToolRegistry(), null, null, null, runs, null, null, 2);
         try {
             AgentRunHandle handle = new SubAgentRunner(loop, profiles)
@@ -47,7 +48,7 @@ class SubAgentRunnerTest {
         tools.register(new ToolDefinition("approval_tool", "Needs approval.",
                 JsonNodeFactory.instance.objectNode().put("type", "object")), arguments -> "approved");
         tools.setApprovalRequired("approval_tool", true);
-        AgentLoop loop = AgentLoop.compatibility((messages, definitions) -> new ModelResponse(null,
+        AgentLoop loop = AgentTestSupport.loop((messages, definitions) -> new ModelResponse(null,
                 List.of(new ToolCall("approval-call", "approval_tool", JsonNodeFactory.instance.objectNode())),
                 "tool_calls"), tools, null, null, null, runs, new InMemoryAgentContinuationStore(), null, 2);
         try {
@@ -78,7 +79,7 @@ class SubAgentRunnerTest {
         SubAgentProfile profile = profiles.create("Restricted worker", AgentMode.EXECUTION, null, "", 2,
                 List.of("restricted_tool"), List.of(), true, 4, 300, 4, 50, 1.0, 4, List.of(),
                 Map.of("tool.restricted_tool", "deny"));
-        AgentLoop loop = AgentLoop.compatibility((messages, definitions) -> new ModelResponse(null,
+        AgentLoop loop = AgentTestSupport.loop((messages, definitions) -> new ModelResponse(null,
                 List.of(new ToolCall("permission-1", "restricted_tool", JsonNodeFactory.instance.objectNode())),
                 "tool_calls"), tools, null, null, null, runs, null, null, 2);
         try {
@@ -97,7 +98,7 @@ class SubAgentRunnerTest {
         AtomicInteger interrupted = new AtomicInteger();
         RunManager runs = new RunManager(new InMemoryRunStore());
         SubAgentProfileRegistry profiles = profiles();
-        AgentLoop loop = AgentLoop.compatibility((messages, definitions) -> {
+        AgentLoop loop = AgentTestSupport.loop((messages, definitions) -> {
             started.countDown();
             try {
                 Thread.sleep(10_000);

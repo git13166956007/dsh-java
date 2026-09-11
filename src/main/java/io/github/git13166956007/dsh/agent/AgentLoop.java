@@ -11,6 +11,7 @@ import io.github.git13166956007.dsh.context.ContextManager;
 import io.github.git13166956007.dsh.context.ContextRequest;
 import io.github.git13166956007.dsh.context.ContextSnapshot;
 import io.github.git13166956007.dsh.core.profile.ProfilePatch;
+import io.github.git13166956007.dsh.core.profile.RuntimeProfile;
 import io.github.git13166956007.dsh.core.scope.Scope;
 import io.github.git13166956007.dsh.event.EventBus;
 import io.github.git13166956007.dsh.plugin.DshServices;
@@ -44,9 +45,6 @@ public final class AgentLoop implements AutoCloseable {
     private volatile Scope runtimeScope;
     private final ThreadLocal<Scope> executionScopes = new ThreadLocal<Scope>();
 
-    /* compatibility constructors removed; use the Scope constructor */
-
-
     public AgentLoop(Scope runtimeScope, int maxTurns) {
         this(runtimeScope, maxTurns, null);
     }
@@ -57,38 +55,6 @@ public final class AgentLoop implements AutoCloseable {
         this.runtimeScope = runtimeScope;
         this.objectMapper = objectMapper == null ? new ObjectMapper() : objectMapper;
         this.maxTurns = maxTurns;
-    }
-
-    /** Explicit migration factory for embedders that have not bootstrapped DshRuntime yet. */
-    public static AgentLoop compatibility(ChatModel model, ToolRegistry tools, Object... values) {
-        if (values == null || values.length == 0 || !(values[values.length - 1] instanceof Integer maxTurns)) {
-            throw new IllegalArgumentException("compatibility factory requires maxTurns as the last argument");
-        }
-        SkillRegistry skills = values.length > 1 ? (SkillRegistry) values[0] : null;
-        AgentProfileRegistry profiles = values.length > 2 ? (AgentProfileRegistry) values[1] : null;
-        MemoryManager memories = values.length > 3 ? (MemoryManager) values[2] : null;
-        RunManager runs = values.length > 4 ? (RunManager) values[3] : null;
-        AgentContinuationStore continuations = values.length > 5 ? (AgentContinuationStore) values[4] : null;
-        ObjectMapper objectMapper = values.length > 6 ? (ObjectMapper) values[5] : null;
-        ContextManager contexts = values.length > 7 ? (ContextManager) values[6] : null;
-        return new AgentLoop(compatibilityScope(model, tools, skills, profiles, memories, runs, continuations, contexts),
-                maxTurns, objectMapper);
-    }
-
-    private static Scope compatibilityScope(ChatModel model, ToolRegistry tools, SkillRegistry skills,
-                                             AgentProfileRegistry profiles, MemoryManager memories, RunManager runs,
-                                             AgentContinuationStore continuations, ContextManager contexts) {
-        if (model == null || tools == null) throw new IllegalArgumentException("model and tools are required");
-        Scope scope = new Scope("agent-compatibility");
-        scope.provide(DshServices.CHAT_MODEL, model);
-        scope.provide(DshServices.TOOLS, tools);
-        if (skills != null) scope.provide(DshServices.SKILLS, skills);
-        if (profiles != null) scope.provide(DshServices.AGENTS, profiles);
-        if (memories != null) scope.provide(DshServices.MEMORIES, memories);
-        if (runs != null) scope.provide(DshServices.RUNS, runs);
-        if (continuations != null) scope.provide(DshServices.CONTINUATIONS, continuations);
-        if (contexts != null) scope.provide(DshServices.CONTEXT, contexts);
-        return scope;
     }
 
     public void setSubAgentRunner(SubAgentRunner subAgents) {
@@ -158,7 +124,7 @@ public final class AgentLoop implements AutoCloseable {
                                    AgentExecutionOptions executionOptions, AgentRunContext context) throws Exception {
         if (executionOptions == null) throw new IllegalArgumentException("executionOptions must not be null");
         if (runManager() == null) throw new IllegalStateException("async agent runs require a RunManager");
-        RunOptions options = runOptions(executionOptions, context);
+        RunOptions options = effectiveOptions(runOptions(executionOptions, context));
         validatePrompt(prompt);
         String runId = beginRun(options, context);
         return submitAsync(runId, prompt, apiKey, history, options, context);
@@ -174,7 +140,7 @@ public final class AgentLoop implements AutoCloseable {
         if (run.status() != io.github.git13166956007.dsh.run.RunStatus.RUNNING) {
             throw new IllegalStateException("run is not recoverable: " + runId);
         }
-        RunOptions options = runOptions(executionOptions, context);
+        RunOptions options = effectiveOptions(runOptions(executionOptions, context));
         validatePrompt(prompt);
         return submitAsync(runId, prompt, apiKey, history, options, context);
     }
@@ -201,6 +167,7 @@ public final class AgentLoop implements AutoCloseable {
     private AgentRunResult runResolved(String prompt, String apiKey, List<ChatMessage> history,
                                        RunOptions options, AgentRunContext context) throws Exception {
         validatePrompt(prompt);
+        options = effectiveOptions(options);
         String runId = beginRun(options, context);
         return runResolved(prompt, apiKey, history, options, context, runId);
     }
@@ -314,7 +281,7 @@ public final class AgentLoop implements AutoCloseable {
         if (options != null) {
             scope.withProfile(new ProfilePatch(options.modelId(), options.systemPrompt(),
                     options.allowedToolNames(), options.skillIds(), options.permissions())
-                    .apply(scope.profile(), id));
+                    .apply(runtimeScope.profile(), id));
         }
         return scope;
     }
@@ -461,7 +428,7 @@ public final class AgentLoop implements AutoCloseable {
             throw new IllegalArgumentException("prompt must not be blank");
         }
 
-        RunOptions options = options(modelId, agentId, modeOverride, memoryNamespace, memorySubjectKey);
+        RunOptions options = effectiveOptions(options(modelId, agentId, modeOverride, memoryNamespace, memorySubjectKey));
         String runId = beginRun(options, context);
         if (runId != null) activeThreads.put(runId, Thread.currentThread());
         try {
@@ -821,6 +788,8 @@ public final class AgentLoop implements AutoCloseable {
         if (options.permissions() == null || options.permissions().isEmpty()) return;
         String decision = options.permissions().get("tool." + toolName);
         if (decision == null) decision = options.permissions().get(toolName);
+        if (decision == null) decision = options.permissions().get("tool.*");
+        if (decision == null) decision = options.permissions().get("*");
         if (decision != null && ("deny".equalsIgnoreCase(decision)
                 || "false".equalsIgnoreCase(decision) || "disabled".equalsIgnoreCase(decision))) {
             throw new IllegalStateException("tool permission denied: " + toolName);
@@ -855,6 +824,25 @@ public final class AgentLoop implements AutoCloseable {
                 profile.allowedToolNames().isEmpty() ? null : Set.copyOf(profile.allowedToolNames()),
                 profile.skillIds().isEmpty() ? null : Set.copyOf(profile.skillIds()), profile.maxToolCalls(),
                 profile.timeoutSeconds(), profile.maxDepth(), memoryNamespace, memorySubjectKey, agentId, profile.permissions());
+    }
+
+    private RunOptions effectiveOptions(RunOptions options) {
+        if (options == null || runtimeScope == null) return options;
+        RuntimeProfile profile = runtimeScope.profile();
+        if (profile == null) return options;
+        String modelId = options.modelId() == null ? profile.modelId() : options.modelId();
+        String systemPrompt = options.systemPrompt() == null || options.systemPrompt().isBlank()
+                ? profile.systemPrompt() : options.systemPrompt();
+        Set<String> allowedTools = options.allowedToolNames() == null && !profile.allowedToolNames().isEmpty()
+                ? profile.allowedToolNames() : options.allowedToolNames();
+        Set<String> skillIds = options.skillIds() == null && !profile.allowedSkillIds().isEmpty()
+                ? profile.allowedSkillIds() : options.skillIds();
+        Map<String, String> permissions = options.permissions().isEmpty() && !profile.permissions().isEmpty()
+                ? profile.permissions() : options.permissions();
+        String agentId = options.agentId() == null ? profile.id() : options.agentId();
+        return new RunOptions(modelId, options.mode(), options.maxTurns(), systemPrompt, allowedTools, skillIds,
+                options.maxToolCalls(), options.timeoutSeconds(), options.maxDepth(), options.memoryNamespace(),
+                options.memorySubjectKey(), agentId, permissions);
     }
 
     private String systemPrompt(RunOptions options, String query, AgentRunContext context) throws Exception {
