@@ -13,6 +13,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public final class EventBusTest {
     private static final EventKey<String> TEXT = new EventKey<String>("test.text", String.class);
+    private static final EventKey<Payload> PAYLOAD = new EventKey<Payload>("test.payload", Payload.class);
+    private record Payload(String value) { }
 
     @Test
     void handlersRewriteInWaterfallOrder() throws Exception {
@@ -63,6 +65,10 @@ public final class EventBusTest {
         EventRecord persisted = new EventRecord(TEXT.name(), JsonNodeFactory.instance.textNode("persisted"),
                 null, false, null, "fixture", java.time.Instant.now());
         assertEquals("persisted", recovered.recover(persisted, Map.of(TEXT.name(), TEXT)).value());
+        EventRecord typed = new EventRecord(PAYLOAD.name(), JsonNodeFactory.instance.objectNode().put("value", "typed"),
+                null, false, null, "fixture", java.time.Instant.now());
+        EventOutcome<?> typedOutcome = recovered.recover(typed, Map.of(PAYLOAD.name(), PAYLOAD));
+        assertEquals("typed", ((Payload) typedOutcome.value()).value());
         bus.close();
         failing.close();
         recovered.close();

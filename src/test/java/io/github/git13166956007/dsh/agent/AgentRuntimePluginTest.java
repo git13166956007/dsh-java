@@ -5,6 +5,7 @@ import io.github.git13166956007.dsh.plugin.DshServices;
 import io.github.git13166956007.dsh.plugin.RuntimeServicePlugin;
 import io.github.git13166956007.dsh.tool.ToolRegistry;
 import io.github.git13166956007.dsh.core.profile.RuntimeProfile;
+import io.github.git13166956007.dsh.agent.InMemoryAgentProfileStore;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -51,6 +52,31 @@ public final class AgentRuntimePluginTest {
             assertEquals("done", loop.runDetailed("hello").answer());
             assertTrue(prompt.get().contains("Profile instructions:"));
             assertEquals("profile-model", runtime.scope().profile().modelId());
+        } finally {
+            runtime.close();
+        }
+    }
+
+    @Test
+    void activeAgentProfileOwnsRunsWhenAgentIdIsOmitted() throws Exception {
+        java.util.concurrent.atomic.AtomicReference<String> agentId = new java.util.concurrent.atomic.AtomicReference<>();
+        ChatModel model = (messages, tools) -> new ModelResponse("done", List.of(), "stop");
+        io.github.git13166956007.dsh.agent.AgentProfileRegistry profiles =
+                new io.github.git13166956007.dsh.agent.AgentProfileRegistry(new InMemoryAgentProfileStore(), 2);
+        io.github.git13166956007.dsh.agent.AgentProfile profile = profiles.list().get(0);
+        DshRuntime runtime = new DshRuntime();
+        runtime.install(new RuntimeServicePlugin<>("events", DshServices.EVENTS, runtime.events()));
+        runtime.install(new RuntimeServicePlugin<>("model", DshServices.CHAT_MODEL, model));
+        runtime.install(new RuntimeServicePlugin<>("tools", DshServices.TOOLS, new ToolRegistry()));
+        runtime.install(new RuntimeServicePlugin<>("agents", DshServices.AGENTS, profiles));
+        runtime.events().on(AgentEvents.RUN, (event, next) -> {
+            agentId.set(event.agentId());
+            return next.proceed(event);
+        });
+        AgentLoop loop = new AgentLoop(runtime.scope(), 2);
+        try {
+            assertEquals("done", loop.runDetailed("hello").answer());
+            assertEquals(profile.id(), agentId.get());
         } finally {
             runtime.close();
         }

@@ -823,7 +823,8 @@ public final class AgentLoop implements AutoCloseable {
                 modeOverride == null ? profile.mode() : modeOverride, profile.maxTurns(), profile.systemPrompt(),
                 profile.allowedToolNames().isEmpty() ? null : Set.copyOf(profile.allowedToolNames()),
                 profile.skillIds().isEmpty() ? null : Set.copyOf(profile.skillIds()), profile.maxToolCalls(),
-                profile.timeoutSeconds(), profile.maxDepth(), memoryNamespace, memorySubjectKey, agentId, profile.permissions());
+                profile.timeoutSeconds(), profile.maxDepth(), memoryNamespace, memorySubjectKey,
+                agentId == null || agentId.isBlank() ? profile.id() : agentId, profile.permissions());
     }
 
     private RunOptions effectiveOptions(RunOptions options) {
