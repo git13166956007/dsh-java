@@ -7,7 +7,6 @@ import java.util.List;
 import java.util.UUID;
 import java.time.Instant;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 import tools.jackson.databind.ObjectMapper;
 import io.github.git13166956007.dsh.session.event.InMemorySessionEventLog;
 import io.github.git13166956007.dsh.session.event.SessionEventCodec;
@@ -18,10 +17,6 @@ import io.github.git13166956007.dsh.session.event.SessionEventTypes;
 public final class InMemoryConversationStore implements ConversationStore {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final SessionEventLog eventLog = new InMemorySessionEventLog();
-    private final ConcurrentHashMap<String, CopyOnWriteArrayList<ChatMessage>> conversations =
-            new ConcurrentHashMap<String, CopyOnWriteArrayList<ChatMessage>>();
-    private final ConcurrentHashMap<String, ConversationSummary> summaries =
-            new ConcurrentHashMap<String, ConversationSummary>();
     private final ConcurrentHashMap<String, ConversationInfo> infos =
             new ConcurrentHashMap<String, ConversationInfo>();
 
@@ -31,7 +26,6 @@ public final class InMemoryConversationStore implements ConversationStore {
                 ? UUID.randomUUID().toString() : conversationId.trim();
         String normalizedTitle = title == null || title.trim().isEmpty() ? "New conversation" : title.trim();
         Instant now = Instant.now();
-        conversations.computeIfAbsent(id, ignored -> new CopyOnWriteArrayList<ChatMessage>());
         if (infos.putIfAbsent(id, new ConversationInfo(id, normalizedTitle, 0, now, now)) == null) {
             eventLog.append(id, SessionEventTypes.CREATED, objectMapper.createObjectNode().put("title", normalizedTitle));
         }
@@ -69,8 +63,6 @@ public final class InMemoryConversationStore implements ConversationStore {
     public synchronized boolean delete(String conversationId) throws Exception {
         if (!infos.containsKey(conversationId)) return false;
         infos.remove(conversationId);
-        conversations.remove(conversationId);
-        summaries.remove(conversationId);
         eventLog.append(conversationId, SessionEventTypes.DELETED, objectMapper.createObjectNode());
         return true;
     }
@@ -78,18 +70,14 @@ public final class InMemoryConversationStore implements ConversationStore {
     @Override
     public List<ChatMessage> load(String conversationId, int limit) throws Exception {
         List<io.github.git13166956007.dsh.session.event.SessionEvent> events = eventLog.read(conversationId);
-        List<ChatMessage> messages = events.isEmpty()
-                ? conversations.get(conversationId)
-                : SessionEventProjection.messages(events);
-        if (messages == null || limit <= 0) return List.of();
+        List<ChatMessage> messages = SessionEventProjection.messages(events);
+        if (limit <= 0) return List.of();
         int from = Math.max(0, messages.size() - limit);
         return new ArrayList<ChatMessage>(messages.subList(from, messages.size()));
     }
 
     @Override
     public synchronized void append(String conversationId, ChatMessage message) throws Exception {
-        conversations.computeIfAbsent(conversationId, ignored -> new CopyOnWriteArrayList<ChatMessage>())
-                .add(message);
         String eventType = switch (message.role()) {
             case USER -> SessionEventTypes.USER_MESSAGE;
             case ASSISTANT -> SessionEventTypes.ASSISTANT_MESSAGE;
@@ -133,12 +121,11 @@ public final class InMemoryConversationStore implements ConversationStore {
     @Override
     public ConversationSummary loadSummary(String conversationId) throws Exception {
         List<io.github.git13166956007.dsh.session.event.SessionEvent> events = eventLog.read(conversationId);
-        return events.isEmpty() ? summaries.get(conversationId) : SessionEventProjection.project(events).summary();
+        return SessionEventProjection.project(events).summary();
     }
 
     @Override
     public void saveSummary(String conversationId, ConversationSummary summary) throws Exception {
-        summaries.put(conversationId, summary);
         eventLog.append(conversationId, SessionEventTypes.SUMMARY_UPDATED,
                 objectMapper.createObjectNode().put("content", summary.content())
                         .put("coveredMessageCount", summary.coveredMessageCount()));
@@ -154,7 +141,6 @@ public final class InMemoryConversationStore implements ConversationStore {
         ConversationInfo fallback = infos.get(conversationId);
         if (fallback == null) return null;
         List<io.github.git13166956007.dsh.session.event.SessionEvent> events = eventLog.read(conversationId);
-        if (events.isEmpty()) return fallback;
         SessionEventProjection.Snapshot snapshot = SessionEventProjection.project(events);
         if (snapshot.deleted()) return null;
         Instant createdAt = snapshot.createdAt() == null ? fallback.createdAt() : snapshot.createdAt();

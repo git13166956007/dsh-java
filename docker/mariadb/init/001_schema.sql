@@ -212,11 +212,26 @@ CREATE TABLE IF NOT EXISTS dsh_agent_profile (
     max_tool_calls INT NOT NULL DEFAULT 64,
     timeout_seconds INT NOT NULL DEFAULT 300,
     max_depth INT NOT NULL DEFAULT 4,
+    allowed_tools_json TEXT NULL,
+    skill_ids_json TEXT NULL,
+    permissions_json TEXT NULL,
     enabled BOOLEAN NOT NULL DEFAULT TRUE,
     active BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     INDEX idx_dsh_agent_active (active, enabled)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS dsh_event_journal (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    event_name VARCHAR(255) NOT NULL,
+    payload_json LONGTEXT NOT NULL,
+    value_json LONGTEXT NULL,
+    accepted BOOLEAN NOT NULL,
+    reason TEXT NULL,
+    error TEXT NULL,
+    occurred_at TIMESTAMP(3) NOT NULL,
+    INDEX idx_dsh_event_journal_time (occurred_at, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS dsh_sub_agent_profile (

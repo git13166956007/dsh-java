@@ -183,6 +183,14 @@ class InMemoryConversationStoreTest {
         String fork = context.fork(source, "release fork");
         assertEquals(List.of("The release is Friday.", "Prepare the migration checklist."),
                 context.replay(fork).stream().map(ChatMessage::content).toList());
+        assertEquals("release fork", context.conversations(20).stream()
+                .filter(info -> info.id().equals(fork)).findFirst().orElseThrow().title());
+        assertEquals(1, store.eventLog().read(fork).stream()
+                .filter(event -> event.type().equals(io.github.git13166956007.dsh.session.event.SessionEventTypes.CREATED))
+                .count());
+        assertEquals(1, store.eventLog().read(fork).stream()
+                .filter(event -> event.type().equals(io.github.git13166956007.dsh.session.event.SessionEventTypes.USER_MESSAGE))
+                .count());
     }
 
     @Test

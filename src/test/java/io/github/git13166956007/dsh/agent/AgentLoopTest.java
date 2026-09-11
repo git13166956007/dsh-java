@@ -14,6 +14,8 @@ import io.github.git13166956007.dsh.context.InMemoryConversationStore;
 import java.util.Collections;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -36,7 +38,7 @@ class AgentLoopTest {
             return new ModelResponse("late result", List.of(), "stop");
         };
         RunManager runs = new RunManager(new InMemoryRunStore());
-        AgentLoop loop = new AgentLoop(model, new ToolRegistry(), null, null, null, runs, null,
+        AgentLoop loop = AgentLoop.compatibility(model, new ToolRegistry(), null, null, null, runs, null,
                 new ObjectMapper(), 2);
         try {
             AgentRunHandle handle = loop.runAsync("background task", null, List.of(),
@@ -83,7 +85,7 @@ class AgentLoopTest {
             }
         };
 
-        AgentRunResult result = new AgentLoop(model, tools, 2).runDetailed("hello");
+        AgentRunResult result = AgentLoop.compatibility(model, tools, 2).runDetailed("hello");
         assertEquals("done", result.answer());
         assertEquals(1, executions.get());
         assertEquals(3, result.conversationMessages().size());
@@ -120,7 +122,7 @@ class AgentLoopTest {
             }
         };
 
-        AgentLoop loop = new AgentLoop(model, tools, null, null, null, runs, null,
+        AgentLoop loop = AgentLoop.compatibility(model, tools, null, null, null, runs, null,
                 new ObjectMapper(), 4);
         loop.setSubAgentRunner(new SubAgentRunner(loop, profiles));
 
@@ -169,7 +171,7 @@ class AgentLoopTest {
                 }
             }
         };
-        AgentLoop loop = new AgentLoop(model, tools, null, null, null, runs, continuations,
+        AgentLoop loop = AgentLoop.compatibility(model, tools, null, null, null, runs, continuations,
                 new ObjectMapper(), 4);
         loop.setSubAgentRunner(new SubAgentRunner(loop, profiles));
 
@@ -217,7 +219,7 @@ class AgentLoopTest {
                 return new ModelResponse("parent streamed answer", List.of(), "stop");
             }
         };
-        AgentLoop loop = new AgentLoop(model, tools, null, null, null, null, null,
+        AgentLoop loop = AgentLoop.compatibility(model, tools, null, null, null, null, null,
                 new ObjectMapper(), 4);
         loop.setSubAgentRunner(new SubAgentRunner(loop, profiles));
         List<String> events = new ArrayList<>();
@@ -265,7 +267,7 @@ class AgentLoopTest {
                 return new ModelResponse("parent recovered", List.of(), "stop");
             }
         };
-        AgentLoop loop = new AgentLoop(model, tools, null, null, null, runs, null,
+        AgentLoop loop = AgentLoop.compatibility(model, tools, null, null, null, runs, null,
                 new ObjectMapper(), 4);
         loop.setSubAgentRunner(new SubAgentRunner(loop, profiles));
 
@@ -309,7 +311,7 @@ class AgentLoopTest {
             }
         };
 
-        AgentRunResult result = new AgentLoop(model, tools, 2).runStreaming("hello", null,
+        AgentRunResult result = AgentLoop.compatibility(model, tools, 2).runStreaming("hello", null,
                 new AgentStreamListener() {
                     @Override
                     public void onText(String delta) {
@@ -349,7 +351,7 @@ class AgentLoopTest {
         AgentProfileRegistry profiles = new AgentProfileRegistry(new InMemoryAgentProfileStore(), 8);
         profiles.update("default", null, AgentMode.PLANNING, null, null, null, null, null);
 
-        AgentRunResult result = new AgentLoop(model, tools, null, profiles, 8)
+        AgentRunResult result = AgentLoop.compatibility(model, tools, null, profiles, 8)
                 .runDetailed("plan this", null, List.of(), null, null, null);
 
         assertEquals("1. Plan\n2. Verify", result.answer());
@@ -376,7 +378,7 @@ class AgentLoopTest {
             return new ModelResponse("done", List.of(), "stop");
         };
 
-        AgentLoop loop = new AgentLoop(model, new ToolRegistry(), null, null, null, null, null,
+        AgentLoop loop = AgentLoop.compatibility(model, new ToolRegistry(), null, null, null, null, null,
                 new ObjectMapper(), contexts, 2);
         AgentRunResult result = loop.runDetailed("check status", null, List.of());
 
@@ -414,7 +416,7 @@ class AgentLoopTest {
         SubAgentProfile profile = profiles.create("Worker", AgentMode.EXECUTION, null, "", 2,
                 List.of("allowed_tool"), List.of(), true);
 
-        AgentRunResult result = new SubAgentRunner(new AgentLoop(model, tools, 2), profiles)
+        AgentRunResult result = new SubAgentRunner(AgentLoop.compatibility(model, tools, 2), profiles)
                 .run("do work", null, profile.id());
 
         assertEquals("finished", result.answer());
@@ -448,7 +450,7 @@ class AgentLoopTest {
             }
         };
         RunManager runs = new RunManager(new InMemoryRunStore());
-        AgentLoop loop = new AgentLoop(model, tools, null, null, null, runs, 2);
+        AgentLoop loop = AgentLoop.compatibility(model, tools, null, null, null, runs, 2);
 
         AgentRunResult pending = loop.runDetailed("approve this", null, List.of());
         assertNotNull(pending.pendingApproval());
@@ -487,7 +489,7 @@ class AgentLoopTest {
                         JsonNodeFactory.instance.objectNode())), "tool_calls");
             }
         };
-        AgentLoop firstLoop = new AgentLoop(firstModel, tools, null, null, null, runs,
+        AgentLoop firstLoop = AgentLoop.compatibility(firstModel, tools, null, null, null, runs,
                 continuations, new ObjectMapper(), 2);
         AgentRunResult pending = firstLoop.runDetailed("restart", null, List.of());
         assertNotNull(continuations.load(pending.runId()));
@@ -498,7 +500,7 @@ class AgentLoopTest {
                 return new ModelResponse("resumed", List.of(), "stop");
             }
         };
-        AgentLoop restartedLoop = new AgentLoop(restartedModel, tools, null, null, null, runs,
+        AgentLoop restartedLoop = AgentLoop.compatibility(restartedModel, tools, null, null, null, runs,
                 continuations, new ObjectMapper(), 2);
 
         AgentRunResult result = restartedLoop.resumeApproval(pending.runId(), true);
@@ -535,7 +537,7 @@ class AgentLoopTest {
                 return new ModelResponse("resumed", List.of(), "stop");
             }
         };
-        AgentLoop loop = new AgentLoop(model, tools, null, null, null, null, continuations,
+        AgentLoop loop = AgentLoop.compatibility(model, tools, null, null, null, null, continuations,
                 new ObjectMapper(), 2);
 
         AgentRunResult pending = loop.runDetailed("debug key", null, List.of());
@@ -566,7 +568,7 @@ class AgentLoopTest {
             }
         };
         RunManager runs = new RunManager(new InMemoryRunStore());
-        AgentRunResult result = new AgentLoop(model, tools, null, null, null, runs, 2)
+        AgentRunResult result = AgentLoop.compatibility(model, tools, null, null, null, runs, 2)
                 .runDetailed("hello");
 
         assertNotNull(result.runId());
@@ -591,7 +593,21 @@ class AgentLoopTest {
         AgentExecutionOptions options = new AgentExecutionOptions(null, AgentMode.EXECUTION, "", 2,
                 null, null, 0, 300, 4);
         assertThrows(AgentBudgetExceededException.class,
-                () -> new AgentLoop(model, tools, 2).runDetailed("loop", null, List.of(), options));
+                () -> AgentLoop.compatibility(model, tools, 2).runDetailed("loop", null, List.of(), options));
+    }
+
+    @Test
+    void enforcesProfileToolPermissionDuringExecution() throws Exception {
+        ToolRegistry tools = new ToolRegistry();
+        tools.register(new ToolDefinition("restricted_tool", "Restricted tool.",
+                JsonNodeFactory.instance.objectNode().put("type", "object")), arguments -> "must not run");
+        ChatModel model = (messages, definitions) -> new ModelResponse(null,
+                List.of(new ToolCall("permission-1", "restricted_tool", JsonNodeFactory.instance.objectNode())),
+                "tool_calls");
+        AgentExecutionOptions options = new AgentExecutionOptions(null, AgentMode.EXECUTION, "", 2,
+                Set.of("restricted_tool"), null, 4, 300, 4, Map.of("tool.restricted_tool", "deny"));
+        assertThrows(IllegalStateException.class,
+                () -> AgentLoop.compatibility(model, tools, 2).runDetailed("blocked", null, List.of(), options));
     }
 
     @Test
@@ -608,7 +624,7 @@ class AgentLoopTest {
                 io.github.git13166956007.dsh.run.RunKind.SUB_AGENT, null, null, null, "parent", null));
         AgentExecutionOptions options = new AgentExecutionOptions(null, AgentMode.EXECUTION, "", 2,
                 null, null, 4, 300, 1);
-        assertThrows(AgentBudgetExceededException.class, () -> new AgentLoop(model, tools, null, null, null, runs, 2)
+        assertThrows(AgentBudgetExceededException.class, () -> AgentLoop.compatibility(model, tools, null, null, null, runs, 2)
                 .runDetailed("nested", null, List.of(), options,
                         AgentRunContext.child(parent, io.github.git13166956007.dsh.run.RunKind.SUB_AGENT,
                                 null, null, null, "child")));

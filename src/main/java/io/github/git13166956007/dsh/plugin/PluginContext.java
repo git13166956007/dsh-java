@@ -1,6 +1,7 @@
 package io.github.git13166956007.dsh.plugin;
 
 import java.util.function.Consumer;
+import java.util.Set;
 import io.github.git13166956007.dsh.event.EventHandler;
 import io.github.git13166956007.dsh.event.EventKey;
 import io.github.git13166956007.dsh.service.ServiceKey;
@@ -15,4 +16,16 @@ public interface PluginContext {
     <T> Registration on(EventKey<T> event, EventHandler<T> listener);
 
     void effect(AutoCloseable closeable);
+
+    default void requireCapability(String capability) {
+        throw new UnsupportedOperationException("capability negotiation is not available");
+    }
+
+    default Set<String> capabilities() {
+        return Set.of();
+    }
+
+    default PluginLease acquire() {
+        return PluginLease.NOOP;
+    }
 }

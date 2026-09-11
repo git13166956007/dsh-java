@@ -33,7 +33,7 @@ class AgentRunRecoveryTest {
         ContextManager contexts = new ContextManager(new InMemoryConversationStore(), 20, 10_000);
         ModelRegistry models = new ModelRegistry(new InMemoryModelProfileStore(), "http://localhost", "deepseek",
                 "test-model", null, "", 0);
-        AgentLoop loop = new AgentLoop((messages, definitions) -> new ModelResponse("recovered answer", List.of(), "stop"),
+        AgentLoop loop = AgentLoop.compatibility((messages, definitions) -> new ModelResponse("recovered answer", List.of(), "stop"),
                 new ToolRegistry(), null, null, null, runs, continuations, mapper, 2);
         SubAgentRunner runner = new SubAgentRunner(loop, profiles);
         SubAgentSessionManager sessions = new SubAgentSessionManager(new InMemorySubAgentSessionStore(), contexts,

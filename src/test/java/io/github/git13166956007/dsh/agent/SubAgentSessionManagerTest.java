@@ -25,7 +25,7 @@ class SubAgentSessionManagerTest {
             return new ModelResponse("answer-" + requests.size(), List.of(), "stop");
         };
         RunManager runs = new RunManager(new InMemoryRunStore());
-        AgentLoop loop = new AgentLoop(model, new ToolRegistry(), null, null, null, runs, null, null, 2);
+        AgentLoop loop = AgentLoop.compatibility(model, new ToolRegistry(), null, null, null, runs, null, null, 2);
         SubAgentProfileRegistry profiles = new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 2);
         SubAgentProfile profile = profiles.create("Persistent worker", AgentMode.EXECUTION, null, "", 2,
                 List.of(), List.of(), true);
@@ -54,7 +54,7 @@ class SubAgentSessionManagerTest {
     @Test
     void closesSessionAndRejectsFurtherMessages() throws Exception {
         RunManager runs = new RunManager(new InMemoryRunStore());
-        AgentLoop loop = new AgentLoop((messages, definitions) -> new ModelResponse("done", List.of(), "stop"),
+        AgentLoop loop = AgentLoop.compatibility((messages, definitions) -> new ModelResponse("done", List.of(), "stop"),
                 new ToolRegistry(), null, null, null, runs, null, null, 2);
         SubAgentProfileRegistry profiles = new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 2);
         SubAgentProfile profile = profiles.create("Closable worker", AgentMode.EXECUTION, null, "", 2,

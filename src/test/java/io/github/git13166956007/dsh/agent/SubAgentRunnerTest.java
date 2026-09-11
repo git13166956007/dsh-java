@@ -22,7 +22,7 @@ class SubAgentRunnerTest {
     void startsExecutionAndPersistsCompletedRun() throws Exception {
         RunManager runs = new RunManager(new InMemoryRunStore());
         SubAgentProfileRegistry profiles = profiles();
-        AgentLoop loop = new AgentLoop((messages, definitions) -> new ModelResponse("completed", List.of(), "stop"),
+        AgentLoop loop = AgentLoop.compatibility((messages, definitions) -> new ModelResponse("completed", List.of(), "stop"),
                 new ToolRegistry(), null, null, null, runs, null, null, 2);
         try {
             AgentRunHandle handle = new SubAgentRunner(loop, profiles)
@@ -44,7 +44,7 @@ class SubAgentRunnerTest {
         tools.register(new ToolDefinition("approval_tool", "Needs approval.",
                 JsonNodeFactory.instance.objectNode().put("type", "object")), arguments -> "approved");
         tools.setApprovalRequired("approval_tool", true);
-        AgentLoop loop = new AgentLoop((messages, definitions) -> new ModelResponse(null,
+        AgentLoop loop = AgentLoop.compatibility((messages, definitions) -> new ModelResponse(null,
                 List.of(new ToolCall("approval-call", "approval_tool", JsonNodeFactory.instance.objectNode())),
                 "tool_calls"), tools, null, null, null, runs, new InMemoryAgentContinuationStore(), null, 2);
         try {
@@ -67,7 +67,7 @@ class SubAgentRunnerTest {
         AtomicInteger interrupted = new AtomicInteger();
         RunManager runs = new RunManager(new InMemoryRunStore());
         SubAgentProfileRegistry profiles = profiles();
-        AgentLoop loop = new AgentLoop((messages, definitions) -> {
+        AgentLoop loop = AgentLoop.compatibility((messages, definitions) -> {
             started.countDown();
             try {
                 Thread.sleep(10_000);

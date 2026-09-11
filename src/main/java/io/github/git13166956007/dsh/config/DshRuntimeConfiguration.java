@@ -72,6 +72,8 @@ import io.github.git13166956007.dsh.tool.InMemoryToolProfileStore;
 import io.github.git13166956007.dsh.tool.MariaDbToolProfileStore;
 import io.github.git13166956007.dsh.tool.ToolProfileStore;
 import io.github.git13166956007.dsh.plugin.DshServices;
+import io.github.git13166956007.dsh.core.scope.Scope;
+import io.github.git13166956007.dsh.event.MariaDbEventJournal;
 import io.github.git13166956007.dsh.tool.WorkspaceToolProvider;
 import io.github.git13166956007.dsh.tool.WorkspaceProcessToolProvider;
 import io.github.git13166956007.dsh.workspace.InMemoryWorkspaceStore;
@@ -95,8 +97,13 @@ public class DshRuntimeConfiguration {
                                 SubAgentProfileRegistry subAgentProfileRegistry, MemoryManager memoryManager,
                                 ContextManager contextManager, RunManager runManager, WorkspaceRegistry workspaces,
                                 ConversationStore conversationStore, AgentLoop agentLoop, ChatModel chatModel,
-                                Environment environment) {
-        DshRuntime runtime = new DshRuntime();
+                                AgentContinuationStore continuations, Scope runtimeScope, Environment environment) {
+        boolean persistenceEnabled = Boolean.parseBoolean(environment.getProperty("dsh.persistence.enabled", "false"));
+        DshRuntime runtime = new DshRuntime(runtimeScope, persistenceEnabled
+                ? new MariaDbEventJournal(environment.getProperty("dsh.persistence.jdbc-url"),
+                        environment.getProperty("dsh.persistence.username"),
+                        environment.getProperty("dsh.persistence.password"), new ObjectMapper())
+                : null);
         try {
             runtime.install(new io.github.git13166956007.dsh.plugin.RuntimeServicePlugin<>(
                     "core.events", DshServices.EVENTS, runtime.events()));
@@ -123,17 +130,23 @@ public class DshRuntimeConfiguration {
             runtime.install(new io.github.git13166956007.dsh.plugin.RuntimeServicePlugin<>(
                     "core.runs", DshServices.RUNS, runManager));
             runtime.install(new io.github.git13166956007.dsh.plugin.RuntimeServicePlugin<>(
+                    "core.continuations", DshServices.CONTINUATIONS, continuations));
+            runtime.install(new io.github.git13166956007.dsh.plugin.RuntimeServicePlugin<>(
                     "core.workspaces", DshServices.WORKSPACES, workspaces));
             runtime.install(new io.github.git13166956007.dsh.plugin.RuntimeServicePlugin<>(
                     "core.agent-loop", DshServices.AGENT_LOOP, agentLoop,
                     "core.tools", "core.models", "core.context", "core.runs"));
-            agentLoop.bindRuntime(runtime.scope());
             runtime.loadPlugins(Path.of(environment.getProperty("dsh.plugins.directory", "plugins")));
         } catch (Exception exception) {
             throw new IllegalStateException("failed to load DSH plugins", exception);
         }
         runtime.start();
         return runtime;
+    }
+
+    @Bean
+    public Scope runtimeScope() {
+        return new Scope("runtime");
     }
 
     @Bean
@@ -355,14 +368,8 @@ public class DshRuntimeConfiguration {
     }
 
     @Bean(destroyMethod = "close")
-    public AgentLoop agentLoop(ChatModel chatModel, ToolRegistry toolRegistry, SkillRegistry skillRegistry,
-                               AgentProfileRegistry agentProfileRegistry, MemoryManager memoryManager,
-                               RunManager runManager, AgentContinuationStore continuations,
-                               ObjectMapper objectMapper, io.github.git13166956007.dsh.context.ContextManager contextManager,
-                               Environment environment) {
-        return new AgentLoop(chatModel, toolRegistry, skillRegistry, agentProfileRegistry, memoryManager, runManager,
-                continuations, objectMapper, contextManager,
-                Integer.parseInt(environment.getProperty("dsh.agent.max-turns", "8")));
+    public AgentLoop agentLoop(Scope runtimeScope, Environment environment) {
+        return new AgentLoop(runtimeScope, Integer.parseInt(environment.getProperty("dsh.agent.max-turns", "8")));
     }
 
     @Bean

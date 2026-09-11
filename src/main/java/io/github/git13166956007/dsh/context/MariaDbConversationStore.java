@@ -7,7 +7,6 @@ import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -15,8 +14,6 @@ import java.util.List;
 import java.util.UUID;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.node.ArrayNode;
-import tools.jackson.databind.node.ObjectNode;
 import io.github.git13166956007.dsh.session.event.MariaDbSessionEventLog;
 import io.github.git13166956007.dsh.session.event.SessionEventCodec;
 import io.github.git13166956007.dsh.session.event.SessionEventLog;
@@ -199,27 +196,7 @@ public final class MariaDbConversationStore implements ConversationStore {
         if (message.role() == ChatMessage.Role.SYSTEM) return;
         try (Connection connection = connection()) {
             connection.setAutoCommit(false);
-            try (PreparedStatement nextTurn = connection.prepareStatement(
-                    "SELECT COALESCE(MAX(turn_no), 0) + 1 FROM dsh_message WHERE conversation_id = ?")) {
-                nextTurn.setString(1, conversationId);
-                int turnNo;
-                try (ResultSet result = nextTurn.executeQuery()) {
-                    result.next();
-                    turnNo = result.getInt(1);
-                }
-                try (PreparedStatement statement = connection.prepareStatement(
-                        "INSERT INTO dsh_message "
-                                + "(conversation_id, turn_no, role, content, reasoning_content, tool_calls_json, tool_call_id) "
-                                + "VALUES (?, ?, ?, ?, ?, ?, ?)", Statement.RETURN_GENERATED_KEYS)) {
-                    statement.setString(1, conversationId);
-                    statement.setInt(2, turnNo);
-                    statement.setString(3, message.role().value());
-                    statement.setString(4, message.content());
-                    statement.setString(5, message.reasoningContent());
-                    statement.setString(6, writeToolCalls(message.toolCalls()));
-                    statement.setString(7, message.toolCallId());
-                    statement.executeUpdate();
-                }
+            try {
                 String eventType = switch (message.role()) {
                     case USER -> SessionEventTypes.USER_MESSAGE;
                     case ASSISTANT -> SessionEventTypes.ASSISTANT_MESSAGE;
@@ -229,7 +206,7 @@ public final class MariaDbConversationStore implements ConversationStore {
                 if (eventType != null) eventLog.append(connection, conversationId, eventType,
                         SessionEventCodec.message(objectMapper, message));
                 connection.commit();
-            } catch (SQLException exception) {
+            } catch (Exception exception) {
                 connection.rollback();
                 throw exception;
             }
@@ -267,12 +244,7 @@ public final class MariaDbConversationStore implements ConversationStore {
     public void saveSummary(String conversationId, ConversationSummary summary) throws Exception {
         try (Connection connection = connection()) {
             connection.setAutoCommit(false);
-            try (PreparedStatement statement = connection.prepareStatement(
-                    "UPDATE dsh_conversation SET summary_text=?, summary_message_count=? WHERE id=?")) {
-                statement.setString(1, summary.content());
-                statement.setInt(2, summary.coveredMessageCount());
-                statement.setString(3, conversationId);
-                statement.executeUpdate();
+            try {
                 eventLog.append(connection, conversationId, SessionEventTypes.SUMMARY_UPDATED,
                         objectMapper.createObjectNode().put("content", summary.content())
                                 .put("coveredMessageCount", summary.coveredMessageCount()));
@@ -365,22 +337,6 @@ public final class MariaDbConversationStore implements ConversationStore {
         if ("assistant".equals(role)) return ChatMessage.assistant(content, readToolCalls(toolCallsJson), reasoningContent);
         if ("tool".equals(role)) return ChatMessage.tool(toolCallId, content == null ? "" : content);
         return null;
-    }
-
-    private String writeToolCalls(List<ToolCall> calls) throws SQLException {
-        if (calls == null || calls.isEmpty()) return null;
-        try {
-            ArrayNode array = objectMapper.createArrayNode();
-            for (ToolCall call : calls) {
-                ObjectNode node = array.addObject();
-                if (call.id() == null) node.putNull("id"); else node.put("id", call.id());
-                if (call.name() == null) node.putNull("name"); else node.put("name", call.name());
-                node.set("arguments", call.arguments() == null ? objectMapper.createObjectNode() : call.arguments().deepCopy());
-            }
-            return objectMapper.writeValueAsString(array);
-        } catch (Exception exception) {
-            throw sqlException("failed to serialize tool calls", exception);
-        }
     }
 
     private List<ToolCall> readToolCalls(String value) throws SQLException {

@@ -11,6 +11,7 @@ import io.github.git13166956007.dsh.run.RunManager;
 import io.github.git13166956007.dsh.skill.SkillRegistry;
 import io.github.git13166956007.dsh.tool.ToolRegistry;
 import io.github.git13166956007.dsh.agent.AgentLoop;
+import io.github.git13166956007.dsh.agent.AgentContinuationStore;
 import io.github.git13166956007.dsh.agent.ChatModel;
 import io.github.git13166956007.dsh.event.EventBus;
 import io.github.git13166956007.dsh.workspace.WorkspaceRegistry;
@@ -29,6 +30,7 @@ public final class DshServices {
     public static final ServiceKey<WorkspaceRegistry> WORKSPACES = new ServiceKey<WorkspaceRegistry>("workspaces", WorkspaceRegistry.class);
     public static final ServiceKey<ConversationStore> CONVERSATIONS = new ServiceKey<ConversationStore>("conversations", ConversationStore.class);
     public static final ServiceKey<AgentLoop> AGENT_LOOP = new ServiceKey<AgentLoop>("agent.loop", AgentLoop.class);
+    public static final ServiceKey<AgentContinuationStore> CONTINUATIONS = new ServiceKey<AgentContinuationStore>("continuations", AgentContinuationStore.class);
     public static final ServiceKey<ChatModel> CHAT_MODEL = new ServiceKey<ChatModel>("chat.model", ChatModel.class);
     public static final ServiceKey<EventBus> EVENTS = new ServiceKey<EventBus>("events", EventBus.class);
 

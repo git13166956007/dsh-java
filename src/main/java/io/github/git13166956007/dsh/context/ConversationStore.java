@@ -2,6 +2,8 @@ package io.github.git13166956007.dsh.context;
 
 import io.github.git13166956007.dsh.agent.ChatMessage;
 import io.github.git13166956007.dsh.session.event.SessionEventLog;
+import io.github.git13166956007.dsh.session.event.SessionEvent;
+import io.github.git13166956007.dsh.session.event.SessionEventTypes;
 import java.util.List;
 
 public interface ConversationStore {
@@ -42,6 +44,24 @@ public interface ConversationStore {
     default String fork(String conversationId, String title) throws Exception {
         if (!exists(conversationId)) throw new IllegalArgumentException("unknown conversation: " + conversationId);
         String forkedId = open(null, title);
+        SessionEventLog sourceLog = eventLog();
+        if (sourceLog != null) {
+            List<SessionEvent> events = sourceLog.read(conversationId);
+            int start = -1;
+            for (int index = 0; index < events.size(); index++) {
+                if (SessionEventTypes.CREATED.equals(events.get(index).type())) start = index;
+            }
+            if (start >= 0) {
+                for (int index = start + 1; index < events.size(); index++) {
+                    SessionEvent event = events.get(index);
+                    if (!SessionEventTypes.DELETED.equals(event.type())
+                            && !SessionEventTypes.RENAMED.equals(event.type())) {
+                        sourceLog.append(forkedId, event.type(), event.payload());
+                    }
+                }
+                return forkedId;
+            }
+        }
         for (ChatMessage message : replay(conversationId)) append(forkedId, message);
         ConversationSummary summary = loadSummary(conversationId);
         if (summary != null) saveSummary(forkedId, summary);

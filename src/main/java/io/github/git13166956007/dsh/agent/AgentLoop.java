@@ -33,14 +33,6 @@ import io.github.git13166956007.dsh.tool.ToolDefinition;
 
 public final class AgentLoop implements AutoCloseable {
     private static final String DELEGATE_TOOL = "delegate_to_subagent";
-    private final ChatModel model;
-    private final ToolRegistry tools;
-    private final SkillRegistry skills;
-    private final AgentProfileRegistry profiles;
-    private final MemoryManager memories;
-    private final RunManager runs;
-    private final AgentContinuationStore continuations;
-    private final ContextManager contexts;
     private final ObjectMapper objectMapper;
     private final int maxTurns;
     private final ExecutorService asyncExecutor = Executors.newCachedThreadPool();
@@ -52,59 +44,55 @@ public final class AgentLoop implements AutoCloseable {
     private volatile Scope runtimeScope;
     private final ThreadLocal<Scope> executionScopes = new ThreadLocal<Scope>();
 
-    public AgentLoop(ChatModel model, ToolRegistry tools, int maxTurns) {
-        this(model, tools, null, null, null, null, null, null, maxTurns);
+    /* compatibility constructors removed; use the Scope constructor */
+
+
+    public AgentLoop(Scope runtimeScope, int maxTurns) {
+        this(runtimeScope, maxTurns, null);
     }
 
-    public AgentLoop(ChatModel model, ToolRegistry tools, SkillRegistry skills, int maxTurns) {
-        this(model, tools, skills, null, null, null, null, null, maxTurns);
-    }
-
-    public AgentLoop(ChatModel model, ToolRegistry tools, SkillRegistry skills,
-                     AgentProfileRegistry profiles, int maxTurns) {
-        this(model, tools, skills, profiles, null, null, null, null, maxTurns);
-    }
-
-    public AgentLoop(ChatModel model, ToolRegistry tools, SkillRegistry skills,
-                     AgentProfileRegistry profiles, MemoryManager memories, int maxTurns) {
-        this(model, tools, skills, profiles, memories, null, null, null, maxTurns);
-    }
-
-    public AgentLoop(ChatModel model, ToolRegistry tools, SkillRegistry skills,
-                     AgentProfileRegistry profiles, MemoryManager memories, RunManager runs, int maxTurns) {
-        this(model, tools, skills, profiles, memories, runs, null, null, maxTurns);
-    }
-
-    public AgentLoop(ChatModel model, ToolRegistry tools, SkillRegistry skills,
-                     AgentProfileRegistry profiles, MemoryManager memories, RunManager runs,
-                     AgentContinuationStore continuations, ObjectMapper objectMapper, int maxTurns) {
-        this(model, tools, skills, profiles, memories, runs, continuations, objectMapper, null, maxTurns);
-    }
-
-    public AgentLoop(ChatModel model, ToolRegistry tools, SkillRegistry skills,
-                     AgentProfileRegistry profiles, MemoryManager memories, RunManager runs,
-                     AgentContinuationStore continuations, ObjectMapper objectMapper, ContextManager contexts,
-                     int maxTurns) {
+    private AgentLoop(Scope runtimeScope, int maxTurns, ObjectMapper objectMapper) {
+        if (runtimeScope == null) throw new IllegalArgumentException("runtime scope must not be null");
         if (maxTurns < 1) throw new IllegalArgumentException("maxTurns must be positive");
-        this.model = model;
-        this.tools = tools;
-        this.skills = skills;
-        this.profiles = profiles;
-        this.memories = memories;
-        this.runs = runs;
-        this.continuations = continuations;
-        this.contexts = contexts;
+        this.runtimeScope = runtimeScope;
         this.objectMapper = objectMapper == null ? new ObjectMapper() : objectMapper;
         this.maxTurns = maxTurns;
     }
 
-    public void setSubAgentRunner(SubAgentRunner subAgents) {
-        this.subAgents = subAgents;
+    /** Explicit migration factory for embedders that have not bootstrapped DshRuntime yet. */
+    public static AgentLoop compatibility(ChatModel model, ToolRegistry tools, Object... values) {
+        if (values == null || values.length == 0 || !(values[values.length - 1] instanceof Integer maxTurns)) {
+            throw new IllegalArgumentException("compatibility factory requires maxTurns as the last argument");
+        }
+        SkillRegistry skills = values.length > 1 ? (SkillRegistry) values[0] : null;
+        AgentProfileRegistry profiles = values.length > 2 ? (AgentProfileRegistry) values[1] : null;
+        MemoryManager memories = values.length > 3 ? (MemoryManager) values[2] : null;
+        RunManager runs = values.length > 4 ? (RunManager) values[3] : null;
+        AgentContinuationStore continuations = values.length > 5 ? (AgentContinuationStore) values[4] : null;
+        ObjectMapper objectMapper = values.length > 6 ? (ObjectMapper) values[5] : null;
+        ContextManager contexts = values.length > 7 ? (ContextManager) values[6] : null;
+        return new AgentLoop(compatibilityScope(model, tools, skills, profiles, memories, runs, continuations, contexts),
+                maxTurns, objectMapper);
     }
 
-    /** Binds the loop to the runtime scope after Spring/runtime bootstrap. */
-    public void bindRuntime(Scope scope) {
-        this.runtimeScope = scope;
+    private static Scope compatibilityScope(ChatModel model, ToolRegistry tools, SkillRegistry skills,
+                                             AgentProfileRegistry profiles, MemoryManager memories, RunManager runs,
+                                             AgentContinuationStore continuations, ContextManager contexts) {
+        if (model == null || tools == null) throw new IllegalArgumentException("model and tools are required");
+        Scope scope = new Scope("agent-compatibility");
+        scope.provide(DshServices.CHAT_MODEL, model);
+        scope.provide(DshServices.TOOLS, tools);
+        if (skills != null) scope.provide(DshServices.SKILLS, skills);
+        if (profiles != null) scope.provide(DshServices.AGENTS, profiles);
+        if (memories != null) scope.provide(DshServices.MEMORIES, memories);
+        if (runs != null) scope.provide(DshServices.RUNS, runs);
+        if (continuations != null) scope.provide(DshServices.CONTINUATIONS, continuations);
+        if (contexts != null) scope.provide(DshServices.CONTEXT, contexts);
+        return scope;
+    }
+
+    public void setSubAgentRunner(SubAgentRunner subAgents) {
+        this.subAgents = subAgents;
     }
 
     public String run(String prompt) throws Exception {
@@ -331,34 +319,38 @@ public final class AgentLoop implements AutoCloseable {
         return scope;
     }
 
-    private <T> T resolve(ServiceKey<T> key, T fallback) {
+    private <T> T resolve(ServiceKey<T> key) {
         Scope current = executionScopes.get();
         if (current != null) {
             T local = current.local(key);
             if (local != null) return local;
             try { return current.resolve(key); } catch (IllegalStateException ignored) { }
         }
-        if (runtimeScope != null) {
-            try { return runtimeScope.resolve(key); } catch (IllegalStateException ignored) { }
-        }
-        return fallback;
+        if (runtimeScope == null) throw new IllegalStateException("agent runtime scope is not bound");
+        return runtimeScope.resolve(key);
     }
 
-    private ChatModel model() { return resolve(DshServices.CHAT_MODEL, model); }
+    private <T> T optional(ServiceKey<T> key) {
+        try { return resolve(key); } catch (IllegalStateException ignored) { return null; }
+    }
 
-    private ToolRegistry toolRegistry() { return resolve(DshServices.TOOLS, tools); }
+    private ChatModel model() { return resolve(DshServices.CHAT_MODEL); }
 
-    private SkillRegistry skillRegistry() { return resolve(DshServices.SKILLS, skills); }
+    private ToolRegistry toolRegistry() { return resolve(DshServices.TOOLS); }
 
-    private AgentProfileRegistry profileRegistry() { return resolve(DshServices.AGENTS, profiles); }
+    private SkillRegistry skillRegistry() { return optional(DshServices.SKILLS); }
 
-    private MemoryManager memoryManager() { return resolve(DshServices.MEMORIES, memories); }
+    private AgentProfileRegistry profileRegistry() { return optional(DshServices.AGENTS); }
 
-    private RunManager runManager() { return resolve(DshServices.RUNS, runs); }
+    private MemoryManager memoryManager() { return optional(DshServices.MEMORIES); }
 
-    private ContextManager contextManager() { return resolve(DshServices.CONTEXT, contexts); }
+    private RunManager runManager() { return optional(DshServices.RUNS); }
 
-    private EventBus eventBus() { return resolve(DshServices.EVENTS, null); }
+    private ContextManager contextManager() { return optional(DshServices.CONTEXT); }
+
+    private EventBus eventBus() { return optional(DshServices.EVENTS); }
+
+    private AgentContinuationStore continuationStore() { return optional(DshServices.CONTINUATIONS); }
 
     private void emitRunEvent(String runId, RunOptions options, AgentEvents.Phase phase, String detail)
             throws Exception {
@@ -610,6 +602,7 @@ public final class AgentLoop implements AutoCloseable {
                 result = "Tool execution denied by user: " + pending.approval.toolName();
             } else {
                 pending.budget.check();
+                checkToolPermission(pending.approval.toolName(), pending.options);
                 try {
                     result = toolRegistry().executeApproved(pending.approval.toolName(), pending.approval.arguments(),
                             pending.options.allowedToolNames());
@@ -957,11 +950,13 @@ public final class AgentLoop implements AutoCloseable {
     }
 
     private void persistContinuation(PendingExecution pending) throws Exception {
+        AgentContinuationStore continuations = continuationStore();
         if (continuations != null) continuations.save(pending.runId, serializeContinuation(pending));
     }
 
     private void persistAsyncRequest(String runId, String prompt, List<ChatMessage> history,
                                      RunOptions options) throws Exception {
+        AgentContinuationStore continuations = continuationStore();
         if (continuations == null) return;
         ObjectNode root = objectMapper.createObjectNode();
         root.put("kind", "async_request");
@@ -980,6 +975,7 @@ public final class AgentLoop implements AutoCloseable {
     }
 
     private PendingExecution restoreContinuation(String runId) throws Exception {
+        AgentContinuationStore continuations = continuationStore();
         if (continuations == null) return null;
         String payload = continuations.load(runId);
         if (payload == null || payload.isBlank()) return null;
@@ -1168,6 +1164,7 @@ public final class AgentLoop implements AutoCloseable {
     }
 
     private void deleteContinuation(String runId) throws Exception {
+        AgentContinuationStore continuations = continuationStore();
         if (continuations != null && runId != null) continuations.delete(runId);
     }
 

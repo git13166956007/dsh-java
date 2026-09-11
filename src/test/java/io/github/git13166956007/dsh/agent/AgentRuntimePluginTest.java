@@ -14,7 +14,6 @@ public final class AgentRuntimePluginTest {
     void agentResolvesModelAndEventsFromRuntimeScope() throws Exception {
         ChatModel fallback = (messages, tools) -> new ModelResponse("fallback", List.of(), "stop");
         ChatModel runtimeModel = (messages, tools) -> new ModelResponse(messages.get(0).content(), List.of(), "stop");
-        AgentLoop loop = new AgentLoop(fallback, new ToolRegistry(), 2);
         DshRuntime runtime = new DshRuntime();
         runtime.install(new RuntimeServicePlugin<>("events", DshServices.EVENTS, runtime.events()));
         runtime.install(new RuntimeServicePlugin<>("model", DshServices.CHAT_MODEL, runtimeModel));
@@ -25,7 +24,7 @@ public final class AgentRuntimePluginTest {
             return next.proceed(new AgentEvents.ModelRequest(request.runId(), messages, request.tools(),
                     request.apiKey(), request.modelId(), request.streaming()));
         });
-        loop.bindRuntime(runtime.scope());
+        AgentLoop loop = new AgentLoop(runtime.scope(), 2);
         runtime.start();
 
         assertEquals("rewritten", loop.runDetailed("hello").answer());
