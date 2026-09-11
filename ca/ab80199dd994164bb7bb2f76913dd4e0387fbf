@@ -1,0 +1,19 @@
+src/main/java/io/github/git13166956007/dsh/context/InMemoryConversationStore.java
+  s_5f0247805a0da5::t_95cd88b45f075c 73-74,124
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "caab80199dd994164bb7bb2f76913dd4e0387fbf",
+  "prompts": {},
+  "sessions": {
+    "s_5f0247805a0da5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08906-b39d-77f1-894a-72f28e58decc",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
