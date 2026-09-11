@@ -14,5 +14,12 @@ public interface RunStore {
         return true;
     }
 
+    /** Transitions a run and appends its lifecycle event as one store operation when supported. */
+    default RunEventData compareAndSetStatusAndEvent(RunData expected, RunData next, RunEventData event)
+            throws Exception {
+        if (!compareAndSetStatus(expected, next)) return null;
+        return saveEvent(event);
+    }
+
     RunEventData saveEvent(RunEventData event) throws Exception;
 }

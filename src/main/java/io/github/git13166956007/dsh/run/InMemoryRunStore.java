@@ -36,6 +36,15 @@ public final class InMemoryRunStore implements RunStore {
     }
 
     @Override
+    public synchronized RunEventData compareAndSetStatusAndEvent(RunData expected, RunData next, RunEventData event) {
+        RunData current = runs.get(expected.id());
+        if (current == null || current.status() != expected.status()) return null;
+        RunEventData saved = saveEvent(event);
+        runs.put(next.id(), next);
+        return saved;
+    }
+
+    @Override
     public synchronized RunEventData saveEvent(RunEventData event) {
         List<RunEventData> stream = events.computeIfAbsent(event.runId(), ignored -> new ArrayList<RunEventData>());
         if (event.eventKey() != null && !event.eventKey().isBlank()) {

@@ -76,6 +76,24 @@ class RunManagerTest {
     }
 
     @Test
+    void atomicTransitionDoesNotAdvanceStateWhenItsEventConflicts() throws Exception {
+        InMemoryRunStore store = new InMemoryRunStore();
+        RunData current = new RunData("run-atomic", null, RunKind.AGENT, RunStatus.RUNNING, null, null, null,
+                null, null, java.time.Instant.now(), null, null, null);
+        store.saveRun(current);
+        store.saveEvent(new RunEventData(1, current.id(), "transition", "existing", "payload", java.time.Instant.now()));
+        RunData next = new RunData(current.id(), current.parentRunId(), current.kind(), RunStatus.COMPLETED,
+                current.conversationId(), current.planId(), current.stepId(), current.agentId(), current.modelId(),
+                current.startedAt(), java.time.Instant.now(), null, "done");
+
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> store.compareAndSetStatusAndEvent(current, next,
+                        new RunEventData(2, current.id(), "transition", "different", "payload", java.time.Instant.now())));
+        assertEquals(RunStatus.RUNNING, store.listRuns().get(0).status());
+        assertEquals(1, store.listEvents(current.id()).size());
+    }
+
+    @Test
     void slowListenerDoesNotHoldTheRunManagerLock() throws Exception {
         RunManager manager = new RunManager(new InMemoryRunStore());
         String runId = manager.start(new RunSpec(null, RunKind.AGENT, null, null, null, null, null));

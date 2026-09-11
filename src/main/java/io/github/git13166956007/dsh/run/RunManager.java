@@ -34,29 +34,23 @@ public final class RunManager {
     }
 
     public void complete(String id, String output) throws Exception {
-        if (update(id, RunStatus.COMPLETED, null, output)) {
-            event(id, "lifecycle:completed", "run_completed", output);
-        }
+        transition(id, RunStatus.COMPLETED, null, output, "run_completed", output);
     }
 
     public void fail(String id, String error) throws Exception {
-        if (update(id, RunStatus.FAILED, error, null)) {
-            event(id, "lifecycle:failed", "run_failed", error);
-        }
+        transition(id, RunStatus.FAILED, error, null, "run_failed", error);
     }
 
     public void cancel(String id) throws Exception {
-        if (update(id, RunStatus.CANCELLED, null, null)) {
-            event(id, "lifecycle:cancelled", "run_cancelled", null);
-        }
+        transition(id, RunStatus.CANCELLED, null, null, "run_cancelled", null);
     }
 
     public void waitForApproval(String id, String payload) throws Exception {
-        if (update(id, RunStatus.WAITING_APPROVAL, null, null, null)) event(id, "tool_approval_required", payload);
+        transition(id, RunStatus.WAITING_APPROVAL, null, null, "tool_approval_required", payload);
     }
 
     public void resume(String id) throws Exception {
-        if (update(id, RunStatus.RUNNING, null, null, null)) event(id, "run_resumed", null);
+        transition(id, RunStatus.RUNNING, null, null, "run_resumed", null);
     }
 
     public void event(String runId, String type, String payload) throws Exception {
@@ -66,37 +60,12 @@ public final class RunManager {
     /** Persists a run event; a non-blank event key makes retries idempotent within the run. */
     public void event(String runId, String eventKey, String type, String payload) throws Exception {
         RunEvent event;
-        List<Consumer<RunEvent>> listenersSnapshot;
-        CompletableFuture<Void> previousNotification;
-        CompletableFuture<Void> currentNotification = new CompletableFuture<Void>();
         synchronized (this) {
             long id = store instanceof InMemoryRunStore memory ? memory.nextEventId() : 0;
             RunEventData data = store.saveEvent(new RunEventData(id, runId, eventKey, type, payload, Instant.now()));
             event = RunEvent.from(data);
-            listenersSnapshot = new ArrayList<Consumer<RunEvent>>(
-                    listeners.getOrDefault(runId, List.of()));
-            previousNotification = notificationTails.getOrDefault(runId, CompletableFuture.completedFuture(null));
-            notificationTails.put(runId, currentNotification);
         }
-        if (!runId.equals(notifyingRun.get())) previousNotification.join();
-        String previousRun = notifyingRun.get();
-        notifyingRun.set(runId);
-        try {
-            for (Consumer<RunEvent> listener : listenersSnapshot) {
-                try {
-                    listener.accept(event);
-                } catch (Exception ignored) {
-                    // A disconnected stream must not break run persistence or other subscribers.
-                }
-            }
-        } finally {
-            if (previousRun == null) notifyingRun.remove();
-            else notifyingRun.set(previousRun);
-            currentNotification.complete(null);
-            synchronized (this) {
-                if (notificationTails.get(runId) == currentNotification) notificationTails.remove(runId);
-            }
-        }
+        notifyEvent(event);
     }
 
     public synchronized AutoCloseable subscribe(String runId, Consumer<RunEvent> listener) throws Exception {
@@ -145,20 +114,54 @@ public final class RunManager {
         return depth;
     }
 
-    private synchronized boolean update(String id, RunStatus status, String error, String output) throws Exception {
-        return update(id, status, error, output, Instant.now());
-    }
-
-    private synchronized boolean update(String id, RunStatus status, String error, String output, Instant completedAt) throws Exception {
+    private synchronized boolean transition(String id, RunStatus status, String error, String output,
+                                             String eventType, String payload) throws Exception {
         RunData current = store.listRuns().stream().filter(run -> run.id().equals(id)).findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("unknown run: " + id));
         if (current.status() == status || current.status().terminal()) return false;
         RunData next = new RunData(current.id(), current.parentRunId(), current.kind(), status, current.conversationId(),
-                current.planId(), current.stepId(), current.agentId(), current.modelId(), current.startedAt(), completedAt,
-                error, output);
-        if (store.compareAndSetStatus(current, next)) return true;
-        RunData observed = store.listRuns().stream().filter(run -> run.id().equals(id)).findFirst().orElse(null);
-        if (observed != null && (observed.status() == status || observed.status().terminal())) return false;
-        throw new IllegalStateException("concurrent run state update rejected: " + id);
+                current.planId(), current.stepId(), current.agentId(), current.modelId(), current.startedAt(),
+                status.terminal() ? Instant.now() : null, error, output);
+        String eventKey = "lifecycle:" + eventType + ":" + store.listEvents(id).size();
+        long eventId = store instanceof InMemoryRunStore memory ? memory.nextEventId() : 0;
+        RunEventData saved = store.compareAndSetStatusAndEvent(current, next,
+                new RunEventData(eventId, id, eventKey, eventType, payload, Instant.now()));
+        if (saved == null) {
+            RunData observed = store.listRuns().stream().filter(run -> run.id().equals(id)).findFirst().orElse(null);
+            if (observed != null && (observed.status() == status || observed.status().terminal())) return false;
+            throw new IllegalStateException("concurrent run state update rejected: " + id);
+        }
+        notifyEvent(RunEvent.from(saved));
+        return true;
+    }
+
+    private void notifyEvent(RunEvent event) {
+        List<Consumer<RunEvent>> listenersSnapshot;
+        CompletableFuture<Void> previousNotification;
+        CompletableFuture<Void> currentNotification = new CompletableFuture<Void>();
+        synchronized (this) {
+            listenersSnapshot = new ArrayList<Consumer<RunEvent>>(
+                    listeners.getOrDefault(event.runId(), List.of()));
+            previousNotification = notificationTails.getOrDefault(event.runId(), CompletableFuture.completedFuture(null));
+            notificationTails.put(event.runId(), currentNotification);
+        }
+        if (!event.runId().equals(notifyingRun.get())) previousNotification.join();
+        String previousRun = notifyingRun.get();
+        notifyingRun.set(event.runId());
+        try {
+            for (Consumer<RunEvent> listener : listenersSnapshot) {
+                try { listener.accept(event); }
+                catch (Exception ignored) {
+                    // A disconnected stream must not break run persistence or other subscribers.
+                }
+            }
+        } finally {
+            if (previousRun == null) notifyingRun.remove();
+            else notifyingRun.set(previousRun);
+            currentNotification.complete(null);
+            synchronized (this) {
+                if (notificationTails.get(event.runId()) == currentNotification) notificationTails.remove(event.runId());
+            }
+        }
     }
 }

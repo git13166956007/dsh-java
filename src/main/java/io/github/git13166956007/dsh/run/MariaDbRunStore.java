@@ -105,13 +105,59 @@ public final class MariaDbRunStore implements RunStore {
     }
 
     @Override
+    public RunEventData compareAndSetStatusAndEvent(RunData expected, RunData next, RunEventData event)
+            throws SQLException {
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            try {
+                int updated;
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "UPDATE dsh_run SET parent_run_id=?, kind=?, status=?, conversation_id=?, plan_id=?, step_id=?, "
+                                + "agent_id=?, model_id=?, started_at=?, completed_at=?, error_text=?, output_text=? "
+                                + "WHERE id=? AND status=?")) {
+                    statement.setString(1, next.parentRunId());
+                    statement.setString(2, next.kind().value());
+                    statement.setString(3, next.status().value());
+                    statement.setString(4, next.conversationId());
+                    statement.setString(5, next.planId());
+                    statement.setString(6, next.stepId());
+                    statement.setString(7, next.agentId());
+                    statement.setString(8, next.modelId());
+                    statement.setTimestamp(9, Timestamp.from(next.startedAt()));
+                    setTimestamp(statement, 10, next.completedAt());
+                    statement.setString(11, next.error());
+                    statement.setString(12, next.output());
+                    statement.setString(13, expected.id());
+                    statement.setString(14, expected.status().value());
+                    updated = statement.executeUpdate();
+                }
+                if (updated != 1) {
+                    connection.rollback();
+                    return null;
+                }
+                RunEventData saved = saveEvent(connection, event);
+                connection.commit();
+                return saved;
+            } catch (Exception exception) {
+                connection.rollback();
+                throw exception;
+            }
+        }
+    }
+
+    @Override
     public RunEventData saveEvent(RunEventData event) throws SQLException {
+        try (Connection connection = connection()) {
+            return saveEvent(connection, event);
+        }
+    }
+
+    private RunEventData saveEvent(Connection connection, RunEventData event) throws SQLException {
         if (event.eventKey() != null && !event.eventKey().isBlank()) {
-            RunEventData existing = findEventByKey(event.runId(), event.eventKey());
+            RunEventData existing = findEventByKey(connection, event.runId(), event.eventKey());
             if (existing != null) return verifyIdempotent(existing, event);
         }
-        try (Connection connection = connection();
-             PreparedStatement statement = connection.prepareStatement(
+        try (PreparedStatement statement = connection.prepareStatement(
                      "INSERT INTO dsh_run_event (run_id, event_key, event_type, payload, created_at) VALUES (?, ?, ?, ?, ?)",
                      Statement.RETURN_GENERATED_KEYS)) {
             statement.setString(1, event.runId());
@@ -123,7 +169,7 @@ public final class MariaDbRunStore implements RunStore {
                 statement.executeUpdate();
             } catch (SQLException exception) {
                 if (event.eventKey() == null || event.eventKey().isBlank() || !isDuplicateKey(exception)) throw exception;
-                RunEventData existing = findEventByKey(event.runId(), event.eventKey());
+                RunEventData existing = findEventByKey(connection, event.runId(), event.eventKey());
                 if (existing == null) throw exception;
                 return verifyIdempotent(existing, event);
             }
@@ -137,9 +183,8 @@ public final class MariaDbRunStore implements RunStore {
         return event;
     }
 
-    private RunEventData findEventByKey(String runId, String eventKey) throws SQLException {
-        try (Connection connection = connection();
-             PreparedStatement statement = connection.prepareStatement(
+    private RunEventData findEventByKey(Connection connection, String runId, String eventKey) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
                      "SELECT event_id, run_id, event_key, event_type, payload, created_at FROM dsh_run_event "
                              + "WHERE run_id=? AND event_key=?")) {
             statement.setString(1, runId);
