@@ -1,0 +1,48 @@
+src/main/java/io/github/git13166956007/dsh/context/ContextManager.java
+  h_eb697744b14c1b 226-229
+src/main/java/io/github/git13166956007/dsh/context/ConversationStore.java
+  h_eb697744b14c1b 36-40
+src/main/java/io/github/git13166956007/dsh/context/InMemoryConversationStore.java
+  h_eb697744b14c1b 80-84,92-96
+src/main/java/io/github/git13166956007/dsh/context/MariaDbConversationStore.java
+  h_eb697744b14c1b 178-182,199
+src/main/java/io/github/git13166956007/dsh/event/EventJournal.java
+  h_eb697744b14c1b 9-18
+src/main/java/io/github/git13166956007/dsh/event/EventJournalPage.java
+  h_eb697744b14c1b 1-11
+src/main/java/io/github/git13166956007/dsh/event/InMemoryEventJournal.java
+  h_eb697744b14c1b 29-38
+src/main/java/io/github/git13166956007/dsh/event/MariaDbEventJournal.java
+  h_eb697744b14c1b 73-104
+src/main/java/io/github/git13166956007/dsh/session/event/InMemorySessionEventLog.java
+  h_eb697744b14c1b 69-81
+src/main/java/io/github/git13166956007/dsh/session/event/MariaDbSessionEventLog.java
+  h_eb697744b14c1b 142-172
+src/main/java/io/github/git13166956007/dsh/session/event/SessionEventIds.java
+  h_eb697744b14c1b 1-15
+src/main/java/io/github/git13166956007/dsh/session/event/SessionEventLog.java
+  h_eb697744b14c1b 18-30
+src/main/java/io/github/git13166956007/dsh/session/event/SessionEventPage.java
+  h_eb697744b14c1b 1-11
+src/main/java/io/github/git13166956007/dsh/web/DshController.java
+  h_eb697744b14c1b 30,1174,1208,1279-1287,1291-1311,1382-1386
+src/test/java/io/github/git13166956007/dsh/context/InMemoryConversationStoreTest.java
+  h_eb697744b14c1b 127-137
+src/test/java/io/github/git13166956007/dsh/event/EventBusTest.java
+  h_eb697744b14c1b 173-195
+src/test/java/io/github/git13166956007/dsh/event/MariaDbEventJournalIntegrationTest.java
+  h_eb697744b14c1b 1-66
+src/test/java/io/github/git13166956007/dsh/session/event/SessionEventProjectionTest.java
+  h_eb697744b14c1b 144-170
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "4cdbc278426f1a98fd9c7fc127c37b7d58356271",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
