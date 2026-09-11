@@ -63,6 +63,19 @@ class RunManagerTest {
     }
 
     @Test
+    void runEventKeysAreIdempotentAndRejectConflictingRetries() throws Exception {
+        RunManager manager = new RunManager(new InMemoryRunStore());
+        String runId = manager.start(RunSpec.standalone());
+
+        manager.event(runId, "tool:1", "tool_call", "weather");
+        manager.event(runId, "tool:1", "tool_call", "weather");
+
+        assertEquals(2, manager.events(runId).size());
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> manager.event(runId, "tool:1", "tool_call", "different"));
+    }
+
+    @Test
     void slowListenerDoesNotHoldTheRunManagerLock() throws Exception {
         RunManager manager = new RunManager(new InMemoryRunStore());
         String runId = manager.start(new RunSpec(null, RunKind.AGENT, null, null, null, null, null));

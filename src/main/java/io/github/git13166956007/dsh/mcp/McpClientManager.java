@@ -46,6 +46,7 @@ public final class McpClientManager implements AutoCloseable {
     private final long reconnectInitialDelayMs;
     private final long reconnectMaxDelayMs;
     private final int reconnectMaxAttempts;
+    private final McpEndpointPolicy endpointPolicy;
     private volatile boolean closed;
 
     public McpClientManager(McpServerRegistry servers, ToolRegistry tools, ObjectMapper objectMapper) {
@@ -69,6 +70,14 @@ public final class McpClientManager implements AutoCloseable {
     public McpClientManager(McpServerRegistry servers, ToolRegistry tools, ObjectMapper objectMapper,
                             McpHealthStore healthStore, McpResourceSubscriptionStore subscriptionStore,
                             long reconnectInitialDelayMs, long reconnectMaxDelayMs, int reconnectMaxAttempts) {
+        this(servers, tools, objectMapper, healthStore, subscriptionStore, reconnectInitialDelayMs,
+                reconnectMaxDelayMs, reconnectMaxAttempts, false);
+    }
+
+    public McpClientManager(McpServerRegistry servers, ToolRegistry tools, ObjectMapper objectMapper,
+                            McpHealthStore healthStore, McpResourceSubscriptionStore subscriptionStore,
+                            long reconnectInitialDelayMs, long reconnectMaxDelayMs, int reconnectMaxAttempts,
+                            boolean allowPrivateEndpoints) {
         if (reconnectInitialDelayMs < 1 || reconnectMaxDelayMs < reconnectInitialDelayMs) {
             throw new IllegalArgumentException("invalid MCP reconnect delay configuration");
         }
@@ -81,6 +90,7 @@ public final class McpClientManager implements AutoCloseable {
         this.reconnectInitialDelayMs = reconnectInitialDelayMs;
         this.reconnectMaxDelayMs = reconnectMaxDelayMs;
         this.reconnectMaxAttempts = reconnectMaxAttempts;
+        this.endpointPolicy = new McpEndpointPolicy(allowPrivateEndpoints);
         restoreSubscriptionState();
     }
 
@@ -319,6 +329,7 @@ public final class McpClientManager implements AutoCloseable {
             return client;
         }
         if ("sse".equals(server.transport())) {
+            endpointPolicy.validateForConnection(server.endpoint());
             ResolvedEndpoint endpoint = resolveEndpoint(server.endpoint(), "/sse");
             HttpClientSseClientTransport transport = HttpClientSseClientTransport.builder(endpoint.baseUri())
                     .sseEndpoint(endpoint.endpoint())
@@ -333,6 +344,7 @@ public final class McpClientManager implements AutoCloseable {
             reference.set(client);
             return client;
         }
+        endpointPolicy.validateForConnection(server.endpoint());
         ResolvedEndpoint endpoint = resolveEndpoint(server.endpoint(), "/mcp");
         HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport.builder(endpoint.baseUri())
                 .endpoint(endpoint.endpoint())

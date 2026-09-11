@@ -470,7 +470,8 @@ public class DshRuntimeConfiguration {
                 mcpResourceSubscriptionStore,
                 Long.parseLong(environment.getProperty("dsh.mcp.reconnect.initial-delay-ms", "1000")),
                 Long.parseLong(environment.getProperty("dsh.mcp.reconnect.max-delay-ms", "60000")),
-                Integer.parseInt(environment.getProperty("dsh.mcp.reconnect.max-attempts", "8")));
+                Integer.parseInt(environment.getProperty("dsh.mcp.reconnect.max-attempts", "8")),
+                Boolean.parseBoolean(environment.getProperty("dsh.mcp.security.allow-private-endpoints", "false")));
         manager.restoreEnabled();
         return manager;
     }

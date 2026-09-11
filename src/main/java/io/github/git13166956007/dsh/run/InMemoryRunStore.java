@@ -37,11 +37,29 @@ public final class InMemoryRunStore implements RunStore {
 
     @Override
     public synchronized RunEventData saveEvent(RunEventData event) {
-        events.computeIfAbsent(event.runId(), ignored -> new ArrayList<RunEventData>()).add(event);
+        List<RunEventData> stream = events.computeIfAbsent(event.runId(), ignored -> new ArrayList<RunEventData>());
+        if (event.eventKey() != null && !event.eventKey().isBlank()) {
+            for (RunEventData existing : stream) {
+                if (!event.eventKey().equals(existing.eventKey())) continue;
+                if (!same(existing, event)) {
+                    throw new IllegalArgumentException("run event key was already used with different content: "
+                            + event.eventKey());
+                }
+                return existing;
+            }
+        }
+        stream.add(event);
         return event;
     }
 
     public long nextEventId() {
         return eventIds.incrementAndGet();
+    }
+
+    private static boolean same(RunEventData left, RunEventData right) {
+        return java.util.Objects.equals(left.runId(), right.runId())
+                && java.util.Objects.equals(left.eventKey(), right.eventKey())
+                && java.util.Objects.equals(left.type(), right.type())
+                && java.util.Objects.equals(left.payload(), right.payload());
     }
 }

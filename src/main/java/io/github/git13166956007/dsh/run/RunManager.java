@@ -29,20 +29,26 @@ public final class RunManager {
                     spec.planId(), spec.stepId(), spec.agentId(), spec.modelId(), Instant.now(), null, null, null);
             store.saveRun(run);
         }
-        event(id, "run_started", spec.kind().value());
+        event(id, "lifecycle:started", "run_started", spec.kind().value());
         return id;
     }
 
     public void complete(String id, String output) throws Exception {
-        if (update(id, RunStatus.COMPLETED, null, output)) event(id, "run_completed", output);
+        if (update(id, RunStatus.COMPLETED, null, output)) {
+            event(id, "lifecycle:completed", "run_completed", output);
+        }
     }
 
     public void fail(String id, String error) throws Exception {
-        if (update(id, RunStatus.FAILED, error, null)) event(id, "run_failed", error);
+        if (update(id, RunStatus.FAILED, error, null)) {
+            event(id, "lifecycle:failed", "run_failed", error);
+        }
     }
 
     public void cancel(String id) throws Exception {
-        if (update(id, RunStatus.CANCELLED, null, null)) event(id, "run_cancelled", null);
+        if (update(id, RunStatus.CANCELLED, null, null)) {
+            event(id, "lifecycle:cancelled", "run_cancelled", null);
+        }
     }
 
     public void waitForApproval(String id, String payload) throws Exception {
@@ -54,13 +60,18 @@ public final class RunManager {
     }
 
     public void event(String runId, String type, String payload) throws Exception {
+        event(runId, null, type, payload);
+    }
+
+    /** Persists a run event; a non-blank event key makes retries idempotent within the run. */
+    public void event(String runId, String eventKey, String type, String payload) throws Exception {
         RunEvent event;
         List<Consumer<RunEvent>> listenersSnapshot;
         CompletableFuture<Void> previousNotification;
         CompletableFuture<Void> currentNotification = new CompletableFuture<Void>();
         synchronized (this) {
             long id = store instanceof InMemoryRunStore memory ? memory.nextEventId() : 0;
-            RunEventData data = store.saveEvent(new RunEventData(id, runId, type, payload, Instant.now()));
+            RunEventData data = store.saveEvent(new RunEventData(id, runId, eventKey, type, payload, Instant.now()));
             event = RunEvent.from(data);
             listenersSnapshot = new ArrayList<Consumer<RunEvent>>(
                     listeners.getOrDefault(runId, List.of()));

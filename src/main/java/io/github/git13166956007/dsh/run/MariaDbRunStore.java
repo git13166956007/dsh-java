@@ -41,11 +41,12 @@ public final class MariaDbRunStore implements RunStore {
         List<RunEventData> result = new ArrayList<RunEventData>();
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(
-                     "SELECT event_id, run_id, event_type, payload, created_at FROM dsh_run_event WHERE run_id=? ORDER BY event_id")) {
+                     "SELECT event_id, run_id, event_key, event_type, payload, created_at FROM dsh_run_event WHERE run_id=? ORDER BY event_id")) {
             statement.setString(1, runId);
             try (ResultSet rows = statement.executeQuery()) {
                 while (rows.next()) result.add(new RunEventData(rows.getLong("event_id"), rows.getString("run_id"),
-                        rows.getString("event_type"), rows.getString("payload"), instant(rows.getTimestamp("created_at"))));
+                        rows.getString("event_key"), rows.getString("event_type"), rows.getString("payload"),
+                        instant(rows.getTimestamp("created_at"))));
             }
         }
         return result;
@@ -105,22 +106,60 @@ public final class MariaDbRunStore implements RunStore {
 
     @Override
     public RunEventData saveEvent(RunEventData event) throws SQLException {
+        if (event.eventKey() != null && !event.eventKey().isBlank()) {
+            RunEventData existing = findEventByKey(event.runId(), event.eventKey());
+            if (existing != null) return verifyIdempotent(existing, event);
+        }
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(
-                     "INSERT INTO dsh_run_event (run_id, event_type, payload, created_at) VALUES (?, ?, ?, ?)",
+                     "INSERT INTO dsh_run_event (run_id, event_key, event_type, payload, created_at) VALUES (?, ?, ?, ?, ?)",
                      Statement.RETURN_GENERATED_KEYS)) {
             statement.setString(1, event.runId());
-            statement.setString(2, event.type());
-            statement.setString(3, event.payload());
-            statement.setTimestamp(4, Timestamp.from(event.createdAt()));
-            statement.executeUpdate();
+            statement.setString(2, event.eventKey());
+            statement.setString(3, event.type());
+            statement.setString(4, event.payload());
+            statement.setTimestamp(5, Timestamp.from(event.createdAt()));
+            try {
+                statement.executeUpdate();
+            } catch (SQLException exception) {
+                if (event.eventKey() == null || event.eventKey().isBlank() || !isDuplicateKey(exception)) throw exception;
+                RunEventData existing = findEventByKey(event.runId(), event.eventKey());
+                if (existing == null) throw exception;
+                return verifyIdempotent(existing, event);
+            }
             try (ResultSet keys = statement.getGeneratedKeys()) {
                 if (keys.next()) {
-                    return new RunEventData(keys.getLong(1), event.runId(), event.type(), event.payload(), event.createdAt());
+                    return new RunEventData(keys.getLong(1), event.runId(), event.eventKey(), event.type(),
+                            event.payload(), event.createdAt());
                 }
             }
         }
         return event;
+    }
+
+    private RunEventData findEventByKey(String runId, String eventKey) throws SQLException {
+        try (Connection connection = connection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "SELECT event_id, run_id, event_key, event_type, payload, created_at FROM dsh_run_event "
+                             + "WHERE run_id=? AND event_key=?")) {
+            statement.setString(1, runId);
+            statement.setString(2, eventKey);
+            try (ResultSet rows = statement.executeQuery()) {
+                if (!rows.next()) return null;
+                return new RunEventData(rows.getLong("event_id"), rows.getString("run_id"),
+                        rows.getString("event_key"), rows.getString("event_type"), rows.getString("payload"),
+                        instant(rows.getTimestamp("created_at")));
+            }
+        }
+    }
+
+    private static RunEventData verifyIdempotent(RunEventData existing, RunEventData requested) {
+        if (!java.util.Objects.equals(existing.type(), requested.type())
+                || !java.util.Objects.equals(existing.payload(), requested.payload())) {
+            throw new IllegalArgumentException("run event key was already used with different content: "
+                    + requested.eventKey());
+        }
+        return existing;
     }
 
     private void ensureSchema() {
@@ -140,14 +179,46 @@ public final class MariaDbRunStore implements RunStore {
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(
                      "CREATE TABLE IF NOT EXISTS dsh_run_event (event_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, "
-                             + "run_id CHAR(36) NOT NULL, event_type VARCHAR(64) NOT NULL, payload LONGTEXT NULL, "
+                             + "run_id CHAR(36) NOT NULL, event_key VARCHAR(191) NULL, event_type VARCHAR(64) NOT NULL, payload LONGTEXT NULL, "
                              + "created_at TIMESTAMP(3) NOT NULL, CONSTRAINT fk_dsh_run_event_run FOREIGN KEY (run_id) "
-                             + "REFERENCES dsh_run (id) ON DELETE CASCADE, INDEX idx_dsh_run_event_run (run_id, event_id)) "
+                             + "REFERENCES dsh_run (id) ON DELETE CASCADE, UNIQUE KEY uq_dsh_run_event_key (run_id, event_key), "
+                             + "INDEX idx_dsh_run_event_run (run_id, event_id)) "
                              + "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4")) {
             statement.executeUpdate();
+            addEventKeyColumn(connection);
+            addEventKeyIndex(connection);
         } catch (SQLException exception) {
             throw new IllegalStateException("failed to initialize run event schema", exception);
         }
+    }
+
+    private static void addEventKeyColumn(Connection connection) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "ALTER TABLE dsh_run_event ADD COLUMN event_key VARCHAR(191) NULL")) {
+            statement.executeUpdate();
+        } catch (SQLException exception) {
+            if (!isDuplicateColumn(exception)) throw exception;
+        }
+    }
+
+    private static void addEventKeyIndex(Connection connection) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "ALTER TABLE dsh_run_event ADD UNIQUE KEY uq_dsh_run_event_key (run_id, event_key)")) {
+            statement.executeUpdate();
+        } catch (SQLException exception) {
+            if (!isDuplicateKey(exception)) throw exception;
+        }
+    }
+
+    private static boolean isDuplicateColumn(SQLException exception) {
+        String message = exception.getMessage();
+        return exception.getErrorCode() == 1060 || (message != null && message.toLowerCase().contains("duplicate column"));
+    }
+
+    private static boolean isDuplicateKey(SQLException exception) {
+        String message = exception.getMessage();
+        return exception.getErrorCode() == 1061 || exception.getErrorCode() == 1062
+                || (message != null && message.toLowerCase().contains("duplicate"));
     }
 
     private RunData readRun(ResultSet rows) throws SQLException {

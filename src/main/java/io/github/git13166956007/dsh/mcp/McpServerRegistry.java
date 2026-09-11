@@ -189,6 +189,7 @@ public final class McpServerRegistry {
         if (!"stdio".equals(transport) && blankToNull(endpoint) == null) {
             throw new IllegalArgumentException("endpoint is required for HTTP transports");
         }
+        if (!"stdio".equals(transport)) new McpEndpointPolicy(true).validateSyntax(endpoint);
     }
 
     private static String required(String value, String field) {

@@ -56,4 +56,37 @@ class MariaDbRunStoreIntegrationTest {
             }
         }
     }
+
+    @Test
+    void runEventKeysAreIdempotentAcrossStoreInstances() throws Exception {
+        String url = System.getenv().getOrDefault("DSH_DB_URL", "jdbc:mariadb://127.0.0.1:3307/dsh");
+        String user = System.getenv().getOrDefault("DSH_DB_USER", "dsh");
+        String password = System.getenv().getOrDefault("DSH_DB_PASSWORD", "dsh-local-password");
+        try (Connection ignored = DriverManager.getConnection(url, user, password)) {
+            // Database is available; the assertions below are authoritative.
+        } catch (Exception exception) {
+            assumeTrue(false, "MariaDB integration test skipped: " + exception.getMessage());
+            return;
+        }
+
+        RunManager first = new RunManager(new MariaDbRunStore(url, user, password));
+        RunManager second = new RunManager(new MariaDbRunStore(url, user, password));
+        String runId = first.start(RunSpec.standalone());
+        try {
+            first.event(runId, "tool:retry", "tool_call", "weather");
+            second.event(runId, "tool:retry", "tool_call", "weather");
+            assertEquals(2, first.events(runId).size());
+            org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                    () -> second.event(runId, "tool:retry", "tool_call", "different"));
+        } finally {
+            try (Connection connection = DriverManager.getConnection(url, user, password);
+                 PreparedStatement events = connection.prepareStatement("DELETE FROM dsh_run_event WHERE run_id=?");
+                 PreparedStatement run = connection.prepareStatement("DELETE FROM dsh_run WHERE id=?")) {
+                events.setString(1, runId);
+                events.executeUpdate();
+                run.setString(1, runId);
+                run.executeUpdate();
+            }
+        }
+    }
 }

@@ -1,6 +1,8 @@
 package io.github.git13166956007.dsh.mcp;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.Instant;
@@ -32,6 +34,23 @@ class McpClientManagerTest {
         assertEquals(2000, McpClientManager.reconnectDelay(1000, 5000, 1));
         assertEquals(4000, McpClientManager.reconnectDelay(1000, 5000, 2));
         assertEquals(5000, McpClientManager.reconnectDelay(1000, 5000, 8));
+    }
+
+    @Test
+    void rejectsPrivateMcpEndpointsUnlessExplicitlyAllowed() {
+        assertThrows(IllegalArgumentException.class,
+                () -> new McpEndpointPolicy(false).validateForConnection("http://127.0.0.1:8080/mcp"));
+        assertDoesNotThrow(() -> new McpEndpointPolicy(true)
+                .validateForConnection("http://127.0.0.1:8080/mcp"));
+    }
+
+    @Test
+    void rejectsNonHttpMcpEndpointSchemes() {
+        assertThrows(IllegalArgumentException.class,
+                () -> new McpEndpointPolicy(false).validateSyntax("file:///etc/passwd"));
+        assertThrows(IllegalArgumentException.class,
+                () -> new McpServerRegistry().create("invalid", "sse", "ftp://example.test/mcp",
+                        null, List.of()));
     }
 
     @Test
