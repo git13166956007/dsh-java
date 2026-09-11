@@ -38,6 +38,7 @@ public final class MariaDbConversationStore implements ConversationStore {
         this.objectMapper = objectMapper == null ? new ObjectMapper() : objectMapper;
         this.eventLog = new MariaDbSessionEventLog(jdbcUrl, username, password, this.objectMapper);
         ensureSchema();
+        migrateLegacyMessages();
     }
 
     @Override
@@ -71,9 +72,7 @@ public final class MariaDbConversationStore implements ConversationStore {
         List<ConversationInfo> result = new ArrayList<ConversationInfo>();
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(
-                     "SELECT c.id, c.title, c.created_at, c.updated_at, c.summary_text, c.summary_message_count, "
-                             + "(SELECT COUNT(*) FROM dsh_message m WHERE m.conversation_id=c.id) AS message_count "
-                             + "FROM dsh_conversation c")) {
+                     "SELECT id FROM dsh_conversation")) {
             try (ResultSet rows = statement.executeQuery()) {
                 while (rows.next()) {
                     String id = rows.getString("id");
@@ -81,8 +80,6 @@ public final class MariaDbConversationStore implements ConversationStore {
                     if (snapshot.updatedAt() != null && !snapshot.deleted()) {
                         result.add(new ConversationInfo(id, snapshot.title(), snapshot.messages().size(),
                                 snapshot.createdAt(), snapshot.updatedAt()));
-                    } else if (snapshot.updatedAt() == null) {
-                        result.add(readLegacyInfo(rows));
                     }
                 }
             }
@@ -138,14 +135,11 @@ public final class MariaDbConversationStore implements ConversationStore {
         if (limit <= 0) return List.of();
         List<ConversationSearchResult> result = new ArrayList<ConversationSearchResult>();
         String normalized = query.toLowerCase(java.util.Locale.ROOT);
-        try (Connection connection = connection()) {
-            for (ConversationInfo info : list(Integer.MAX_VALUE)) {
+        for (ConversationInfo info : list(Integer.MAX_VALUE)) {
                 if (result.size() >= limit) break;
                 SessionEventProjection.Snapshot snapshot = projection(info.id());
-                List<ChatMessage> messages = snapshot.updatedAt() == null
-                        ? readLegacyMessages(connection, info.id(), Integer.MAX_VALUE)
-                        : snapshot.messages();
-                String title = snapshot.updatedAt() == null ? info.title() : snapshot.title();
+                List<ChatMessage> messages = snapshot.messages();
+                String title = snapshot.title();
                 for (int index = 0; index < messages.size() && result.size() < limit; index++) {
                     ChatMessage message = messages.get(index);
                     if (message.content() != null && message.content().toLowerCase(java.util.Locale.ROOT).contains(normalized)) {
@@ -154,7 +148,6 @@ public final class MariaDbConversationStore implements ConversationStore {
                     }
                 }
             }
-        }
         return result;
     }
 
@@ -162,33 +155,12 @@ public final class MariaDbConversationStore implements ConversationStore {
     public List<ChatMessage> load(String conversationId, int limit) throws SQLException {
         if (limit <= 0) return List.of();
         try {
-            List<io.github.git13166956007.dsh.session.event.SessionEvent> events = eventLog.read(conversationId);
-            List<ChatMessage> projected = SessionEventProjection.messages(events);
-            if (!events.isEmpty()) {
-                int from = Math.max(0, projected.size() - limit);
-                return List.copyOf(projected.subList(from, projected.size()));
-            }
+            List<ChatMessage> projected = SessionEventProjection.messages(eventLog.read(conversationId));
+            int from = Math.max(0, projected.size() - limit);
+            return List.copyOf(projected.subList(from, projected.size()));
         } catch (Exception exception) {
             throw new SQLException("failed to read session event stream", exception);
         }
-        List<ChatMessage> messages = new ArrayList<ChatMessage>();
-        try (Connection connection = connection();
-             PreparedStatement statement = connection.prepareStatement(
-                     "SELECT role, content, reasoning_content, tool_calls_json, tool_call_id FROM dsh_message "
-                             + "WHERE conversation_id = ? ORDER BY turn_no DESC, id DESC LIMIT ?")) {
-            statement.setString(1, conversationId);
-            statement.setInt(2, limit);
-            try (ResultSet result = statement.executeQuery()) {
-                while (result.next()) {
-                    ChatMessage message = readMessage(
-                            result.getString("role"), result.getString("content"),
-                            result.getString("reasoning_content"),
-                            result.getString("tool_calls_json"), result.getString("tool_call_id"));
-                    if (message != null) messages.add(0, message);
-                }
-            }
-        }
-        return messages;
     }
 
     @Override
@@ -228,16 +200,7 @@ public final class MariaDbConversationStore implements ConversationStore {
     @Override
     public ConversationSummary loadSummary(String conversationId) throws SQLException {
         SessionEventProjection.Snapshot snapshot = projection(conversationId);
-        if (snapshot.updatedAt() != null) return snapshot.summary();
-        try (Connection connection = connection();
-             PreparedStatement statement = connection.prepareStatement(
-                     "SELECT summary_text, summary_message_count FROM dsh_conversation WHERE id=?")) {
-            statement.setString(1, conversationId);
-            try (ResultSet result = statement.executeQuery()) {
-                if (!result.next() || result.getString("summary_text") == null) return null;
-                return new ConversationSummary(result.getString("summary_text"), result.getInt("summary_message_count"));
-            }
-        }
+        return snapshot.summary();
     }
 
     @Override
@@ -261,13 +224,6 @@ public final class MariaDbConversationStore implements ConversationStore {
     }
 
     private static ConversationInfo readInfo(ResultSet rows) throws SQLException {
-        Timestamp created = rows.getTimestamp("created_at");
-        Timestamp updated = rows.getTimestamp("updated_at");
-        return new ConversationInfo(rows.getString("id"), rows.getString("title"), rows.getInt("message_count"),
-                created.toInstant(), updated.toInstant());
-    }
-
-    private static ConversationInfo readLegacyInfo(ResultSet rows) throws SQLException {
         Timestamp created = rows.getTimestamp("created_at");
         Timestamp updated = rows.getTimestamp("updated_at");
         return new ConversationInfo(rows.getString("id"), rows.getString("title"), rows.getInt("message_count"),
@@ -299,6 +255,89 @@ public final class MariaDbConversationStore implements ConversationStore {
             }
         }
         return messages;
+    }
+
+    private void migrateLegacyMessages() {
+        try (Connection connection = connection();
+             PreparedStatement conversations = connection.prepareStatement(
+                     "SELECT DISTINCT conversation_id FROM dsh_message ORDER BY conversation_id")) {
+            try (ResultSet rows = conversations.executeQuery()) {
+                while (rows.next()) migrateLegacyConversation(rows.getString(1));
+            }
+        } catch (Exception exception) {
+            throw new IllegalStateException("failed to migrate legacy conversation messages", exception);
+        }
+    }
+
+    private void migrateLegacyConversation(String conversationId) throws Exception {
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            try {
+                if (hasMessageEvents(connection, conversationId)) {
+                    connection.commit();
+                    return;
+                }
+                String title;
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "SELECT title, summary_text, summary_message_count FROM dsh_conversation WHERE id=?")) {
+                    statement.setString(1, conversationId);
+                    try (ResultSet rows = statement.executeQuery()) {
+                        if (!rows.next()) {
+                            connection.commit();
+                            return;
+                        }
+                        title = rows.getString("title");
+                        if (!hasEvent(connection, conversationId, SessionEventTypes.CREATED)) {
+                            eventLog.append(connection, conversationId, SessionEventTypes.CREATED,
+                                    objectMapper.createObjectNode().put("title", shorten(title)));
+                        }
+                        for (ChatMessage message : readLegacyMessages(connection, conversationId, Integer.MAX_VALUE)) {
+                            String type = switch (message.role()) {
+                                case USER -> SessionEventTypes.USER_MESSAGE;
+                                case ASSISTANT -> SessionEventTypes.ASSISTANT_MESSAGE;
+                                case TOOL -> SessionEventTypes.TOOL_MESSAGE;
+                                case SYSTEM -> null;
+                            };
+                            if (type != null) eventLog.append(connection, conversationId, type,
+                                    SessionEventCodec.message(objectMapper, message));
+                        }
+                        String summary = rows.getString("summary_text");
+                        if (summary != null && !summary.isBlank()
+                                && !hasEvent(connection, conversationId, SessionEventTypes.SUMMARY_UPDATED)) {
+                            eventLog.append(connection, conversationId, SessionEventTypes.SUMMARY_UPDATED,
+                                    objectMapper.createObjectNode().put("content", summary)
+                                            .put("coveredMessageCount", rows.getInt("summary_message_count")));
+                        }
+                    }
+                }
+                connection.commit();
+            } catch (Exception exception) {
+                connection.rollback();
+                throw exception;
+            }
+        } catch (Exception exception) {
+            throw sqlException("failed to migrate conversation " + conversationId, exception);
+        }
+    }
+
+    private boolean hasMessageEvents(Connection connection, String conversationId) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT 1 FROM dsh_session_event WHERE session_id=? AND event_type IN (?, ?, ?) LIMIT 1")) {
+            statement.setString(1, conversationId);
+            statement.setString(2, SessionEventTypes.USER_MESSAGE);
+            statement.setString(3, SessionEventTypes.ASSISTANT_MESSAGE);
+            statement.setString(4, SessionEventTypes.TOOL_MESSAGE);
+            try (ResultSet rows = statement.executeQuery()) { return rows.next(); }
+        }
+    }
+
+    private boolean hasEvent(Connection connection, String conversationId, String eventType) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT 1 FROM dsh_session_event WHERE session_id=? AND event_type=? LIMIT 1")) {
+            statement.setString(1, conversationId);
+            statement.setString(2, eventType);
+            try (ResultSet rows = statement.executeQuery()) { return rows.next(); }
+        }
     }
 
     private void ensureSchema() {

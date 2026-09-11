@@ -8,11 +8,15 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 public final class MariaDbSubAgentProfileStore implements SubAgentProfileStore {
     private final String jdbcUrl;
     private final String username;
     private final String password;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public MariaDbSubAgentProfileStore(String jdbcUrl, String username, String password) {
         this.jdbcUrl = jdbcUrl;
@@ -27,7 +31,7 @@ public final class MariaDbSubAgentProfileStore implements SubAgentProfileStore {
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(
                      "SELECT id, name, mode, model_id, system_prompt, max_turns, allowed_tools, skill_ids, enabled, "
-                             + "max_tool_calls, timeout_seconds, max_depth, priority, cost_weight, max_concurrent_runs, capability_tags "
+                             + "max_tool_calls, timeout_seconds, max_depth, priority, cost_weight, max_concurrent_runs, capability_tags, permissions_json "
                              + "FROM dsh_sub_agent_profile ORDER BY created_at, id");
              ResultSet rows = statement.executeQuery()) {
             while (rows.next()) result.add(new SubAgentProfileData(rows.getString("id"), rows.getString("name"),
@@ -35,7 +39,8 @@ public final class MariaDbSubAgentProfileStore implements SubAgentProfileStore {
                     rows.getInt("max_turns"), split(rows.getString("allowed_tools")), split(rows.getString("skill_ids")),
                     rows.getBoolean("enabled"), rows.getInt("max_tool_calls"), rows.getInt("timeout_seconds"),
                     rows.getInt("max_depth"), rows.getInt("priority"), rows.getDouble("cost_weight"),
-                    rows.getInt("max_concurrent_runs"), split(rows.getString("capability_tags"))));
+                    rows.getInt("max_concurrent_runs"), split(rows.getString("capability_tags")),
+                    readMap(rows.getString("permissions_json"))));
         }
         return result;
     }
@@ -46,14 +51,14 @@ public final class MariaDbSubAgentProfileStore implements SubAgentProfileStore {
              PreparedStatement statement = connection.prepareStatement(
                      "INSERT INTO dsh_sub_agent_profile "
                              + "(id, name, mode, model_id, system_prompt, max_turns, allowed_tools, skill_ids, enabled, "
-                             + "max_tool_calls, timeout_seconds, max_depth, priority, cost_weight, max_concurrent_runs, capability_tags) "
-                             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=VALUES(name), "
+                             + "max_tool_calls, timeout_seconds, max_depth, priority, cost_weight, max_concurrent_runs, capability_tags, permissions_json) "
+                             + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=VALUES(name), "
                              + "mode=VALUES(mode), model_id=VALUES(model_id), system_prompt=VALUES(system_prompt), "
                              + "max_turns=VALUES(max_turns), allowed_tools=VALUES(allowed_tools), skill_ids=VALUES(skill_ids), "
                              + "enabled=VALUES(enabled), max_tool_calls=VALUES(max_tool_calls), "
                              + "timeout_seconds=VALUES(timeout_seconds), max_depth=VALUES(max_depth), priority=VALUES(priority), "
                              + "cost_weight=VALUES(cost_weight), max_concurrent_runs=VALUES(max_concurrent_runs), "
-                             + "capability_tags=VALUES(capability_tags)")) {
+                             + "capability_tags=VALUES(capability_tags), permissions_json=VALUES(permissions_json)")) {
             statement.setString(1, profile.id());
             statement.setString(2, profile.name());
             statement.setString(3, profile.mode().value());
@@ -70,6 +75,7 @@ public final class MariaDbSubAgentProfileStore implements SubAgentProfileStore {
             statement.setDouble(14, profile.costWeight());
             statement.setInt(15, profile.maxConcurrentRuns());
             statement.setString(16, join(profile.capabilityTags()));
+            statement.setString(17, write(profile.permissions()));
             statement.executeUpdate();
         }
     }
@@ -114,6 +120,7 @@ public final class MariaDbSubAgentProfileStore implements SubAgentProfileStore {
             addColumn(connection, "cost_weight DOUBLE NOT NULL DEFAULT 1.0");
             addColumn(connection, "max_concurrent_runs INT NOT NULL DEFAULT 4");
             addColumn(connection, "capability_tags TEXT NULL");
+            addColumn(connection, "permissions_json TEXT NULL");
         } catch (SQLException exception) {
             throw new IllegalStateException("failed to initialize sub-agent profile schema", exception);
         }
@@ -137,5 +144,26 @@ public final class MariaDbSubAgentProfileStore implements SubAgentProfileStore {
                 "ALTER TABLE dsh_sub_agent_profile ADD COLUMN IF NOT EXISTS " + definition)) {
             statement.executeUpdate();
         }
+    }
+
+    private String write(Map<String, String> value) throws SQLException {
+        try { return objectMapper.writeValueAsString(value); }
+        catch (Exception exception) { throw sqlException("failed to serialize sub-agent permissions", exception); }
+    }
+
+    private Map<String, String> readMap(String value) throws SQLException {
+        if (value == null || value.isBlank()) return Map.of();
+        try {
+            JsonNode node = objectMapper.readTree(value);
+            Map<String, String> result = new java.util.LinkedHashMap<String, String>();
+            if (node != null && node.isObject()) node.properties().forEach(entry -> result.put(entry.getKey(), entry.getValue().asString("")));
+            return Map.copyOf(result);
+        } catch (Exception exception) { throw sqlException("failed to deserialize sub-agent permissions", exception); }
+    }
+
+    private static SQLException sqlException(String message, Exception cause) {
+        SQLException exception = new SQLException(message);
+        exception.initCause(cause);
+        return exception;
     }
 }

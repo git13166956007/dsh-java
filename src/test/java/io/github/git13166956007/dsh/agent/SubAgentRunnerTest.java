@@ -2,10 +2,13 @@ package io.github.git13166956007.dsh.agent;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
@@ -59,6 +62,33 @@ class SubAgentRunnerTest {
             loop.close();
         }
         assertEquals(RunStatus.WAITING_APPROVAL, runs.list().get(0).status());
+    }
+
+    @Test
+    void forwardsProfilePermissionsIntoExecution() throws Exception {
+        RunManager runs = new RunManager(new InMemoryRunStore());
+        SubAgentProfileRegistry profiles = new SubAgentProfileRegistry(new InMemorySubAgentProfileStore(), 2);
+        AtomicInteger executions = new AtomicInteger();
+        ToolRegistry tools = new ToolRegistry();
+        tools.register(new ToolDefinition("restricted_tool", "Restricted tool.",
+                JsonNodeFactory.instance.objectNode().put("type", "object")), arguments -> {
+            executions.incrementAndGet();
+            return "must not run";
+        });
+        SubAgentProfile profile = profiles.create("Restricted worker", AgentMode.EXECUTION, null, "", 2,
+                List.of("restricted_tool"), List.of(), true, 4, 300, 4, 50, 1.0, 4, List.of(),
+                Map.of("tool.restricted_tool", "deny"));
+        AgentLoop loop = AgentLoop.compatibility((messages, definitions) -> new ModelResponse(null,
+                List.of(new ToolCall("permission-1", "restricted_tool", JsonNodeFactory.instance.objectNode())),
+                "tool_calls"), tools, null, null, null, runs, null, null, 2);
+        try {
+            AgentRunHandle handle = new SubAgentRunner(loop, profiles)
+                    .startForExecution("permission task", null, profile.id());
+            assertThrows(ExecutionException.class, () -> handle.result().get(2, TimeUnit.SECONDS));
+            assertEquals(0, executions.get());
+        } finally {
+            loop.close();
+        }
     }
 
     @Test

@@ -1,6 +1,7 @@
 package io.github.git13166956007.dsh.event;
 
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.node.JsonNodeFactory;
 
 import java.time.Duration;
 import java.util.Map;
@@ -59,6 +60,9 @@ public final class EventBusTest {
 
         EventBus recovered = new EventBus();
         assertEquals("retry", recovered.recover(failed, Map.of(TEXT.name(), TEXT)).value());
+        EventRecord persisted = new EventRecord(TEXT.name(), JsonNodeFactory.instance.textNode("persisted"),
+                null, false, null, "fixture", java.time.Instant.now());
+        assertEquals("persisted", recovered.recover(persisted, Map.of(TEXT.name(), TEXT)).value());
         bus.close();
         failing.close();
         recovered.close();

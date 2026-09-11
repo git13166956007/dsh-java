@@ -14,6 +14,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /** Typed, cancellable, async-capable event bus with optional journaling. */
 public final class EventBus implements AutoCloseable {
@@ -23,6 +25,7 @@ public final class EventBus implements AutoCloseable {
             new ConcurrentHashMap<EventKey<?>, CopyOnWriteArrayList<RegisteredHandler<?>>>();
     private final ExecutorService executor;
     private final EventJournal journal;
+    private final ObjectMapper objectMapper;
 
     public EventBus() {
         this(null);
@@ -30,6 +33,7 @@ public final class EventBus implements AutoCloseable {
 
     public EventBus(EventJournal journal) {
         this.journal = journal;
+        this.objectMapper = new ObjectMapper();
         this.executor = Executors.newCachedThreadPool(runnable -> {
             Thread thread = new Thread(runnable, "dsh-event-bus");
             thread.setDaemon(true);
@@ -169,7 +173,15 @@ public final class EventBus implements AutoCloseable {
     }
 
     private <T> EventOutcome<?> recoverTyped(EventKey<T> key, Object payload) throws Exception {
-        return waterfall(key, key.payloadType().cast(payload), new CancellationSource());
+        T typed;
+        if (key.payloadType().isInstance(payload)) {
+            typed = key.payloadType().cast(payload);
+        } else if (payload instanceof JsonNode node) {
+            typed = objectMapper.treeToValue(node, key.payloadType());
+        } else {
+            throw new IllegalArgumentException("event payload is not compatible with " + key.payloadType().getName());
+        }
+        return waterfall(key, typed, new CancellationSource());
     }
 
     private void journal(EventRecord record) throws Exception {

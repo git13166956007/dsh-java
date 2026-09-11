@@ -251,6 +251,7 @@ CREATE TABLE IF NOT EXISTS dsh_sub_agent_profile (
     cost_weight DOUBLE NOT NULL DEFAULT 1.0,
     max_concurrent_runs INT NOT NULL DEFAULT 4,
     capability_tags TEXT NULL,
+    permissions_json TEXT NULL,
     created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
     INDEX idx_dsh_sub_agent_enabled (enabled)

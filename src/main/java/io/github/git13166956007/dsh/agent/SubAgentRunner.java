@@ -187,6 +187,7 @@ public final class SubAgentRunner {
     private static AgentExecutionOptions executionOptions(SubAgentProfileData profile, AgentMode modeOverride) {
         return new AgentExecutionOptions(profile.modelId(), modeOverride == null ? profile.mode() : modeOverride,
                 profile.systemPrompt(), profile.maxTurns(), Set.copyOf(profile.allowedToolNames()),
-                Set.copyOf(profile.skillIds()), profile.maxToolCalls(), profile.timeoutSeconds(), profile.maxDepth());
+                Set.copyOf(profile.skillIds()), profile.maxToolCalls(), profile.timeoutSeconds(), profile.maxDepth(),
+                profile.permissions());
     }
 }

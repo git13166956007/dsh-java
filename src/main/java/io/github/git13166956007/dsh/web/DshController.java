@@ -668,7 +668,7 @@ public final class DshController {
             return subAgentProfileRegistry.create(request.name(), AgentMode.parse(request.mode()), request.modelId(),
                     request.systemPrompt(), request.maxTurns(), request.allowedToolNames(), request.skillIds(), request.enabled(),
                     request.maxToolCalls(), request.timeoutSeconds(), request.maxDepth(), request.priority(),
-                    request.costWeight(), request.maxConcurrentRuns(), request.capabilityTags());
+                    request.costWeight(), request.maxConcurrentRuns(), request.capabilityTags(), request.permissions());
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
         }
@@ -680,7 +680,8 @@ public final class DshController {
             return subAgentProfileRegistry.update(id, request.name(), request.mode() == null ? null : AgentMode.parse(request.mode()),
                     request.modelId(), request.systemPrompt(), request.maxTurns(), request.allowedToolNames(),
                     request.skillIds(), request.enabled(), request.maxToolCalls(), request.timeoutSeconds(), request.maxDepth(),
-                    request.priority(), request.costWeight(), request.maxConcurrentRuns(), request.capabilityTags());
+                    request.priority(), request.costWeight(), request.maxConcurrentRuns(), request.capabilityTags(),
+                    request.permissions());
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, exception.getMessage(), exception);
         }
@@ -1410,7 +1411,8 @@ public final class DshController {
                                          Integer maxTurns, java.util.List<String> allowedToolNames,
                                          java.util.List<String> skillIds, Boolean enabled, Integer maxToolCalls,
                                          Integer timeoutSeconds, Integer maxDepth, Integer priority, Double costWeight,
-                                         Integer maxConcurrentRuns, java.util.List<String> capabilityTags) {
+                                         Integer maxConcurrentRuns, java.util.List<String> capabilityTags,
+                                         java.util.Map<String, String> permissions) {
     }
 
     public record SubAgentRunRequest(String prompt, String apiKey) {

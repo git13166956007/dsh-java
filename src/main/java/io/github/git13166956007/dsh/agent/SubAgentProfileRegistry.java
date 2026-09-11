@@ -70,7 +70,7 @@ public final class SubAgentProfileRegistry {
                                                 Integer maxTurns, List<String> allowedToolNames, List<String> skillIds,
                                                 Boolean enabled) {
         return create(name, mode, modelId, systemPrompt, maxTurns, allowedToolNames, skillIds, enabled,
-                64, 300, 4, 50, 1.0, 4, List.of());
+                64, 300, 4, 50, 1.0, 4, List.of(), Map.of());
     }
 
     public synchronized SubAgentProfile create(String name, AgentMode mode, String modelId, String systemPrompt,
@@ -78,7 +78,7 @@ public final class SubAgentProfileRegistry {
                                                 Boolean enabled, Integer maxToolCalls, Integer timeoutSeconds,
                                                 Integer maxDepth) {
         return create(name, mode, modelId, systemPrompt, maxTurns, allowedToolNames, skillIds, enabled,
-                maxToolCalls, timeoutSeconds, maxDepth, 50, 1.0, 4, List.of());
+                maxToolCalls, timeoutSeconds, maxDepth, 50, 1.0, 4, List.of(), Map.of());
     }
 
     public synchronized SubAgentProfile create(String name, AgentMode mode, String modelId, String systemPrompt,
@@ -86,6 +86,16 @@ public final class SubAgentProfileRegistry {
                                                 Boolean enabled, Integer maxToolCalls, Integer timeoutSeconds,
                                                 Integer maxDepth, Integer priority, Double costWeight,
                                                 Integer maxConcurrentRuns, List<String> capabilityTags) {
+        return create(name, mode, modelId, systemPrompt, maxTurns, allowedToolNames, skillIds, enabled,
+                maxToolCalls, timeoutSeconds, maxDepth, priority, costWeight, maxConcurrentRuns, capabilityTags, Map.of());
+    }
+
+    public synchronized SubAgentProfile create(String name, AgentMode mode, String modelId, String systemPrompt,
+                                                Integer maxTurns, List<String> allowedToolNames, List<String> skillIds,
+                                                Boolean enabled, Integer maxToolCalls, Integer timeoutSeconds,
+                                                Integer maxDepth, Integer priority, Double costWeight,
+                                                Integer maxConcurrentRuns, List<String> capabilityTags,
+                                                Map<String, String> permissions) {
         SubAgentProfileData profile = new SubAgentProfileData(UUID.randomUUID().toString(), required(name, "name"),
                 mode == null ? AgentMode.CHAT : mode, blankToNull(modelId), systemPrompt == null ? "" : systemPrompt.trim(),
                 validMaxTurns(maxTurns == null ? defaultMaxTurns : maxTurns), normalizeList(allowedToolNames, "tool"),
@@ -95,7 +105,7 @@ public final class SubAgentProfileRegistry {
                 validMaxDepth(maxDepth == null ? 4 : maxDepth), validPriority(priority == null ? 50 : priority),
                 validCostWeight(costWeight == null ? 1.0 : costWeight),
                 validMaxConcurrentRuns(maxConcurrentRuns == null ? 4 : maxConcurrentRuns),
-                normalizeList(capabilityTags, "capability"));
+                normalizeList(capabilityTags, "capability"), normalizePermissions(permissions));
         save(profile);
         return SubAgentProfile.from(profile);
     }
@@ -121,6 +131,16 @@ public final class SubAgentProfileRegistry {
                                                 Integer timeoutSeconds, Integer maxDepth, Integer priority,
                                                 Double costWeight, Integer maxConcurrentRuns,
                                                 List<String> capabilityTags) {
+        return update(id, name, mode, modelId, systemPrompt, maxTurns, allowedToolNames, skillIds, enabled,
+                maxToolCalls, timeoutSeconds, maxDepth, priority, costWeight, maxConcurrentRuns, capabilityTags, null);
+    }
+
+    public synchronized SubAgentProfile update(String id, String name, AgentMode mode, String modelId,
+                                                String systemPrompt, Integer maxTurns, List<String> allowedToolNames,
+                                                List<String> skillIds, Boolean enabled, Integer maxToolCalls,
+                                                Integer timeoutSeconds, Integer maxDepth, Integer priority,
+                                                Double costWeight, Integer maxConcurrentRuns,
+                                                List<String> capabilityTags, Map<String, String> permissions) {
         SubAgentProfileData current = resolveExisting(id);
         SubAgentProfileData updated = new SubAgentProfileData(id, name == null ? current.name() : required(name, "name"),
                 mode == null ? current.mode() : mode, modelId == null ? current.modelId() : blankToNull(modelId),
@@ -135,7 +155,8 @@ public final class SubAgentProfileRegistry {
                 priority == null ? current.priority() : validPriority(priority),
                 costWeight == null ? current.costWeight() : validCostWeight(costWeight),
                 maxConcurrentRuns == null ? current.maxConcurrentRuns() : validMaxConcurrentRuns(maxConcurrentRuns),
-                capabilityTags == null ? current.capabilityTags() : normalizeList(capabilityTags, "capability"));
+                capabilityTags == null ? current.capabilityTags() : normalizeList(capabilityTags, "capability"),
+                permissions == null ? current.permissions() : normalizePermissions(permissions));
         save(updated);
         return SubAgentProfile.from(updated);
     }
@@ -174,6 +195,17 @@ public final class SubAgentProfileRegistry {
             if (!result.contains(normalized)) result.add(normalized);
         }
         return List.copyOf(result);
+    }
+
+    private static Map<String, String> normalizePermissions(Map<String, String> values) {
+        if (values == null) return Map.of();
+        Map<String, String> result = new LinkedHashMap<String, String>();
+        for (Map.Entry<String, String> entry : values.entrySet()) {
+            String key = blankToNull(entry.getKey());
+            if (key == null) throw new IllegalArgumentException("permission name must not be blank");
+            result.put(key, entry.getValue() == null ? "" : entry.getValue().trim());
+        }
+        return Map.copyOf(result);
     }
 
     private static int validMaxTurns(int value) {
