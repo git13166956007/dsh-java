@@ -1,0 +1,51 @@
+src/main/java/io/github/git13166956007/dsh/context/InMemoryConversationStore.java
+  s_3227672880e7fb::t_0d35f21d405f0f 88
+src/main/java/io/github/git13166956007/dsh/mcp/MariaDbMcpHealthStore.java
+  s_19099f9e5f1ad5::t_b5818bace86ad0 68-94
+src/main/java/io/github/git13166956007/dsh/mcp/McpClientManager.java
+  s_19099f9e5f1ad5::t_92b6a465b1b0af 553,562-563
+src/main/java/io/github/git13166956007/dsh/mcp/McpHealthStore.java
+  s_19099f9e5f1ad5::t_53e930ce7fa11d 3-4,11-25
+src/main/java/io/github/git13166956007/dsh/model/MariaDbModelHealthStore.java
+  s_19099f9e5f1ad5::t_54aa9a59e2fafe 67-93
+src/main/java/io/github/git13166956007/dsh/model/ModelHealthStore.java
+  s_19099f9e5f1ad5::t_f298ab387033a5 3-4,11-23
+src/main/java/io/github/git13166956007/dsh/model/ModelRegistry.java
+  s_19099f9e5f1ad5::t_05496ad14ae9b9 483-484
+src/main/java/io/github/git13166956007/dsh/session/event/InMemorySessionEventLog.java
+  s_3227672880e7fb::t_7e9f7c2464e8aa 29-35
+src/main/java/io/github/git13166956007/dsh/tool/WorkspaceProcessToolProvider.java
+  s_19099f9e5f1ad5::t_1177b6a1389d18 95-98,100-118,140-146
+src/main/java/io/github/git13166956007/dsh/tool/WorkspaceToolProvider.java
+  s_3227672880e7fb::t_9ce3cbe3bf19d4 7,12-13,92-98,114-119
+src/test/java/io/github/git13166956007/dsh/context/InMemoryConversationStoreTest.java
+  s_3227672880e7fb::t_50745612932ed9 30-38
+src/test/java/io/github/git13166956007/dsh/session/event/SessionEventProjectionTest.java
+  s_3227672880e7fb::t_e49d037b948b75 8,100-116
+src/test/java/io/github/git13166956007/dsh/tool/WorkspaceProcessToolProviderTest.java
+  s_19099f9e5f1ad5::t_82f7e2880fd97b 45-58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d962a1a9a07c872f75c585f5ad7cf2e737fd6211",
+  "prompts": {},
+  "sessions": {
+    "s_19099f9e5f1ad5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08f61-c59a-7bc2-9021-8292344702c3",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "sherlock <sherlock09271207@gmail.com>"
+    },
+    "s_3227672880e7fb": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08fc3-3124-75e1-ba4f-77afbcc334df",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
