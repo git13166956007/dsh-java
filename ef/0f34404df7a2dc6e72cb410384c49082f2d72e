@@ -1,0 +1,29 @@
+src/main/java/io/github/git13166956007/dsh/core/profile/ProfilePatch.java
+  s_5f0247805a0da5::t_ff39f1fb584a1f 1-24
+src/main/java/io/github/git13166956007/dsh/core/profile/RuntimeProfile.java
+  s_5f0247805a0da5::t_2ad5eca05d6ab9 1-26
+src/main/java/io/github/git13166956007/dsh/event/EventHandler.java
+  s_5f0247805a0da5::t_8f689983f71ed6 1-6
+src/main/java/io/github/git13166956007/dsh/event/EventKey.java
+  s_5f0247805a0da5::t_683f7ceddfd499 1-13
+src/main/java/io/github/git13166956007/dsh/event/EventNext.java
+  s_5f0247805a0da5::t_081dc3b31fc590 1-6
+src/main/java/io/github/git13166956007/dsh/event/EventOutcome.java
+  s_5f0247805a0da5::t_1ce742e3718721 1-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "ef0f34404df7a2dc6e72cb410384c49082f2d72e",
+  "prompts": {},
+  "sessions": {
+    "s_5f0247805a0da5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a08906-b39d-77f1-894a-72f28e58decc",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
