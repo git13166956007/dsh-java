@@ -94,19 +94,40 @@ public class DshRuntimeConfiguration {
                                 AgentProfileRegistry agentProfileRegistry,
                                 SubAgentProfileRegistry subAgentProfileRegistry, MemoryManager memoryManager,
                                 ContextManager contextManager, RunManager runManager, WorkspaceRegistry workspaces,
+                                ConversationStore conversationStore, AgentLoop agentLoop, ChatModel chatModel,
                                 Environment environment) {
         DshRuntime runtime = new DshRuntime();
-        runtime.provide(DshServices.TOOLS, toolRegistry);
-        runtime.provide(DshServices.MODELS, modelRegistry);
-        runtime.provide(DshServices.MCP_SERVERS, mcpServerRegistry);
-        runtime.provide(DshServices.SKILLS, skillRegistry);
-        runtime.provide(DshServices.AGENTS, agentProfileRegistry);
-        runtime.provide(DshServices.SUB_AGENTS, subAgentProfileRegistry);
-        runtime.provide(DshServices.MEMORIES, memoryManager);
-        runtime.provide(DshServices.CONTEXT, contextManager);
-        runtime.provide(DshServices.RUNS, runManager);
-        runtime.provide(DshServices.WORKSPACES, workspaces);
         try {
+            runtime.install(new io.github.git13166956007.dsh.plugin.RuntimeServicePlugin<>(
+                    "core.events", DshServices.EVENTS, runtime.events()));
+            runtime.install(new io.github.git13166956007.dsh.plugin.RuntimeServicePlugin<>(
+                    "core.conversations", DshServices.CONVERSATIONS, conversationStore));
+            runtime.install(new io.github.git13166956007.dsh.plugin.RuntimeServicePlugin<>(
+                    "core.tools", DshServices.TOOLS, toolRegistry));
+            runtime.install(new io.github.git13166956007.dsh.plugin.RuntimeServicePlugin<>(
+                    "core.models", DshServices.MODELS, modelRegistry));
+            runtime.install(new io.github.git13166956007.dsh.plugin.RuntimeServicePlugin<>(
+                    "core.chat-model", DshServices.CHAT_MODEL, chatModel, "core.models"));
+            runtime.install(new io.github.git13166956007.dsh.plugin.RuntimeServicePlugin<>(
+                    "core.mcp", DshServices.MCP_SERVERS, mcpServerRegistry, "core.tools"));
+            runtime.install(new io.github.git13166956007.dsh.plugin.RuntimeServicePlugin<>(
+                    "core.skills", DshServices.SKILLS, skillRegistry));
+            runtime.install(new io.github.git13166956007.dsh.plugin.RuntimeServicePlugin<>(
+                    "core.agents", DshServices.AGENTS, agentProfileRegistry));
+            runtime.install(new io.github.git13166956007.dsh.plugin.RuntimeServicePlugin<>(
+                    "core.sub-agents", DshServices.SUB_AGENTS, subAgentProfileRegistry, "core.agents"));
+            runtime.install(new io.github.git13166956007.dsh.plugin.RuntimeServicePlugin<>(
+                    "core.memories", DshServices.MEMORIES, memoryManager));
+            runtime.install(new io.github.git13166956007.dsh.plugin.RuntimeServicePlugin<>(
+                    "core.context", DshServices.CONTEXT, contextManager, "core.conversations"));
+            runtime.install(new io.github.git13166956007.dsh.plugin.RuntimeServicePlugin<>(
+                    "core.runs", DshServices.RUNS, runManager));
+            runtime.install(new io.github.git13166956007.dsh.plugin.RuntimeServicePlugin<>(
+                    "core.workspaces", DshServices.WORKSPACES, workspaces));
+            runtime.install(new io.github.git13166956007.dsh.plugin.RuntimeServicePlugin<>(
+                    "core.agent-loop", DshServices.AGENT_LOOP, agentLoop,
+                    "core.tools", "core.models", "core.context", "core.runs"));
+            agentLoop.bindRuntime(runtime.scope());
             runtime.loadPlugins(Path.of(environment.getProperty("dsh.plugins.directory", "plugins")));
         } catch (Exception exception) {
             throw new IllegalStateException("failed to load DSH plugins", exception);

@@ -2,6 +2,7 @@ package io.github.git13166956007.dsh.agent;
 
 import java.util.Collections;
 import java.util.LinkedHashSet;
+import java.util.Map;
 import java.util.Set;
 
 public record AgentExecutionOptions(
@@ -13,7 +14,8 @@ public record AgentExecutionOptions(
         Set<String> skillIds,
         int maxToolCalls,
         int timeoutSeconds,
-        int maxDepth) {
+        int maxDepth,
+        Map<String, String> permissions) {
     public AgentExecutionOptions(String modelId, AgentMode mode, String systemPrompt, int maxTurns,
                                  Set<String> allowedToolNames, Set<String> skillIds) {
         this(modelId, mode, systemPrompt, maxTurns, allowedToolNames, skillIds, 64, 300, 4);
@@ -28,5 +30,13 @@ public record AgentExecutionOptions(
         allowedToolNames = allowedToolNames == null ? null
                 : Collections.unmodifiableSet(new LinkedHashSet<String>(allowedToolNames));
         skillIds = skillIds == null ? null : Collections.unmodifiableSet(new LinkedHashSet<String>(skillIds));
+        permissions = permissions == null ? Map.of() : Map.copyOf(permissions);
+    }
+
+    public AgentExecutionOptions(String modelId, AgentMode mode, String systemPrompt, int maxTurns,
+                                 Set<String> allowedToolNames, Set<String> skillIds, int maxToolCalls,
+                                 int timeoutSeconds, int maxDepth) {
+        this(modelId, mode, systemPrompt, maxTurns, allowedToolNames, skillIds, maxToolCalls,
+                timeoutSeconds, maxDepth, Map.of());
     }
 }

@@ -10,6 +10,11 @@ import io.github.git13166956007.dsh.run.RunSpec;
 import io.github.git13166956007.dsh.context.ContextManager;
 import io.github.git13166956007.dsh.context.ContextRequest;
 import io.github.git13166956007.dsh.context.ContextSnapshot;
+import io.github.git13166956007.dsh.core.profile.ProfilePatch;
+import io.github.git13166956007.dsh.core.scope.Scope;
+import io.github.git13166956007.dsh.event.EventBus;
+import io.github.git13166956007.dsh.plugin.DshServices;
+import io.github.git13166956007.dsh.service.ServiceKey;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +48,8 @@ public final class AgentLoop implements AutoCloseable {
     private final Map<String, Future<?>> activeRuns = new ConcurrentHashMap<String, Future<?>>();
     private final Map<String, Thread> activeThreads = new ConcurrentHashMap<String, Thread>();
     private final java.util.Set<String> cancelledRuns = ConcurrentHashMap.newKeySet();
+    private volatile Scope runtimeScope;
+    private final ThreadLocal<Scope> executionScopes = new ThreadLocal<Scope>();
 
     public AgentLoop(ChatModel model, ToolRegistry tools, int maxTurns) {
         this(model, tools, null, null, null, null, null, null, maxTurns);
@@ -94,6 +101,11 @@ public final class AgentLoop implements AutoCloseable {
         this.subAgents = subAgents;
     }
 
+    /** Binds the loop to the runtime scope after Spring/runtime bootstrap. */
+    public void bindRuntime(Scope scope) {
+        this.runtimeScope = scope;
+    }
+
     public String run(String prompt) throws Exception {
         return runDetailed(prompt).answer();
     }
@@ -143,7 +155,7 @@ public final class AgentLoop implements AutoCloseable {
         return runResolved(prompt, apiKey, history, new RunOptions(executionOptions.modelId(), executionOptions.mode(),
                 executionOptions.maxTurns(), executionOptions.systemPrompt(), executionOptions.allowedToolNames(),
                 executionOptions.skillIds(), executionOptions.maxToolCalls(), executionOptions.timeoutSeconds(),
-                executionOptions.maxDepth(), null, null, null), AgentRunContext.standalone());
+                executionOptions.maxDepth(), null, null, null, executionOptions.permissions()), AgentRunContext.standalone());
     }
 
     public AgentRunResult runDetailed(String prompt, String apiKey, List<ChatMessage> history,
@@ -156,7 +168,7 @@ public final class AgentLoop implements AutoCloseable {
     public AgentRunHandle runAsync(String prompt, String apiKey, List<ChatMessage> history,
                                    AgentExecutionOptions executionOptions, AgentRunContext context) throws Exception {
         if (executionOptions == null) throw new IllegalArgumentException("executionOptions must not be null");
-        if (runs == null) throw new IllegalStateException("async agent runs require a RunManager");
+        if (runManager() == null) throw new IllegalStateException("async agent runs require a RunManager");
         RunOptions options = runOptions(executionOptions, context);
         validatePrompt(prompt);
         String runId = beginRun(options, context);
@@ -167,8 +179,8 @@ public final class AgentLoop implements AutoCloseable {
     public AgentRunHandle resumeAsync(String runId, String prompt, String apiKey, List<ChatMessage> history,
                                       AgentExecutionOptions executionOptions, AgentRunContext context) throws Exception {
         if (executionOptions == null) throw new IllegalArgumentException("executionOptions must not be null");
-        if (runs == null) throw new IllegalStateException("async agent runs require a RunManager");
-        Run run = runs.find(runId);
+        if (runManager() == null) throw new IllegalStateException("async agent runs require a RunManager");
+        Run run = runManager().find(runId);
         if (run == null) throw new IllegalArgumentException("unknown run: " + runId);
         if (run.status() != io.github.git13166956007.dsh.run.RunStatus.RUNNING) {
             throw new IllegalStateException("run is not recoverable: " + runId);
@@ -208,10 +220,14 @@ public final class AgentLoop implements AutoCloseable {
                                        RunOptions options, AgentRunContext context, String runId) throws Exception {
         if (runId != null) activeThreads.put(runId, Thread.currentThread());
         try {
+            Scope scope = openExecutionScope(context, options, runId);
+            executionScopes.set(scope);
+            emitRunEvent(runId, options, AgentEvents.Phase.STARTED, null);
             List<ChatMessage> messages = new ArrayList<ChatMessage>();
             List<ChatMessage> conversationMessages = new ArrayList<ChatMessage>();
             List<AgentTraceEvent> trace = new ArrayList<AgentTraceEvent>();
             ExecutionBudget budget = new ExecutionBudget(options);
+            ChatModel activeModel = model();
             messages.add(ChatMessage.system(systemPrompt(options, prompt, context)));
             messages.addAll(history);
             messages.add(ChatMessage.user(prompt));
@@ -219,7 +235,8 @@ public final class AgentLoop implements AutoCloseable {
 
             for (int turn = 0; turn < options.maxTurns(); turn++) {
                 budget.check();
-                ModelResponse response = model.complete(messages, definitions, apiKey, options.modelId());
+                emitRunEvent(runId, options, AgentEvents.Phase.MODEL_REQUESTED, "turn=" + turn);
+                ModelResponse response = complete(activeModel, runId, messages, definitions, apiKey, options.modelId());
                 recordEvent(runId, "model_response", response.content());
                 ChatMessage assistantMessage = ChatMessage.assistant(response.content(), response.toolCalls(),
                         response.reasoningContent());
@@ -231,6 +248,7 @@ public final class AgentLoop implements AutoCloseable {
                 if (response.toolCalls().isEmpty()) {
                     String answer = response.content() == null ? "" : response.content();
                     finishRun(runId, answer);
+                    emitRunEvent(runId, options, AgentEvents.Phase.COMPLETED, answer);
                     return new AgentRunResult(answer, trace, turn + 1, runId, null, conversationMessages);
                 }
 
@@ -239,6 +257,8 @@ public final class AgentLoop implements AutoCloseable {
                     recordEvent(runId, "tool_call", call.name() + " " + call.arguments());
                     String result;
                     try {
+                        call = rewriteToolCall(runId, call);
+                        emitRunEvent(runId, options, AgentEvents.Phase.TOOL_REQUESTED, call.name());
                         result = executeTool(call, options, apiKey, runId, budget);
                     } catch (SubAgentApprovalRequiredException exception) {
                         PendingToolApproval approval = new PendingToolApproval(call.id(), call.name(), call.arguments(),
@@ -251,14 +271,18 @@ public final class AgentLoop implements AutoCloseable {
                         String approvalRunId = pauseForApproval(runId, messages, trace, turn + 1, options, apiKey,
                                 definitions, budget, approval);
                         return new AgentRunResult("", trace, turn + 1, approvalRunId, approval, conversationMessages);
+                    } catch (EventBus.EventRejectedException exception) {
+                        throw exception;
                     } catch (Exception exception) {
                         result = "Tool execution failed: " + exception.getMessage();
                     }
+                    result = rewriteToolResult(runId, call, result);
                     recordEvent(runId, "tool_result", call.name() + " " + result);
                     trace.add(AgentTraceEvent.tool(call.name(), call.arguments(), result));
                     ChatMessage toolMessage = ChatMessage.tool(call.id(), result);
                     messages.add(toolMessage);
                     conversationMessages.add(toolMessage);
+                    emitRunEvent(runId, options, AgentEvents.Phase.TOOL_COMPLETED, call.name());
                 }
             }
 
@@ -273,9 +297,13 @@ public final class AgentLoop implements AutoCloseable {
                 throw exception;
             }
             failRun(runId, exception);
+            emitRunEventUnchecked(runId, options, AgentEvents.Phase.FAILED, exception.getMessage());
             throw exception;
         } finally {
             if (runId != null) activeThreads.remove(runId, Thread.currentThread());
+            Scope scope = executionScopes.get();
+            executionScopes.remove();
+            if (scope != null) scope.close();
         }
     }
 
@@ -290,10 +318,117 @@ public final class AgentLoop implements AutoCloseable {
                 || (response.reasoningContent() != null && !response.reasoningContent().isEmpty()));
     }
 
+    private Scope openExecutionScope(AgentRunContext context, RunOptions options, String runId) {
+        if (runtimeScope == null) return null;
+        String id = "run:" + (runId == null ? UUID.randomUUID() : runId);
+        Scope scope = runtimeScope.child(id);
+        if (options != null) {
+            scope.withProfile(new ProfilePatch(options.modelId(), options.systemPrompt(),
+                    options.allowedToolNames(), options.skillIds(), options.permissions())
+                    .apply(scope.profile(), id));
+        }
+        return scope;
+    }
+
+    private <T> T resolve(ServiceKey<T> key, T fallback) {
+        Scope current = executionScopes.get();
+        if (current != null) {
+            T local = current.local(key);
+            if (local != null) return local;
+            try { return current.resolve(key); } catch (IllegalStateException ignored) { }
+        }
+        if (runtimeScope != null) {
+            try { return runtimeScope.resolve(key); } catch (IllegalStateException ignored) { }
+        }
+        return fallback;
+    }
+
+    private ChatModel model() { return resolve(DshServices.CHAT_MODEL, model); }
+
+    private ToolRegistry toolRegistry() { return resolve(DshServices.TOOLS, tools); }
+
+    private SkillRegistry skillRegistry() { return resolve(DshServices.SKILLS, skills); }
+
+    private AgentProfileRegistry profileRegistry() { return resolve(DshServices.AGENTS, profiles); }
+
+    private MemoryManager memoryManager() { return resolve(DshServices.MEMORIES, memories); }
+
+    private RunManager runManager() { return resolve(DshServices.RUNS, runs); }
+
+    private ContextManager contextManager() { return resolve(DshServices.CONTEXT, contexts); }
+
+    private EventBus eventBus() { return resolve(DshServices.EVENTS, null); }
+
+    private void emitRunEvent(String runId, RunOptions options, AgentEvents.Phase phase, String detail)
+            throws Exception {
+        EventBus bus = eventBus();
+        if (bus != null) bus.rewrite(AgentEvents.RUN,
+                new AgentEvents.RunEvent(runId, options == null ? null : options.agentId(), phase, detail));
+    }
+
+    private void emitRunEventUnchecked(String runId, RunOptions options, AgentEvents.Phase phase, String detail) {
+        try { emitRunEvent(runId, options, phase, detail); }
+        catch (Exception exception) { throw new IllegalStateException("agent lifecycle event rejected", exception); }
+    }
+
+    private ModelResponse complete(ChatModel activeModel, String runId, List<ChatMessage> messages,
+                                   List<ToolDefinition> definitions, String apiKey, String modelId) throws Exception {
+        EventBus bus = eventBus();
+        AgentEvents.ModelRequest request = new AgentEvents.ModelRequest(runId, messages, definitions, apiKey, modelId, false);
+        if (bus != null) request = bus.rewrite(AgentEvents.MODEL_REQUEST, request);
+        ModelResponse response = activeModel.complete(request.messages(), request.tools(), request.apiKey(), request.modelId());
+        if (bus != null) response = bus.rewrite(AgentEvents.MODEL_RESPONSE,
+                new AgentEvents.ModelResponseEvent(runId, response)).response();
+        return response;
+    }
+
+    private ModelResponse stream(ChatModel activeModel, String runId, List<ChatMessage> messages,
+                                 List<ToolDefinition> definitions, String apiKey, String modelId,
+                                 AgentStreamListener listener) throws Exception {
+        EventBus bus = eventBus();
+        AgentEvents.ModelRequest request = new AgentEvents.ModelRequest(runId, messages, definitions, apiKey, modelId, true);
+        if (bus != null) request = bus.rewrite(AgentEvents.MODEL_REQUEST, request);
+        ModelStreamListener streamListener = new ModelStreamListener() {
+            @Override public void onText(String delta) {
+                String value = rewriteDelta(runId, "text", delta);
+                listener.onText(value);
+            }
+            @Override public void onReasoning(String delta) {
+                String value = rewriteDelta(runId, "reasoning", delta);
+                listener.onReasoning(value);
+            }
+        };
+        ModelResponse response = activeModel.stream(request.messages(), request.tools(), request.apiKey(), request.modelId(), streamListener);
+        if (bus != null) response = bus.rewrite(AgentEvents.MODEL_RESPONSE,
+                new AgentEvents.ModelResponseEvent(runId, response)).response();
+        return response;
+    }
+
+    private String rewriteDelta(String runId, String kind, String delta) {
+        try {
+            EventBus bus = eventBus();
+            if (bus == null) return delta;
+            return bus.rewrite(AgentEvents.STREAM_DELTA, new AgentEvents.StreamDelta(runId, kind, delta)).delta();
+        } catch (Exception exception) {
+            throw new IllegalStateException("model stream event rejected", exception);
+        }
+    }
+
+    private ToolCall rewriteToolCall(String runId, ToolCall call) throws Exception {
+        EventBus bus = eventBus();
+        return bus == null ? call : bus.rewrite(AgentEvents.TOOL_CALL, new AgentEvents.ToolCallEvent(runId, call)).call();
+    }
+
+    private String rewriteToolResult(String runId, ToolCall call, String result) throws Exception {
+        EventBus bus = eventBus();
+        return bus == null ? result : bus.rewrite(AgentEvents.TOOL_RESULT,
+                new AgentEvents.ToolResultEvent(runId, call, result)).result();
+    }
+
     private static RunOptions runOptions(AgentExecutionOptions options, AgentRunContext context) {
         return new RunOptions(options.modelId(), options.mode(), options.maxTurns(), options.systemPrompt(),
                 options.allowedToolNames(), options.skillIds(), options.maxToolCalls(), options.timeoutSeconds(),
-                options.maxDepth(), null, null, context == null ? null : context.agentId());
+                options.maxDepth(), null, null, context == null ? null : context.agentId(), options.permissions());
     }
 
     public AgentRunResult runStreaming(String prompt, String apiKey, AgentStreamListener listener) throws Exception {
@@ -337,10 +472,14 @@ public final class AgentLoop implements AutoCloseable {
         String runId = beginRun(options, context);
         if (runId != null) activeThreads.put(runId, Thread.currentThread());
         try {
+            Scope scope = openExecutionScope(context, options, runId);
+            executionScopes.set(scope);
+            emitRunEvent(runId, options, AgentEvents.Phase.STARTED, null);
             List<ChatMessage> messages = new ArrayList<ChatMessage>();
             List<ChatMessage> conversationMessages = new ArrayList<ChatMessage>();
             List<AgentTraceEvent> trace = new ArrayList<AgentTraceEvent>();
             ExecutionBudget budget = new ExecutionBudget(options);
+            ChatModel activeModel = model();
             messages.add(ChatMessage.system(systemPrompt(options, prompt, context)));
             messages.addAll(history);
             messages.add(ChatMessage.user(prompt));
@@ -348,19 +487,20 @@ public final class AgentLoop implements AutoCloseable {
 
             for (int turn = 0; turn < options.maxTurns(); turn++) {
                 budget.check();
-                ModelResponse response = model.stream(messages, definitions, apiKey, options.modelId(), new ModelStreamListener() {
-                    @Override
-                    public void onText(String delta) {
-                        recordEventUnchecked(runId, "model_delta", delta);
-                        listener.onText(delta);
-                    }
-
-                    @Override
-                    public void onReasoning(String delta) {
-                        recordEventUnchecked(runId, "reasoning_delta", delta);
-                        listener.onReasoning(delta);
-                    }
-                });
+                emitRunEvent(runId, options, AgentEvents.Phase.MODEL_REQUESTED, "turn=" + turn);
+                ModelResponse response = stream(activeModel, runId, messages, definitions, apiKey, options.modelId(),
+                        new AgentStreamListener() {
+                            @Override public void onText(String delta) {
+                                recordEventUnchecked(runId, "model_delta", delta);
+                                listener.onText(delta);
+                            }
+                            @Override public void onReasoning(String delta) {
+                                recordEventUnchecked(runId, "reasoning_delta", delta);
+                                listener.onReasoning(delta);
+                            }
+                            @Override public void onToolCall(ToolCall call) { }
+                            @Override public void onToolResult(AgentTraceEvent result) { }
+                        });
                 recordEvent(runId, "model_response", response.content());
                 ChatMessage assistantMessage = ChatMessage.assistant(response.content(), response.toolCalls(),
                         response.reasoningContent());
@@ -372,15 +512,18 @@ public final class AgentLoop implements AutoCloseable {
                 if (response.toolCalls().isEmpty()) {
                     String answer = response.content() == null ? "" : response.content();
                     finishRun(runId, answer);
+                    emitRunEvent(runId, options, AgentEvents.Phase.COMPLETED, answer);
                     return new AgentRunResult(answer, trace, turn + 1, runId, null, conversationMessages);
                 }
 
                 for (ToolCall call : response.toolCalls()) {
                     budget.beforeToolCall();
                     recordEvent(runId, "tool_call", call.name() + " " + call.arguments());
-                    listener.onToolCall(call);
                     String result;
                     try {
+                        call = rewriteToolCall(runId, call);
+                        emitRunEvent(runId, options, AgentEvents.Phase.TOOL_REQUESTED, call.name());
+                        listener.onToolCall(call);
                         result = executeTool(call, options, apiKey, runId, budget);
                     } catch (SubAgentApprovalRequiredException exception) {
                         PendingToolApproval approval = new PendingToolApproval(call.id(), call.name(), call.arguments(),
@@ -393,13 +536,17 @@ public final class AgentLoop implements AutoCloseable {
                         String approvalRunId = pauseForApproval(runId, messages, trace, turn + 1, options, apiKey,
                                 definitions, budget, approval);
                         return new AgentRunResult("", trace, turn + 1, approvalRunId, approval, conversationMessages);
+                    } catch (EventBus.EventRejectedException exception) {
+                        throw exception;
                     } catch (Exception exception) {
                         result = "Tool execution failed: " + exception.getMessage();
                     }
+                    result = rewriteToolResult(runId, call, result);
                     AgentTraceEvent event = AgentTraceEvent.tool(call.name(), call.arguments(), result);
                     recordEvent(runId, "tool_result", call.name() + " " + result);
                     trace.add(event);
                     listener.onToolResult(event);
+                    emitRunEvent(runId, options, AgentEvents.Phase.TOOL_COMPLETED, call.name());
                     ChatMessage toolMessage = ChatMessage.tool(call.id(), result);
                     messages.add(toolMessage);
                     conversationMessages.add(toolMessage);
@@ -417,9 +564,13 @@ public final class AgentLoop implements AutoCloseable {
                 throw exception;
             }
             failRun(runId, exception);
+            emitRunEventUnchecked(runId, options, AgentEvents.Phase.FAILED, exception.getMessage());
             throw exception;
         } finally {
             if (runId != null) activeThreads.remove(runId, Thread.currentThread());
+            Scope scope = executionScopes.get();
+            executionScopes.remove();
+            if (scope != null) scope.close();
         }
     }
 
@@ -436,9 +587,9 @@ public final class AgentLoop implements AutoCloseable {
         if (effectiveApiKey != null) pending.apiKey = effectiveApiKey;
         try {
             deleteContinuation(runId);
-            if (runs != null) {
-                if (runs.find(runId) == null) throw new IllegalArgumentException("unknown run: " + runId);
-                runs.resume(runId);
+            if (runManager() != null) {
+                if (runManager().find(runId) == null) throw new IllegalArgumentException("unknown run: " + runId);
+                runManager().resume(runId);
                 recordEvent(runId, approved ? "tool_approval_granted" : "tool_approval_denied",
                         pending.approval.toolName());
             }
@@ -459,7 +610,7 @@ public final class AgentLoop implements AutoCloseable {
             } else {
                 pending.budget.check();
                 try {
-                    result = tools.executeApproved(pending.approval.toolName(), pending.approval.arguments(),
+                    result = toolRegistry().executeApproved(pending.approval.toolName(), pending.approval.arguments(),
                             pending.options.allowedToolNames());
                 } catch (Exception exception) {
                     result = "Tool execution failed: " + exception.getMessage();
@@ -506,10 +657,26 @@ public final class AgentLoop implements AutoCloseable {
     }
 
     private AgentRunResult continueDetailed(PendingExecution pending, List<ChatMessage> conversationMessages) throws Exception {
+        Scope existing = executionScopes.get();
+        if (existing == null && runtimeScope != null) {
+            Scope scope = openExecutionScope(AgentRunContext.standalone(), pending.options, pending.runId);
+            executionScopes.set(scope);
+            try {
+                return continueDetailedInScope(pending, conversationMessages);
+            } finally {
+                executionScopes.remove();
+                scope.close();
+            }
+        }
+        return continueDetailedInScope(pending, conversationMessages);
+    }
+
+    private AgentRunResult continueDetailedInScope(PendingExecution pending, List<ChatMessage> conversationMessages) throws Exception {
         for (int turn = pending.nextTurn; turn < pending.options.maxTurns(); turn++) {
             pending.budget.check();
-            ModelResponse response = model.complete(pending.messages, pending.definitions, pending.apiKey,
-                    pending.options.modelId());
+            emitRunEvent(pending.runId, pending.options, AgentEvents.Phase.MODEL_REQUESTED, "turn=" + turn);
+            ModelResponse response = complete(model(), pending.runId, pending.messages, pending.definitions,
+                    pending.apiKey, pending.options.modelId());
             recordEvent(pending.runId, "model_response", response.content());
             ChatMessage assistantMessage = ChatMessage.assistant(response.content(), response.toolCalls(),
                     response.reasoningContent());
@@ -521,6 +688,7 @@ public final class AgentLoop implements AutoCloseable {
             if (response.toolCalls().isEmpty()) {
                 String answer = response.content() == null ? "" : response.content();
                 finishRun(pending.runId, answer);
+                emitRunEvent(pending.runId, pending.options, AgentEvents.Phase.COMPLETED, answer);
                 return new AgentRunResult(answer, pending.trace, turn + 1, pending.runId, null, conversationMessages);
             }
             for (ToolCall call : response.toolCalls()) {
@@ -528,6 +696,8 @@ public final class AgentLoop implements AutoCloseable {
                 recordEvent(pending.runId, "tool_call", call.name() + " " + call.arguments());
                 String result;
                 try {
+                    call = rewriteToolCall(pending.runId, call);
+                    emitRunEvent(pending.runId, pending.options, AgentEvents.Phase.TOOL_REQUESTED, call.name());
                     result = executeTool(call, pending.options, pending.apiKey, pending.runId, pending.budget);
                 } catch (SubAgentApprovalRequiredException exception) {
                     PendingToolApproval approval = new PendingToolApproval(call.id(), call.name(), call.arguments(),
@@ -540,14 +710,18 @@ public final class AgentLoop implements AutoCloseable {
                     pauseForApproval(pending.runId, pending.messages, pending.trace, turn + 1, pending.options,
                             pending.apiKey, pending.definitions, pending.budget, approval);
                     return new AgentRunResult("", pending.trace, turn + 1, pending.runId, approval, conversationMessages);
+                } catch (EventBus.EventRejectedException exception) {
+                    throw exception;
                 } catch (Exception exception) {
                     result = "Tool execution failed: " + exception.getMessage();
                 }
+                result = rewriteToolResult(pending.runId, call, result);
                 recordEvent(pending.runId, "tool_result", call.name() + " " + result);
                 pending.trace.add(AgentTraceEvent.tool(call.name(), call.arguments(), result));
                 ChatMessage toolMessage = ChatMessage.tool(call.id(), result);
                 pending.messages.add(toolMessage);
                 conversationMessages.add(toolMessage);
+                emitRunEvent(pending.runId, pending.options, AgentEvents.Phase.TOOL_COMPLETED, call.name());
             }
         }
         throw new IllegalStateException("agent exceeded max turns: " + pending.options.maxTurns());
@@ -562,15 +736,15 @@ public final class AgentLoop implements AutoCloseable {
                 definitions, budget, approval);
         pendingApprovals.put(actualRunId, pending);
         persistContinuation(pending);
-        if (runs != null) {
-            runs.waitForApproval(actualRunId, approval.toolName() + " " + approval.arguments());
+        if (runManager() != null) {
+            runManager().waitForApproval(actualRunId, approval.toolName() + " " + approval.arguments());
         }
         return actualRunId;
     }
 
     private List<ToolDefinition> definitions(RunOptions options) {
         if (!options.mode().toolsEnabled()) return List.of();
-        List<ToolDefinition> result = new ArrayList<ToolDefinition>(tools.definitions(options.allowedToolNames()));
+        List<ToolDefinition> result = new ArrayList<ToolDefinition>(toolRegistry().definitions(options.allowedToolNames()));
         if (delegationAllowed(options)) result.add(delegationDefinition());
         return result;
     }
@@ -606,7 +780,7 @@ public final class AgentLoop implements AutoCloseable {
     private String executeTool(ToolCall call, RunOptions options, String apiKey, String runId,
                                ExecutionBudget budget) throws Exception {
         if (!DELEGATE_TOOL.equals(call.name())) {
-            return tools.execute(call.name(), call.arguments(), options.allowedToolNames());
+            return toolRegistry().execute(call.name(), call.arguments(), options.allowedToolNames());
         }
         if (!delegationAllowed(options)) {
             throw new IllegalStateException("sub-agent delegation is not allowed for this agent");
@@ -627,7 +801,7 @@ public final class AgentLoop implements AutoCloseable {
         String normalizedTask = task.trim();
         recordEvent(runId, "sub_agent_started", normalizedProfileId + " " + normalizedTask);
         try {
-            if (runs != null && runId != null && runs.subAgentDepth(runId) + 1 > options.maxDepth()) {
+            if (runManager() != null && runId != null && runManager().subAgentDepth(runId) + 1 > options.maxDepth()) {
                 throw new AgentBudgetExceededException("maximum sub-agent depth exceeded: " + options.maxDepth());
             }
             AgentRunResult child = subAgents.runForExecution(normalizedTask, apiKey, normalizedProfileId,
@@ -665,19 +839,21 @@ public final class AgentLoop implements AutoCloseable {
 
     private RunOptions options(String modelId, String agentId, AgentMode modeOverride,
                                String memoryNamespace, String memorySubjectKey) {
-        if (profiles == null) {
+        AgentProfileRegistry profileRegistry = profileRegistry();
+        if (profileRegistry == null) {
             return new RunOptions(blankToNull(modelId), modeOverride == null ? AgentMode.CHAT : modeOverride,
-                    maxTurns, "", null, null, 64, 300, 4, memoryNamespace, memorySubjectKey, agentId);
+                    maxTurns, "", null, null, 64, 300, 4, memoryNamespace, memorySubjectKey, agentId, Map.of());
         }
-        AgentProfileData profile = profiles.resolve(agentId);
+        AgentProfileData profile = profileRegistry.resolve(agentId);
         return new RunOptions(blankToNull(modelId) == null ? profile.modelId() : blankToNull(modelId),
                 modeOverride == null ? profile.mode() : modeOverride, profile.maxTurns(), profile.systemPrompt(), null, null,
-                profile.maxToolCalls(), profile.timeoutSeconds(), profile.maxDepth(), memoryNamespace, memorySubjectKey, agentId);
+                profile.maxToolCalls(), profile.timeoutSeconds(), profile.maxDepth(), memoryNamespace, memorySubjectKey, agentId, Map.of());
     }
 
     private String systemPrompt(RunOptions options, String query, AgentRunContext context) throws Exception {
-        String base = skills == null ? "You are a helpful assistant. Use available tools when they are useful, then give a concise final answer."
-                : skills.systemPrompt(options.skillIds());
+        SkillRegistry skillRegistry = skillRegistry();
+        String base = skillRegistry == null ? "You are a helpful assistant. Use available tools when they are useful, then give a concise final answer."
+                : skillRegistry.systemPrompt(options.skillIds());
         String modeInstruction = switch (options.mode()) {
             case CHAT -> "Stay conversational and use tools only when they help answer the request.";
             case PLANNING -> "You are in planning mode. Do not execute tools. Produce a clear, ordered plan with assumptions, dependencies, and verification steps.";
@@ -686,15 +862,18 @@ public final class AgentLoop implements AutoCloseable {
         String custom = options.systemPrompt();
         String result = custom == null || custom.isBlank() ? base + "\n\n" + modeInstruction
                 : base + "\n\n" + modeInstruction + "\n\nProfile instructions:\n" + custom;
-        if (memories != null && options.memoryNamespace() != null && options.memorySubjectKey() != null) {
-            String memoryContext = memories.context(options.memoryNamespace(), options.memorySubjectKey(), query, 5);
+        MemoryManager memoryManager = memoryManager();
+        if (memoryManager != null && options.memoryNamespace() != null && options.memorySubjectKey() != null) {
+            String memoryContext = memoryManager.context(options.memoryNamespace(), options.memorySubjectKey(), query, 5);
             if (!memoryContext.isBlank()) result += "\n\n" + memoryContext;
         }
-        if (contexts != null) {
-            ContextSnapshot snapshot = contexts.collect(new ContextRequest(
+        ContextManager contextManager = contextManager();
+        if (contextManager != null) {
+            ChatModel activeModel = model();
+            ContextSnapshot snapshot = contextManager.collect(new ContextRequest(
                     context == null ? null : context.conversationId(), query, options.modelId(),
-                    options.agentId(), options.mode().name()), model.contextWindow(options.modelId()),
-                    model.tokenizer(options.modelId()));
+                    options.agentId(), options.mode().name()), activeModel.contextWindow(options.modelId()),
+                    activeModel.tokenizer(options.modelId()));
             String dynamic = snapshot.promptText();
             if (!dynamic.isBlank()) result += "\n\n" + dynamic;
         }
@@ -706,21 +885,23 @@ public final class AgentLoop implements AutoCloseable {
     }
 
     private String beginRun(RunOptions options, AgentRunContext context) throws Exception {
-        if (runs == null) return null;
+        RunManager runManager = runManager();
+        if (runManager == null) return null;
         AgentRunContext actual = context == null ? AgentRunContext.standalone() : context;
         if (actual.kind() == io.github.git13166956007.dsh.run.RunKind.SUB_AGENT) {
-            int depth = runs.subAgentDepth(actual.parentRunId()) + 1;
+            int depth = runManager.subAgentDepth(actual.parentRunId()) + 1;
             if (depth > options.maxDepth()) {
                 throw new AgentBudgetExceededException("maximum sub-agent depth exceeded: " + options.maxDepth());
             }
         }
-        return runs.start(new RunSpec(actual.parentRunId(), actual.kind(), actual.conversationId(), actual.planId(),
+        return runManager.start(new RunSpec(actual.parentRunId(), actual.kind(), actual.conversationId(), actual.planId(),
                 actual.stepId(), actual.agentId() == null ? options.agentId() : actual.agentId(), options.modelId()));
     }
 
     private void finishRun(String runId, String answer) throws Exception {
-        if (runId != null && runs != null) {
-            runs.complete(runId, answer);
+        RunManager runManager = runManager();
+        if (runId != null && runManager != null) {
+            runManager.complete(runId, answer);
             deleteContinuation(runId);
         }
         else if (runId != null) deleteContinuation(runId);
@@ -729,7 +910,8 @@ public final class AgentLoop implements AutoCloseable {
     private void failRun(String runId, Exception exception) {
         if (runId == null) return;
         try {
-            if (runs != null) runs.fail(runId, exception.getMessage());
+            RunManager runManager = runManager();
+            if (runManager != null) runManager.fail(runId, exception.getMessage());
             deleteContinuation(runId);
         } catch (Exception auditFailure) {
             exception.addSuppressed(auditFailure);
@@ -737,17 +919,19 @@ public final class AgentLoop implements AutoCloseable {
     }
 
     private void cancelRun(String runId) {
-        if (runId == null || runs == null) return;
+        RunManager runManager = runManager();
+        if (runId == null || runManager == null) return;
         try {
-            io.github.git13166956007.dsh.run.Run run = runs.find(runId);
-            if (run != null && !run.status().terminal()) runs.cancel(runId);
+            io.github.git13166956007.dsh.run.Run run = runManager.find(runId);
+            if (run != null && !run.status().terminal()) runManager.cancel(runId);
         } catch (Exception exception) {
             // Cancellation is best effort after the execution thread has been interrupted.
         }
     }
 
     private void recordEvent(String runId, String type, String payload) throws Exception {
-        if (runId != null && runs != null) runs.event(runId, type, payload);
+        RunManager runManager = runManager();
+        if (runId != null && runManager != null) runManager.event(runId, type, payload);
     }
 
     private void recordEventUnchecked(String runId, String type, String payload) {
@@ -818,6 +1002,8 @@ public final class AgentLoop implements AutoCloseable {
         node.put("maxToolCalls", options.maxToolCalls());
         node.put("timeoutSeconds", options.timeoutSeconds());
         node.put("maxDepth", options.maxDepth());
+        ObjectNode permissions = node.putObject("permissions");
+        options.permissions().forEach(permissions::put);
         putNullable(node, "memoryNamespace", options.memoryNamespace());
         putNullable(node, "memorySubjectKey", options.memorySubjectKey());
         putNullable(node, "agentId", options.agentId());
@@ -834,7 +1020,7 @@ public final class AgentLoop implements AutoCloseable {
                 readSet(node.path("skillIds")), node.path("maxToolCalls").asInt(64),
                 node.path("timeoutSeconds").asInt(300), node.path("maxDepth").asInt(4),
                 node.path("memoryNamespace").asString(null), node.path("memorySubjectKey").asString(null),
-                node.path("agentId").asString(null));
+                node.path("agentId").asString(null), readMap(node.path("permissions")));
     }
 
     private ArrayNode writeMessages(List<ChatMessage> messages) {
@@ -960,6 +1146,13 @@ public final class AgentLoop implements AutoCloseable {
         return result;
     }
 
+    private static Map<String, String> readMap(JsonNode object) {
+        if (object == null || object.isNull() || object.isMissingNode() || !object.isObject()) return Map.of();
+        Map<String, String> result = new java.util.LinkedHashMap<String, String>();
+        object.properties().forEach(entry -> result.put(entry.getKey(), entry.getValue().asString("")));
+        return result;
+    }
+
     private void deleteContinuation(String runId) throws Exception {
         if (continuations != null && runId != null) continuations.delete(runId);
     }
@@ -975,7 +1168,11 @@ public final class AgentLoop implements AutoCloseable {
         record RunOptions(String modelId, AgentMode mode, int maxTurns, String systemPrompt,
                               java.util.Set<String> allowedToolNames, java.util.Set<String> skillIds,
                               int maxToolCalls, int timeoutSeconds, int maxDepth,
-                              String memoryNamespace, String memorySubjectKey, String agentId) {
+                              String memoryNamespace, String memorySubjectKey, String agentId,
+                              Map<String, String> permissions) {
+        public RunOptions {
+            permissions = permissions == null ? Map.of() : Map.copyOf(permissions);
+        }
     }
 
     private static final class PendingExecution {

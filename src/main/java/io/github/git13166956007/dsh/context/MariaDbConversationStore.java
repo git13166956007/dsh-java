@@ -16,12 +16,18 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
+import io.github.git13166956007.dsh.session.event.MariaDbSessionEventLog;
+import io.github.git13166956007.dsh.session.event.SessionEventCodec;
+import io.github.git13166956007.dsh.session.event.SessionEventLog;
+import io.github.git13166956007.dsh.session.event.SessionEventProjection;
+import io.github.git13166956007.dsh.session.event.SessionEventTypes;
 
 public final class MariaDbConversationStore implements ConversationStore {
     private final String jdbcUrl;
     private final String username;
     private final String password;
     private final ObjectMapper objectMapper;
+    private final MariaDbSessionEventLog eventLog;
 
     public MariaDbConversationStore(String jdbcUrl, String username, String password) {
         this(jdbcUrl, username, password, new ObjectMapper());
@@ -32,22 +38,34 @@ public final class MariaDbConversationStore implements ConversationStore {
         this.username = username;
         this.password = password;
         this.objectMapper = objectMapper == null ? new ObjectMapper() : objectMapper;
+        this.eventLog = new MariaDbSessionEventLog(jdbcUrl, username, password, this.objectMapper);
         ensureSchema();
     }
 
     @Override
-    public String open(String conversationId, String title) throws SQLException {
+    public String open(String conversationId, String title) throws Exception {
         String id = conversationId == null || conversationId.trim().isEmpty()
                 ? UUID.randomUUID().toString() : conversationId.trim();
-        try (Connection connection = connection();
-             PreparedStatement statement = connection.prepareStatement(
-                     "INSERT IGNORE INTO dsh_conversation (id, title) VALUES (?, ?)")) {
-            statement.setString(1, id);
-            statement.setString(2, shorten(title));
-            statement.executeUpdate();
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "INSERT IGNORE INTO dsh_conversation (id, title) VALUES (?, ?)")) {
+                statement.setString(1, id);
+                statement.setString(2, shorten(title));
+                int inserted = statement.executeUpdate();
+                if (inserted > 0) eventLog.append(connection, id, SessionEventTypes.CREATED,
+                        objectMapper.createObjectNode().put("title", shorten(title)));
+                connection.commit();
+            } catch (Exception exception) {
+                connection.rollback();
+                throw exception;
+            }
         }
         return id;
     }
+
+    @Override
+    public SessionEventLog eventLog() { return eventLog; }
 
     @Override
     public List<ConversationInfo> list(int limit) throws SQLException {
@@ -68,18 +86,26 @@ public final class MariaDbConversationStore implements ConversationStore {
     }
 
     @Override
-    public void rename(String conversationId, String title) throws SQLException {
-        try (Connection connection = connection();
-             PreparedStatement statement = connection.prepareStatement(
-                     "UPDATE dsh_conversation SET title=? WHERE id=?")) {
-            statement.setString(1, shorten(title));
-            statement.setString(2, conversationId);
-            if (statement.executeUpdate() == 0) throw new IllegalArgumentException("unknown conversation: " + conversationId);
+    public void rename(String conversationId, String title) throws Exception {
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "UPDATE dsh_conversation SET title=? WHERE id=?")) {
+                statement.setString(1, shorten(title));
+                statement.setString(2, conversationId);
+                if (statement.executeUpdate() == 0) throw new IllegalArgumentException("unknown conversation: " + conversationId);
+                eventLog.append(connection, conversationId, SessionEventTypes.RENAMED,
+                        objectMapper.createObjectNode().put("title", shorten(title)));
+                connection.commit();
+            } catch (Exception exception) {
+                connection.rollback();
+                throw exception;
+            }
         }
     }
 
     @Override
-    public boolean delete(String conversationId) throws SQLException {
+    public boolean delete(String conversationId) throws Exception {
         try (Connection connection = connection()) {
             connection.setAutoCommit(false);
             try (PreparedStatement messages = connection.prepareStatement(
@@ -90,6 +116,8 @@ public final class MariaDbConversationStore implements ConversationStore {
                 messages.executeUpdate();
                 conversation.setString(1, conversationId);
                 boolean deleted = conversation.executeUpdate() > 0;
+                if (deleted) eventLog.append(connection, conversationId, SessionEventTypes.DELETED,
+                        objectMapper.createObjectNode());
                 connection.commit();
                 return deleted;
             } catch (SQLException | RuntimeException exception) {
@@ -127,6 +155,15 @@ public final class MariaDbConversationStore implements ConversationStore {
     @Override
     public List<ChatMessage> load(String conversationId, int limit) throws SQLException {
         if (limit <= 0) return List.of();
+        try {
+            List<ChatMessage> projected = SessionEventProjection.messages(eventLog.read(conversationId));
+            if (!projected.isEmpty()) {
+                int from = Math.max(0, projected.size() - limit);
+                return List.copyOf(projected.subList(from, projected.size()));
+            }
+        } catch (Exception exception) {
+            throw new SQLException("failed to read session event stream", exception);
+        }
         List<ChatMessage> messages = new ArrayList<ChatMessage>();
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(
@@ -148,7 +185,7 @@ public final class MariaDbConversationStore implements ConversationStore {
     }
 
     @Override
-    public void append(String conversationId, ChatMessage message) throws SQLException {
+    public void append(String conversationId, ChatMessage message) throws Exception {
         if (message.role() == ChatMessage.Role.SYSTEM) return;
         try (Connection connection = connection()) {
             connection.setAutoCommit(false);
@@ -173,6 +210,14 @@ public final class MariaDbConversationStore implements ConversationStore {
                     statement.setString(7, message.toolCallId());
                     statement.executeUpdate();
                 }
+                String eventType = switch (message.role()) {
+                    case USER -> SessionEventTypes.USER_MESSAGE;
+                    case ASSISTANT -> SessionEventTypes.ASSISTANT_MESSAGE;
+                    case TOOL -> SessionEventTypes.TOOL_MESSAGE;
+                    case SYSTEM -> null;
+                };
+                if (eventType != null) eventLog.append(connection, conversationId, eventType,
+                        SessionEventCodec.message(objectMapper, message));
                 connection.commit();
             } catch (SQLException exception) {
                 connection.rollback();
@@ -207,14 +252,23 @@ public final class MariaDbConversationStore implements ConversationStore {
     }
 
     @Override
-    public void saveSummary(String conversationId, ConversationSummary summary) throws SQLException {
-        try (Connection connection = connection();
-             PreparedStatement statement = connection.prepareStatement(
-                     "UPDATE dsh_conversation SET summary_text=?, summary_message_count=? WHERE id=?")) {
-            statement.setString(1, summary.content());
-            statement.setInt(2, summary.coveredMessageCount());
-            statement.setString(3, conversationId);
-            statement.executeUpdate();
+    public void saveSummary(String conversationId, ConversationSummary summary) throws Exception {
+        try (Connection connection = connection()) {
+            connection.setAutoCommit(false);
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "UPDATE dsh_conversation SET summary_text=?, summary_message_count=? WHERE id=?")) {
+                statement.setString(1, summary.content());
+                statement.setInt(2, summary.coveredMessageCount());
+                statement.setString(3, conversationId);
+                statement.executeUpdate();
+                eventLog.append(connection, conversationId, SessionEventTypes.SUMMARY_UPDATED,
+                        objectMapper.createObjectNode().put("content", summary.content())
+                                .put("coveredMessageCount", summary.coveredMessageCount()));
+                connection.commit();
+            } catch (Exception exception) {
+                connection.rollback();
+                throw exception;
+            }
         }
     }
 

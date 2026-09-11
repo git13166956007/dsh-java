@@ -6,7 +6,7 @@ Java 版 DeepSeek Harness 的最小运行时内核。
 
 - 插件生命周期、JAR 自动发现与 `ServiceLoader` 加载
 - 服务注册、事件总线、可回收副作用
-- JSONL 会话事件存储
+- append-only `SessionEvent` 会话事实流与 MariaDB/内存投影
 - 本地工具与模型适配接口
 - Java 17、Gradle、Spring Boot 4
 - Spring Boot 宿主 API：`GET /api/v1/health`
@@ -15,7 +15,9 @@ Java 版 DeepSeek Harness 的最小运行时内核。
 
 项目结构说明见 [`docs/architecture.md`](docs/architecture.md)。
 
-插件放在项目根目录 `plugins/`（或通过 `DSH_PLUGINS_DIR` 指定目录）。每个 JAR 通过 `META-INF/services/io.github.git13166956007.dsh.plugin.DshPlugin` 声明一个或多个插件实现；插件可以通过 `DshServices` 获取工具、模型、MCP、Skills、Agent、子 Agent、上下文、记忆和运行追踪服务，并使用 `PluginContext.effect` 注册清理动作。启动时会自动加载，运行中可调用 `POST /api/v1/plugins/load` 扫描同一目录；`GET /api/v1/plugins` 和健康接口会返回已加载的插件 ID。
+插件放在项目根目录 `plugins/`（或通过 `DSH_PLUGINS_DIR` 指定目录）。每个 JAR 通过 `META-INF/services/io.github.git13166956007.dsh.plugin.DshPlugin` 声明一个或多个插件实现；插件可以通过 `DshServices` 获取工具、模型、MCP、Skills、Agent、子 Agent、上下文、记忆和运行追踪服务，并使用 `PluginContext.effect` 注册清理动作。每个插件拥有独立 `Scope`，服务和事件注册会随插件卸载自动释放；`AgentLoop` 执行时创建子 Scope，并从 Scope 解析可替换的模型、工具、上下文、记忆和运行服务。启动时会自动加载，运行中可调用 `POST /api/v1/plugins/load` 扫描同一目录；`GET /api/v1/plugins` 和健康接口会返回已加载的插件 ID。
+
+Runtime 扩展点使用类型安全的 `EventKey<T>`、waterfall `next()` 和 `EventOutcome`。Agent 生命周期提供模型请求/响应、流式 delta、工具调用/结果和运行状态事件；插件可以在这些节点重写 payload 或拒绝执行。`RuntimeProfile` 与 `ProfilePatch` 绑定到 Scope，承载模型、Prompt、工具/Skill 白名单和权限声明；HTTP 调试请求也可通过 `AgentExecutionOptions` 传入临时 Profile Patch。
 
 MCP 持久化 Server 在启动恢复失败或工具调用断线后会自动指数退避重连。可以通过 `DSH_MCP_RECONNECT_INITIAL_DELAY_MS`、`DSH_MCP_RECONNECT_MAX_DELAY_MS` 和 `DSH_MCP_RECONNECT_MAX_ATTEMPTS` 调整重连策略。
 

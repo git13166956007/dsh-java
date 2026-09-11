@@ -1,9 +1,14 @@
 package io.github.git13166956007.dsh.context;
 
 import io.github.git13166956007.dsh.agent.ChatMessage;
+import io.github.git13166956007.dsh.session.event.SessionEventLog;
 import java.util.List;
 
 public interface ConversationStore {
+    default SessionEventLog eventLog() {
+        return null;
+    }
+
     String open(String conversationId, String title) throws Exception;
 
     default List<ConversationInfo> list(int limit) throws Exception {

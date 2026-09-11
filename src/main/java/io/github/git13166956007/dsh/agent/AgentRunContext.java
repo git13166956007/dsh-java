@@ -8,21 +8,30 @@ public record AgentRunContext(
         String conversationId,
         String planId,
         String stepId,
-        String agentId) {
+        String agentId,
+        String scopeId) {
+    public AgentRunContext(String parentRunId, RunKind kind, String conversationId,
+                           String planId, String stepId, String agentId) {
+        this(parentRunId, kind, conversationId, planId, stepId, agentId, null);
+    }
     public AgentRunContext {
         if (kind == null) kind = RunKind.AGENT;
     }
 
     public static AgentRunContext standalone() {
-        return new AgentRunContext(null, RunKind.AGENT, null, null, null, null);
+        return new AgentRunContext(null, RunKind.AGENT, null, null, null, null, null);
     }
 
     public static AgentRunContext chat(String conversationId, String agentId) {
-        return new AgentRunContext(null, RunKind.CHAT, conversationId, null, null, agentId);
+        return new AgentRunContext(null, RunKind.CHAT, conversationId, null, null, agentId, null);
     }
 
     public static AgentRunContext child(String parentRunId, RunKind kind, String conversationId,
                                         String planId, String stepId, String agentId) {
-        return new AgentRunContext(parentRunId, kind, conversationId, planId, stepId, agentId);
+        return new AgentRunContext(parentRunId, kind, conversationId, planId, stepId, agentId, null);
+    }
+
+    public AgentRunContext withScopeId(String nextScopeId) {
+        return new AgentRunContext(parentRunId, kind, conversationId, planId, stepId, agentId, nextScopeId);
     }
 }

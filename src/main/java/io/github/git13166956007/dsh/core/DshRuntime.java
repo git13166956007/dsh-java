@@ -1,6 +1,8 @@
 package io.github.git13166956007.dsh.core;
 
 import io.github.git13166956007.dsh.event.EventBus;
+import io.github.git13166956007.dsh.event.RuntimeEvents;
+import io.github.git13166956007.dsh.core.scope.Scope;
 import io.github.git13166956007.dsh.plugin.DshPlugin;
 import io.github.git13166956007.dsh.plugin.PluginContext;
 import io.github.git13166956007.dsh.plugin.Registration;
@@ -9,10 +11,8 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -22,9 +22,9 @@ import java.util.Set;
 import java.util.ServiceLoader;
 
 public final class DshRuntime implements AutoCloseable {
-    private final Map<ServiceKey<?>, Object> services = new HashMap<ServiceKey<?>, Object>();
+    private final Scope rootScope = new Scope("runtime");
     private final EventBus eventBus = new EventBus();
-    private final Map<String, Deque<AutoCloseable>> pluginEffects = new LinkedHashMap<String, Deque<AutoCloseable>>();
+    private final Map<String, Scope> pluginScopes = new LinkedHashMap<String, Scope>();
     private final List<PluginHandle> plugins = new ArrayList<PluginHandle>();
     private final Set<Path> loadedPluginJars = new HashSet<Path>();
     private boolean started;
@@ -47,12 +47,14 @@ public final class DshRuntime implements AutoCloseable {
                 throw new IllegalArgumentException("plugin " + plugin.id() + " requires " + dependency);
             }
         }
-        pluginEffects.put(plugin.id(), new ArrayDeque<AutoCloseable>());
+        Scope pluginScope = rootScope.child("plugin:" + plugin.id());
+        pluginScopes.put(plugin.id(), pluginScope);
         try {
-            plugin.start(new Context(plugin.id()));
+            plugin.start(new Context(plugin.id(), pluginScope));
             plugins.add(new PluginHandle(plugin, loader, jar));
         } catch (Exception exception) {
-            closeEffects(plugin.id());
+            pluginScopes.remove(plugin.id());
+            pluginScope.close();
             throw exception;
         }
     }
@@ -104,9 +106,50 @@ public final class DshRuntime implements AutoCloseable {
         return List.copyOf(removed);
     }
 
+    /** Removes one plugin and releases its Scope-owned services and effects. */
+    public synchronized boolean uninstall(String pluginId) {
+        if (pluginId == null || pluginId.isBlank()) return false;
+        PluginHandle target = plugins.stream()
+                .filter(handle -> pluginId.equals(handle.plugin().id()))
+                .findFirst().orElse(null);
+        if (target == null) return false;
+        for (PluginHandle handle : plugins) {
+            if (handle == target) continue;
+            if (normalizedDependencies(handle.plugin()).contains(pluginId)) {
+                throw new IllegalStateException("plugin is required by " + handle.plugin().id() + ": " + pluginId);
+            }
+        }
+        removePlugin(pluginId);
+        loadedPluginJars.remove(target.jar());
+        closeLoader(target.loader());
+        return true;
+    }
+
+    /** Installs a replacement after the old plugin has been cleanly uninstalled. */
+    public synchronized void replace(String pluginId, DshPlugin replacement) throws Exception {
+        if (replacement == null) throw new IllegalArgumentException("replacement plugin must not be null");
+        if (!pluginId.equals(replacement.id())) {
+            throw new IllegalArgumentException("replacement id must match: " + pluginId);
+        }
+        if (!uninstall(pluginId)) throw new IllegalArgumentException("unknown plugin: " + pluginId);
+        install(replacement, null, null);
+    }
+
     public void start() {
+        try {
+            eventBus.rewrite(RuntimeEvents.LIFECYCLE,
+                    new RuntimeEvents.LifecycleEvent(RuntimeEvents.LifecycleEvent.Phase.STARTING, "dsh-java"));
+        } catch (Exception exception) {
+            throw new IllegalStateException("runtime start rejected", exception);
+        }
         started = true;
         eventBus.emit("runtime.started", this);
+        try {
+            eventBus.rewrite(RuntimeEvents.LIFECYCLE,
+                    new RuntimeEvents.LifecycleEvent(RuntimeEvents.LifecycleEvent.Phase.STARTED, "dsh-java"));
+        } catch (Exception exception) {
+            throw new IllegalStateException("runtime start lifecycle failed", exception);
+        }
     }
 
     public EventBus events() {
@@ -115,6 +158,14 @@ public final class DshRuntime implements AutoCloseable {
 
     public boolean isStarted() {
         return started;
+    }
+
+    public Scope scope() {
+        return rootScope;
+    }
+
+    public Scope childScope(String id) {
+        return rootScope.child(id);
     }
 
     public synchronized int pluginCount() {
@@ -137,29 +188,40 @@ public final class DshRuntime implements AutoCloseable {
     }
 
     public <T> T service(ServiceKey<T> key) {
-        Object value = services.get(key);
-        if (value == null) throw new IllegalStateException("missing service: " + key);
-        return key.type().cast(value);
+        return rootScope.resolve(key);
     }
 
     public synchronized <T> Registration provide(ServiceKey<T> key, T service) {
         if (started) throw new IllegalStateException("runtime already started");
-        if (services.containsKey(key)) throw new IllegalStateException("duplicate service: " + key);
-        services.put(key, service);
-        return () -> services.remove(key, service);
+        return rootScope.provide(key, service);
     }
 
     @Override
     public synchronized void close() {
+        boolean wasStarted = started;
+        if (wasStarted) {
+            eventBus.emit("runtime.stopping", this);
+            try {
+                eventBus.waterfall(RuntimeEvents.LIFECYCLE,
+                        new RuntimeEvents.LifecycleEvent(RuntimeEvents.LifecycleEvent.Phase.STOPPING, "dsh-java"));
+            } catch (Exception ignored) { }
+        }
         for (int index = plugins.size() - 1; index >= 0; index--) {
-            closeEffects(plugins.get(index).plugin().id());
+            Scope pluginScope = pluginScopes.remove(plugins.get(index).plugin().id());
+            if (pluginScope != null) pluginScope.close();
         }
         for (PluginHandle handle : plugins) closeLoader(handle.loader());
         plugins.clear();
-        pluginEffects.clear();
         loadedPluginJars.clear();
-        services.clear();
+        rootScope.close();
         started = false;
+        if (wasStarted) {
+            eventBus.emit("runtime.stopped", this);
+            try {
+                eventBus.waterfall(RuntimeEvents.LIFECYCLE,
+                        new RuntimeEvents.LifecycleEvent(RuntimeEvents.LifecycleEvent.Phase.STOPPED, "dsh-java"));
+            } catch (Exception ignored) { }
+        }
     }
 
     private List<PluginCandidate> discover(Path directory) throws Exception {
@@ -250,19 +312,9 @@ public final class DshRuntime implements AutoCloseable {
     }
 
     private void removePlugin(String id) {
-        closeEffects(id);
+        Scope pluginScope = pluginScopes.remove(id);
+        if (pluginScope != null) pluginScope.close();
         plugins.removeIf(handle -> handle.plugin().id().equals(id));
-    }
-
-    private void closeEffects(String id) {
-        Deque<AutoCloseable> effects = pluginEffects.remove(id);
-        if (effects == null) return;
-        while (!effects.isEmpty()) {
-            try {
-                effects.pop().close();
-            } catch (Exception ignored) {
-            }
-        }
     }
 
     private static void closeLoaders(List<PluginCandidate> candidates) {
@@ -289,38 +341,48 @@ public final class DshRuntime implements AutoCloseable {
 
     private final class Context implements PluginContext {
         private final String pluginId;
+        private final Scope scope;
 
-        private Context(String pluginId) {
+        private Context(String pluginId, Scope scope) {
             this.pluginId = pluginId;
+            this.scope = scope;
         }
 
         @Override
         public <T> T service(ServiceKey<T> key) {
-            Object value = services.get(key);
-            if (value == null) throw new IllegalStateException(pluginId + " requires " + key);
-            return key.type().cast(value);
+            try {
+                return rootScope.resolve(key);
+            } catch (IllegalStateException exception) {
+                throw new IllegalStateException(pluginId + " requires " + key, exception);
+            }
         }
 
         @Override
         public <T> Registration provide(ServiceKey<T> key, T service) {
-            if (services.containsKey(key)) throw new IllegalStateException("duplicate service: " + key);
-            services.put(key, service);
-            Registration registration = () -> services.remove(key, service);
-            effect(registration);
+            Registration registration = rootScope.provide(key, service);
+            scope.effect(registration);
             return registration;
         }
 
         @Override
         public Registration on(String event, java.util.function.Consumer<Object> listener) {
             Registration registration = eventBus.on(event, listener);
-            effect(registration);
+            scope.effect(registration);
+            return registration;
+        }
+
+        @Override
+        public <T> Registration on(io.github.git13166956007.dsh.event.EventKey<T> event,
+                                   io.github.git13166956007.dsh.event.EventHandler<T> listener) {
+            Registration registration = eventBus.on(event, listener);
+            scope.effect(registration);
             return registration;
         }
 
         @Override
         public void effect(AutoCloseable closeable) {
             if (closeable == null) throw new IllegalArgumentException("plugin effect must not be null");
-            pluginEffects.computeIfAbsent(pluginId, ignored -> new ArrayDeque<AutoCloseable>()).push(closeable);
+            scope.effect(closeable);
         }
     }
 }
