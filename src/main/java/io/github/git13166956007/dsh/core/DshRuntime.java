@@ -178,12 +178,15 @@ public final class DshRuntime implements AutoCloseable {
         if (!pluginId.equals(replacement.id())) {
             throw new IllegalArgumentException("replacement id must match: " + pluginId);
         }
+        validatePluginMetadata(replacement);
         PluginHandle old = plugins.stream().filter(handle -> pluginId.equals(handle.plugin().id())).findFirst().orElse(null);
         if (old == null) throw new IllegalArgumentException("unknown plugin: " + pluginId);
         validateReplacementDependencies(pluginId, replacement);
         validateReplacementCapabilities(pluginId, replacement);
         if (!old.quiesce(quiesceTimeoutMillis)) throw new IllegalStateException("plugin is still in use: " + pluginId);
+        Path oldJar = old.jar();
         removePlugin(pluginId);
+        if (oldJar != null) loadedPluginJars.remove(oldJar);
         boolean replacementInstalled = false;
         try {
             install(replacement, null, null);
@@ -191,6 +194,7 @@ public final class DshRuntime implements AutoCloseable {
         } catch (Exception exception) {
             try {
                 install(old.plugin(), old.loader(), old.jar());
+                if (oldJar != null) loadedPluginJars.add(oldJar);
             } catch (Exception rollback) {
                 exception.addSuppressed(rollback);
             }
@@ -385,11 +389,15 @@ public final class DshRuntime implements AutoCloseable {
     }
 
     private void validatePlugin(DshPlugin plugin) {
-        if (plugin == null || plugin.id() == null || plugin.id().isBlank()) {
-            throw new IllegalArgumentException("plugin id must not be blank");
-        }
+        validatePluginMetadata(plugin);
         if (plugins.stream().anyMatch(handle -> plugin.id().equals(handle.plugin().id()))) {
             throw new IllegalArgumentException("duplicate plugin: " + plugin.id());
+        }
+    }
+
+    private void validatePluginMetadata(DshPlugin plugin) {
+        if (plugin == null || plugin.id() == null || plugin.id().isBlank()) {
+            throw new IllegalArgumentException("plugin id must not be blank");
         }
         if (plugin.version() == null || plugin.version().isBlank()) {
             throw new IllegalArgumentException("plugin version must not be blank: " + plugin.id());

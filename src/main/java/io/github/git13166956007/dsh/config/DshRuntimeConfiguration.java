@@ -76,6 +76,7 @@ import io.github.git13166956007.dsh.core.scope.Scope;
 import io.github.git13166956007.dsh.event.MariaDbEventJournal;
 import io.github.git13166956007.dsh.tool.WorkspaceToolProvider;
 import io.github.git13166956007.dsh.tool.WorkspaceProcessToolProvider;
+import io.github.git13166956007.dsh.security.PermissionPolicyEngine;
 import io.github.git13166956007.dsh.workspace.InMemoryWorkspaceStore;
 import io.github.git13166956007.dsh.workspace.MariaDbWorkspaceStore;
 import io.github.git13166956007.dsh.workspace.WorkspaceRegistry;
@@ -107,6 +108,8 @@ public class DshRuntimeConfiguration {
         try {
             runtime.install(new io.github.git13166956007.dsh.plugin.RuntimeServicePlugin<>(
                     "core.events", DshServices.EVENTS, runtime.events()));
+            runtime.install(new io.github.git13166956007.dsh.plugin.RuntimeServicePlugin<>(
+                    "core.policy", DshServices.POLICY, new PermissionPolicyEngine()));
             runtime.install(new io.github.git13166956007.dsh.plugin.RuntimeServicePlugin<>(
                     "core.conversations", DshServices.CONVERSATIONS, conversationStore));
             runtime.install(new io.github.git13166956007.dsh.plugin.RuntimeServicePlugin<>(

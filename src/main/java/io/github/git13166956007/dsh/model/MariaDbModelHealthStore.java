@@ -64,6 +64,33 @@ public final class MariaDbModelHealthStore implements ModelHealthStore {
         }
     }
 
+    @Override
+    public void recordSuccess(String modelId, long latencyMs, Instant now) throws SQLException {
+        upsertCounter(modelId, true, latencyMs, null, now);
+    }
+
+    @Override
+    public void recordFailure(String modelId, long latencyMs, String error, Instant now) throws SQLException {
+        upsertCounter(modelId, false, latencyMs, error, now);
+    }
+
+    private void upsertCounter(String modelId, boolean success, long latencyMs, String error, Instant now)
+            throws SQLException {
+        String sql = success
+                ? "INSERT INTO dsh_model_health (model_id, status, success_count, failure_count, last_latency_ms, last_checked_at, last_success_at, last_error) VALUES (?, 'HEALTHY', 1, 0, ?, ?, ?, NULL) "
+                    + "ON DUPLICATE KEY UPDATE status='HEALTHY', success_count=success_count+1, last_latency_ms=VALUES(last_latency_ms), last_checked_at=VALUES(last_checked_at), last_success_at=VALUES(last_success_at), last_error=NULL"
+                : "INSERT INTO dsh_model_health (model_id, status, success_count, failure_count, last_latency_ms, last_checked_at, last_success_at, last_error) VALUES (?, 'UNHEALTHY', 0, 1, ?, ?, NULL, ?) "
+                    + "ON DUPLICATE KEY UPDATE status='UNHEALTHY', failure_count=failure_count+1, last_latency_ms=VALUES(last_latency_ms), last_checked_at=VALUES(last_checked_at), last_error=VALUES(last_error)";
+        try (Connection connection = connection(); PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, modelId);
+            statement.setLong(2, Math.max(0, latencyMs));
+            statement.setTimestamp(3, Timestamp.from(now));
+            if (success) statement.setTimestamp(4, Timestamp.from(now));
+            else statement.setString(4, error);
+            statement.executeUpdate();
+        }
+    }
+
     private void ensureSchema() {
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(

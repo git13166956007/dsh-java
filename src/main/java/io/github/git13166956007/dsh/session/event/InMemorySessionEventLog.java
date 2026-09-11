@@ -26,7 +26,13 @@ public final class InMemorySessionEventLog implements SessionEventLog {
             stream.add(event);
         }
         for (Consumer<SessionEvent> consumer : subscribers.getOrDefault(sessionId,
-                new CopyOnWriteArrayList<Consumer<SessionEvent>>())) consumer.accept(event);
+                new CopyOnWriteArrayList<Consumer<SessionEvent>>())) {
+            try {
+                consumer.accept(event);
+            } catch (Exception ignored) {
+                // Subscribers are observers; a broken observer must not turn a committed append into a failure.
+            }
+        }
         return event;
     }
 

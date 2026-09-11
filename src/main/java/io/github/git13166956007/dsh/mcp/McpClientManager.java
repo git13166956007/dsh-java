@@ -549,27 +549,18 @@ public final class McpClientManager implements AutoCloseable {
 
     private void recordSuccess(String id, long latencyMs) {
         try {
-            McpHealthData previous = healthStore.find(id);
-            long successes = previous == null ? 0 : previous.successCount();
-            long failures = previous == null ? 0 : previous.failureCount();
             java.time.Instant now = java.time.Instant.now();
-            healthStore.save(new McpHealthData(id, "HEALTHY", successes + 1, failures, Math.max(0, latencyMs),
-                    now, now, previous == null ? null : previous.lastDisconnectedAt(), null));
+            healthStore.recordSuccess(id, latencyMs, now);
         } catch (Exception ignored) {
         }
     }
 
     private void recordFailure(String id, long latencyMs, Throwable failure) {
         try {
-            McpHealthData previous = healthStore.find(id);
-            long successes = previous == null ? 0 : previous.successCount();
-            long failures = previous == null ? 0 : previous.failureCount();
             java.time.Instant now = java.time.Instant.now();
             String message = failure == null ? "MCP operation failed" : failure.getMessage();
-            healthStore.save(new McpHealthData(id, "UNHEALTHY", successes, failures + 1, Math.max(0, latencyMs),
-                    now, previous == null ? null : previous.lastConnectedAt(),
-                    previous == null ? null : previous.lastDisconnectedAt(),
-                    message == null ? failure.getClass().getSimpleName() : message));
+            healthStore.recordFailure(id, latencyMs,
+                    message == null ? failure.getClass().getSimpleName() : message, now);
         } catch (Exception ignored) {
         }
     }

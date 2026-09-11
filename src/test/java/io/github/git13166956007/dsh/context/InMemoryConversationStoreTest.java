@@ -28,6 +28,15 @@ class InMemoryConversationStoreTest {
     }
 
     @Test
+    void doesNotCountSystemMessagesAsConversationMessages() throws Exception {
+        InMemoryConversationStore store = new InMemoryConversationStore();
+        String id = store.open(null, "system");
+        store.append(id, ChatMessage.system("internal context"));
+        assertEquals(0, store.list(10).get(0).messageCount());
+        assertEquals(List.of(), store.load(id, 10));
+    }
+
+    @Test
     void retainsAssistantToolCallsAndToolResultsAsConversationMessages() throws Exception {
         InMemoryConversationStore store = new InMemoryConversationStore();
         String id = store.open(null, "tool history");

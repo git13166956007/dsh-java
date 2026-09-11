@@ -15,6 +15,10 @@ import io.github.git13166956007.dsh.core.profile.RuntimeProfile;
 import io.github.git13166956007.dsh.core.scope.Scope;
 import io.github.git13166956007.dsh.event.EventBus;
 import io.github.git13166956007.dsh.plugin.DshServices;
+import io.github.git13166956007.dsh.security.PermissionPolicyEngine;
+import io.github.git13166956007.dsh.security.PolicyDecision;
+import io.github.git13166956007.dsh.security.PolicyEngine;
+import io.github.git13166956007.dsh.security.PolicyRequest;
 import io.github.git13166956007.dsh.service.ServiceKey;
 import java.util.ArrayList;
 import java.util.List;
@@ -321,6 +325,11 @@ public final class AgentLoop implements AutoCloseable {
 
     private EventBus eventBus() { return optional(DshServices.EVENTS); }
 
+    private PolicyEngine policyEngine() {
+        PolicyEngine engine = optional(DshServices.POLICY);
+        return engine == null ? new PermissionPolicyEngine() : engine;
+    }
+
     private AgentContinuationStore continuationStore() { return optional(DshServices.CONTINUATIONS); }
 
     private void emitRunEvent(String runId, RunOptions options, AgentEvents.Phase phase, String detail)
@@ -578,7 +587,8 @@ public final class AgentLoop implements AutoCloseable {
                 result = "Tool execution denied by user: " + pending.approval.toolName();
             } else {
                 pending.budget.check();
-                checkToolPermission(pending.approval.toolName(), pending.options);
+                checkToolPermission(new ToolCall(pending.approval.toolCallId(), pending.approval.toolName(),
+                        pending.approval.arguments()), pending.options, pending.runId, true);
                 try {
                     PendingExecution approvedPending = pending;
                     result = runWithBudget(() -> toolRegistry().executeApproved(approvedPending.approval.toolName(),
@@ -751,7 +761,7 @@ public final class AgentLoop implements AutoCloseable {
 
     private String executeTool(ToolCall call, RunOptions options, String apiKey, String runId,
                                ExecutionBudget budget) throws Exception {
-        checkToolPermission(call.name(), options);
+        checkToolPermission(call, options, runId, false);
         if (!DELEGATE_TOOL.equals(call.name())) {
             toolRegistry().validateArguments(call.name(), call.arguments(), options.allowedToolNames());
             return runWithBudget(() -> toolRegistry().execute(call.name(), call.arguments(), options.allowedToolNames()),
@@ -797,15 +807,15 @@ public final class AgentLoop implements AutoCloseable {
         }
     }
 
-    private static void checkToolPermission(String toolName, RunOptions options) {
-        if (options.permissions() == null || options.permissions().isEmpty()) return;
-        String decision = options.permissions().get("tool." + toolName);
-        if (decision == null) decision = options.permissions().get(toolName);
-        if (decision == null) decision = options.permissions().get("tool.*");
-        if (decision == null) decision = options.permissions().get("*");
-        if (decision != null && ("deny".equalsIgnoreCase(decision)
-                || "false".equalsIgnoreCase(decision) || "disabled".equalsIgnoreCase(decision))) {
-            throw new IllegalStateException("tool permission denied: " + toolName);
+    private void checkToolPermission(ToolCall call, RunOptions options, String runId, boolean approvalGranted) {
+        PolicyDecision decision = policyEngine().evaluate(new PolicyRequest(runId, options.agentId(), call.name(),
+                call.arguments(), options.permissions(), approvalGranted));
+        if (decision.effect() == PolicyDecision.Effect.DENY) {
+            throw new IllegalStateException(decision.reason() == null
+                    ? "tool permission denied: " + call.name() : decision.reason());
+        }
+        if (decision.effect() == PolicyDecision.Effect.REQUIRE_APPROVAL) {
+            throw new ToolApprovalRequiredException(call.name());
         }
     }
 

@@ -157,6 +157,27 @@ public final class DshRuntimeTest {
     }
 
     @Test
+    void replacingDynamicPluginReleasesItsJarForLaterReload() throws Exception {
+        Path root = Files.createTempDirectory("dsh-plugin-replace");
+        Path plugins = root.resolve("plugins");
+        Files.createDirectories(plugins);
+        writeServiceJar(plugins.resolve("demo.jar"), DshRuntimePluginLoadingTest.DemoPlugin.class);
+        DshRuntime runtime = new DshRuntime();
+        try {
+            assertEquals(java.util.List.of("jar-demo"), runtime.loadPlugins(plugins));
+            runtime.replace("jar-demo", new DshPlugin() {
+                @Override public String id() { return "jar-demo"; }
+                @Override public void start(PluginContext context) { }
+            });
+            assertTrue(runtime.uninstall("jar-demo"));
+            assertEquals(java.util.List.of("jar-demo"), runtime.loadPlugins(plugins));
+        } finally {
+            runtime.close();
+            deleteTree(root);
+        }
+    }
+
+    @Test
     void capabilityProviderCannotBeRemovedWhileAConsumerRequiresIt() throws Exception {
         DshRuntime runtime = new DshRuntime();
         runtime.install(new DshPlugin() {
@@ -243,6 +264,15 @@ public final class DshRuntimeTest {
     private static void deleteTree(Path root) throws IOException {
         try (Stream<Path> files = Files.walk(root)) {
             for (Path file : files.sorted(java.util.Comparator.reverseOrder()).toList()) Files.deleteIfExists(file);
+        }
+    }
+
+    private static void writeServiceJar(Path jar, Class<?> plugin) throws Exception {
+        try (java.io.OutputStream output = Files.newOutputStream(jar);
+             JarOutputStream archive = new JarOutputStream(output)) {
+            archive.putNextEntry(new JarEntry("META-INF/services/io.github.git13166956007.dsh.plugin.DshPlugin"));
+            archive.write(plugin.getName().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            archive.closeEntry();
         }
     }
 

@@ -92,23 +92,30 @@ public final class WorkspaceProcessToolProvider implements AutoCloseable {
         long maxOutputBytes = profile.maxProcessOutputBytes();
         Process process = new ProcessBuilder(commandLine).directory(Path.of(profile.directory()).toFile()).redirectErrorStream(true).start();
         Future<ProcessOutput> output = readers.submit(() -> readOutput(process.getInputStream(), maxOutputBytes));
-        boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
-        if (!finished) {
-            process.descendants().forEach(child -> child.destroyForcibly());
-            process.destroyForcibly();
-            process.waitFor(2, TimeUnit.SECONDS);
-        }
-        ProcessOutput captured = output.get(5, TimeUnit.SECONDS);
+        try {
+            boolean finished = process.waitFor(timeoutSeconds, TimeUnit.SECONDS);
+            if (!finished) destroyProcess(process);
+            ProcessOutput captured = output.get(5, TimeUnit.SECONDS);
 
-        ObjectNode result = objectMapper.createObjectNode();
-        result.put("command", command);
-        ArrayNode args = result.putArray("arguments");
-        commandLine.subList(1, commandLine.size()).forEach(args::add);
-        result.put("exitCode", finished ? process.exitValue() : -1);
-        result.put("timedOut", !finished);
-        result.put("truncated", captured.truncated());
-        result.put("output", captured.text());
-        return objectMapper.writeValueAsString(result);
+            ObjectNode result = objectMapper.createObjectNode();
+            result.put("command", command);
+            ArrayNode args = result.putArray("arguments");
+            commandLine.subList(1, commandLine.size()).forEach(args::add);
+            result.put("exitCode", finished ? process.exitValue() : -1);
+            result.put("timedOut", !finished);
+            result.put("truncated", captured.truncated());
+            result.put("output", captured.text());
+            return objectMapper.writeValueAsString(result);
+        } catch (InterruptedException exception) {
+            output.cancel(true);
+            destroyProcess(process);
+            Thread.currentThread().interrupt();
+            throw exception;
+        } catch (Exception exception) {
+            output.cancel(true);
+            destroyProcess(process);
+            throw exception;
+        }
     }
 
     private ProcessOutput readOutput(InputStream input, long maxOutputBytes) throws IOException {
@@ -128,6 +135,13 @@ public final class WorkspaceProcessToolProvider implements AutoCloseable {
             }
         }
         return new ProcessOutput(output.toString(StandardCharsets.UTF_8), truncated);
+    }
+
+    private static void destroyProcess(Process process) {
+        process.descendants().forEach(child -> child.destroyForcibly());
+        process.destroyForcibly();
+        try { process.waitFor(2, TimeUnit.SECONDS); }
+        catch (InterruptedException exception) { Thread.currentThread().interrupt(); }
     }
 
     private static Path initializeRoot(Path value) {

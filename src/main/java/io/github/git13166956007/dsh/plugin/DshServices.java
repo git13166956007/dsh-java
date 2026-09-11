@@ -16,6 +16,7 @@ import io.github.git13166956007.dsh.agent.ChatModel;
 import io.github.git13166956007.dsh.event.EventBus;
 import io.github.git13166956007.dsh.workspace.WorkspaceRegistry;
 import io.github.git13166956007.dsh.service.ServiceKey;
+import io.github.git13166956007.dsh.security.PolicyEngine;
 
 public final class DshServices {
     public static final ServiceKey<ToolRegistry> TOOLS = new ServiceKey<ToolRegistry>("tools", ToolRegistry.class);
@@ -33,6 +34,7 @@ public final class DshServices {
     public static final ServiceKey<AgentContinuationStore> CONTINUATIONS = new ServiceKey<AgentContinuationStore>("continuations", AgentContinuationStore.class);
     public static final ServiceKey<ChatModel> CHAT_MODEL = new ServiceKey<ChatModel>("chat.model", ChatModel.class);
     public static final ServiceKey<EventBus> EVENTS = new ServiceKey<EventBus>("events", EventBus.class);
+    public static final ServiceKey<PolicyEngine> POLICY = new ServiceKey<PolicyEngine>("policy", PolicyEngine.class);
 
     private DshServices() {
     }

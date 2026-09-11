@@ -479,15 +479,9 @@ public final class ModelRegistry {
 
     private void recordHealth(String id, boolean success, long latencyMs, String error) {
         try {
-            ModelHealthData previous = healthStore.find(id);
-            long successes = previous == null ? 0 : previous.successCount();
-            long failures = previous == null ? 0 : previous.failureCount();
             Instant now = Instant.now();
-            ModelHealthData next = new ModelHealthData(id, success ? "HEALTHY" : "UNHEALTHY",
-                    success ? successes + 1 : successes, success ? failures : failures + 1,
-                    Math.max(0, latencyMs), now, success ? now : previous == null ? null : previous.lastSuccessAt(),
-                    success ? null : error);
-            healthStore.save(next);
+            if (success) healthStore.recordSuccess(id, latencyMs, now);
+            else healthStore.recordFailure(id, latencyMs, error, now);
         } catch (Exception exception) {
             // Health telemetry must not turn a successful model request into a failed request.
         }

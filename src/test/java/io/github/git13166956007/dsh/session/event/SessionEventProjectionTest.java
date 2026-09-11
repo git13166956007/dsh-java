@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
@@ -95,5 +96,22 @@ public final class SessionEventProjectionTest {
         assertEquals(200, events.size());
         assertEquals(java.util.stream.LongStream.rangeClosed(1, 200).boxed().toList(),
                 events.stream().map(SessionEvent::sequence).toList());
+    }
+
+    @Test
+    void subscriberFailureDoesNotRejectAnAlreadyAppendedEvent() {
+        InMemorySessionEventLog log = new InMemorySessionEventLog();
+        AtomicBoolean called = new AtomicBoolean();
+        log.subscribe("observer", event -> {
+            called.set(true);
+            throw new IllegalStateException("observer failure");
+        });
+
+        log.append("observer", SessionEventTypes.USER_MESSAGE,
+                SessionEventCodec.message(new ObjectMapper(), ChatMessage.user("persisted")));
+
+        assertEquals(true, called.get());
+        assertEquals(List.of("persisted"), SessionEventProjection.messages(log.read("observer")).stream()
+                .map(ChatMessage::content).toList());
     }
 }

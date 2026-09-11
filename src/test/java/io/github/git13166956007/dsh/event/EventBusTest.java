@@ -1,5 +1,6 @@
 package io.github.git13166956007.dsh.event;
 
+import io.github.git13166956007.dsh.plugin.Registration;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.node.JsonNodeFactory;
 
@@ -7,6 +8,10 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -100,6 +105,53 @@ public final class EventBusTest {
         assertTrue(!payload.contains("sk-secret"));
         assertTrue(!payload.contains("Bearer secret"));
         assertTrue(payload.contains("visible"));
+        bus.close();
+    }
+
+    @Test
+    void concurrentHandlerRegistrationDoesNotLoseHandlers() throws Exception {
+        EventBus bus = new EventBus();
+        ExecutorService executor = Executors.newFixedThreadPool(8);
+        AtomicInteger calls = new AtomicInteger();
+        try {
+            java.util.List<Future<Registration>> registrations = new java.util.ArrayList<>();
+            for (int index = 0; index < 128; index++) {
+                registrations.add(executor.submit(() -> bus.on(TEXT, (value, next) -> {
+                    calls.incrementAndGet();
+                    return next.proceed(value);
+                })));
+            }
+            for (Future<Registration> registration : registrations) registration.get();
+            assertEquals("start", bus.rewrite(TEXT, "start"));
+            assertEquals(128, calls.get());
+        } finally {
+            executor.shutdownNow();
+            bus.close();
+        }
+    }
+
+    @Test
+    void retriesJournalWithTheSameEventIdAndDeduplicatesAppend() throws Exception {
+        AtomicInteger attempts = new AtomicInteger();
+        InMemoryEventJournal stored = new InMemoryEventJournal();
+        EventJournal journal = new EventJournal() {
+            @Override
+            public void append(EventRecord record) {
+                if (attempts.getAndIncrement() == 0) throw new IllegalStateException("temporary journal failure");
+                stored.append(record);
+            }
+
+            @Override
+            public java.util.List<EventRecord> read() {
+                return stored.read();
+            }
+        };
+        EventBus bus = new EventBus(journal);
+        assertEquals("retry", bus.rewrite(TEXT, "retry"));
+        EventRecord record = journal.read().get(0);
+        stored.append(record);
+        assertEquals(1, journal.read().size());
+        assertEquals(2, attempts.get());
         bus.close();
     }
 

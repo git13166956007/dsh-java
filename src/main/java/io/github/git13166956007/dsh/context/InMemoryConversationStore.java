@@ -85,6 +85,7 @@ public final class InMemoryConversationStore implements ConversationStore {
             case SYSTEM -> null;
         };
         if (eventType != null) eventLog.append(conversationId, eventType, SessionEventCodec.message(objectMapper, message));
+        if (eventType == null) return;
         ConversationInfo current = infos.get(conversationId);
         infos.put(conversationId, new ConversationInfo(current.id(), current.title(), current.messageCount() + 1,
                 current.createdAt(), Instant.now()));

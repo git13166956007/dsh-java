@@ -65,6 +65,33 @@ public final class MariaDbMcpHealthStore implements McpHealthStore {
         }
     }
 
+    @Override
+    public void recordSuccess(String serverId, long latencyMs, Instant now) throws SQLException {
+        upsertCounter(serverId, true, latencyMs, null, now);
+    }
+
+    @Override
+    public void recordFailure(String serverId, long latencyMs, String error, Instant now) throws SQLException {
+        upsertCounter(serverId, false, latencyMs, error, now);
+    }
+
+    private void upsertCounter(String serverId, boolean success, long latencyMs, String error, Instant now)
+            throws SQLException {
+        String sql = success
+                ? "INSERT INTO dsh_mcp_health (server_id, status, success_count, failure_count, last_latency_ms, last_checked_at, last_connected_at, last_disconnected_at, last_error) VALUES (?, 'HEALTHY', 1, 0, ?, ?, ?, NULL, NULL) "
+                    + "ON DUPLICATE KEY UPDATE status='HEALTHY', success_count=success_count+1, last_latency_ms=VALUES(last_latency_ms), last_checked_at=VALUES(last_checked_at), last_connected_at=VALUES(last_connected_at), last_error=NULL"
+                : "INSERT INTO dsh_mcp_health (server_id, status, success_count, failure_count, last_latency_ms, last_checked_at, last_connected_at, last_disconnected_at, last_error) VALUES (?, 'UNHEALTHY', 0, 1, ?, ?, NULL, NULL, ?) "
+                    + "ON DUPLICATE KEY UPDATE status='UNHEALTHY', failure_count=failure_count+1, last_latency_ms=VALUES(last_latency_ms), last_checked_at=VALUES(last_checked_at), last_error=VALUES(last_error)";
+        try (Connection connection = connection(); PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, serverId);
+            statement.setLong(2, Math.max(0, latencyMs));
+            statement.setTimestamp(3, Timestamp.from(now));
+            if (success) statement.setTimestamp(4, Timestamp.from(now));
+            else statement.setString(4, error);
+            statement.executeUpdate();
+        }
+    }
+
     private void ensureSchema() {
         try (Connection connection = connection();
              PreparedStatement statement = connection.prepareStatement(

@@ -36,10 +36,18 @@ public final class Scope implements AutoCloseable {
 
     public Scope parent() { return parent; }
 
-    public synchronized <T> T resolve(ServiceKey<T> key) {
-        Object value = services.get(key);
-        if (value != null) return key.type().cast(value);
-        if (parent != null) return parent.resolve(key);
+    public <T> T resolve(ServiceKey<T> key) {
+        Scope current = this;
+        while (current != null) {
+            Object value;
+            Scope next;
+            synchronized (current) {
+                value = current.services.get(key);
+                next = current.parent;
+            }
+            if (value != null) return key.type().cast(value);
+            current = next;
+        }
         throw new IllegalStateException("missing service in scope " + id + ": " + key);
     }
 
@@ -83,9 +91,19 @@ public final class Scope implements AutoCloseable {
         return child;
     }
 
-    public synchronized RuntimeProfile profile() {
-        if (profile != null) return profile;
-        return parent == null ? null : parent.profile();
+    public RuntimeProfile profile() {
+        Scope current = this;
+        while (current != null) {
+            RuntimeProfile value;
+            Scope next;
+            synchronized (current) {
+                value = current.profile;
+                next = current.parent;
+            }
+            if (value != null) return value;
+            current = next;
+        }
+        return null;
     }
 
     public synchronized Scope withProfile(RuntimeProfile nextProfile) {

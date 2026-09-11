@@ -68,13 +68,15 @@ public final class EventBus implements AutoCloseable {
         CopyOnWriteArrayList<RegisteredHandler<?>> values = handlers.computeIfAbsent(
                 key, ignored -> new CopyOnWriteArrayList<RegisteredHandler<?>>());
         RegisteredHandler<T> registered = new RegisteredHandler<T>(options, handler);
-        values.add(registered);
-        List<RegisteredHandler<?>> ordered = new ArrayList<RegisteredHandler<?>>(values);
-        ordered.sort(Comparator.comparingInt((RegisteredHandler<?> value) -> value.options.priority()).reversed());
-        values.clear();
-        values.addAll(ordered);
+        synchronized (values) {
+            values.add(registered);
+            List<RegisteredHandler<?>> ordered = new ArrayList<RegisteredHandler<?>>(values);
+            ordered.sort(Comparator.comparingInt((RegisteredHandler<?> value) -> value.options.priority()).reversed());
+            values.clear();
+            values.addAll(ordered);
+        }
         return () -> {
-            values.remove(registered);
+            synchronized (values) { values.remove(registered); }
             if (values.isEmpty()) handlers.remove(key, values);
         };
     }
@@ -186,8 +188,20 @@ public final class EventBus implements AutoCloseable {
     }
 
     private void journal(EventRecord record) throws Exception {
-        if (journal != null) journal.append(new EventRecord(record.eventName(), redact(record.payload()),
-                redact(record.value()), record.accepted(), record.reason(), record.error(), record.occurredAt()));
+        if (journal == null) return;
+        EventRecord redacted = new EventRecord(record.id(), record.eventName(), redact(record.payload()),
+                redact(record.value()), record.accepted(), record.reason(), record.error(), record.occurredAt());
+        Exception failure = null;
+        for (int attempt = 0; attempt < 3; attempt++) {
+            try {
+                journal.append(redacted);
+                return;
+            } catch (Exception exception) {
+                failure = exception;
+                if (attempt < 2) Thread.sleep(25L * (attempt + 1));
+            }
+        }
+        throw failure;
     }
 
     private JsonNode redact(Object value) {

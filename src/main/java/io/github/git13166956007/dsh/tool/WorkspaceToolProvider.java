@@ -4,10 +4,13 @@ import io.github.git13166956007.dsh.workspace.WorkspaceProfile;
 import io.github.git13166956007.dsh.workspace.WorkspaceRegistry;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.OpenOption;
+import java.util.Set;
 import java.util.List;
 import java.util.Objects;
 import tools.jackson.databind.JsonNode;
@@ -86,7 +89,13 @@ public final class WorkspaceToolProvider {
         if (size > profile.maxReadBytes()) {
             throw new IllegalArgumentException("file exceeds maxReadBytes: " + profile.maxReadBytes());
         }
-        return Files.readString(file, StandardCharsets.UTF_8);
+        try (var input = Files.newInputStream(file, LinkOption.NOFOLLOW_LINKS)) {
+            byte[] bytes = input.readAllBytes();
+            if (bytes.length > profile.maxReadBytes()) {
+                throw new IllegalArgumentException("file exceeds maxReadBytes: " + profile.maxReadBytes());
+            }
+            return new String(bytes, StandardCharsets.UTF_8);
+        }
     }
 
     private String writeFile(JsonNode arguments) throws Exception {
@@ -102,8 +111,12 @@ public final class WorkspaceToolProvider {
         if (bytes.length > profile.maxWriteBytes()) {
             throw new IllegalArgumentException("content exceeds maxWriteBytes: " + profile.maxWriteBytes());
         }
-        Files.write(file, bytes, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING,
-                StandardOpenOption.WRITE);
+        Set<OpenOption> options = Set.of(StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING,
+                StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS);
+        try (var output = Files.newByteChannel(file, options)) {
+            ByteBuffer buffer = ByteBuffer.wrap(bytes);
+            while (buffer.hasRemaining()) output.write(buffer);
+        }
         ObjectNode result = objectMapper.createObjectNode();
         result.put("path", relative(profile, file));
         result.put("bytes", bytes.length);
