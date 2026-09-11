@@ -1,0 +1,25 @@
+src/main/java/io/github/git13166956007/dsh/run/InMemoryRunStore.java
+  s_5852756b2c42d3::t_394df543242c6e 40-51,58-64
+src/main/java/io/github/git13166956007/dsh/run/RunEventData.java
+  s_5852756b2c42d3::t_937612478746ab 5-8
+src/main/java/io/github/git13166956007/dsh/run/RunManager.java
+  s_5852756b2c42d3::t_46cf8e1708cf9c 32,37-39,43-45,49-51,63-67,74
+src/test/java/io/github/git13166956007/dsh/run/RunManagerTest.java
+  s_5852756b2c42d3::t_ebfc00e29f22de 65-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "daf5261bd66998e3ecc4995211ae1174e283d2cd",
+  "prompts": {},
+  "sessions": {
+    "s_5852756b2c42d3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a090b3-7667-76e3-a959-e6ac43873a12",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
