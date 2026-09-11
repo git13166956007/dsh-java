@@ -1,0 +1,18 @@
+src/main/java/io/github/git13166956007/dsh/agent/AgentLoop.java
+  h_eb697744b14c1b 826-827
+src/test/java/io/github/git13166956007/dsh/agent/AgentRuntimePluginTest.java
+  h_eb697744b14c1b 8,59-83
+src/test/java/io/github/git13166956007/dsh/event/EventBusTest.java
+  h_eb697744b14c1b 16-17,68-71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "061b63c4ed6b1128c8efa8b0309f0c35fd860d88",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
