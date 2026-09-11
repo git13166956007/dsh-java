@@ -1,0 +1,34 @@
+src/main/java/io/github/git13166956007/dsh/context/ContextManager.java
+  h_eb697744b14c1b 271
+src/main/java/io/github/git13166956007/dsh/context/ConversationStore.java
+  h_eb697744b14c1b 78-85
+src/main/java/io/github/git13166956007/dsh/context/InMemoryConversationStore.java
+  h_eb697744b14c1b 126,133-143
+src/main/java/io/github/git13166956007/dsh/context/MariaDbConversationStore.java
+  h_eb697744b14c1b 238-267
+src/main/java/io/github/git13166956007/dsh/event/InMemoryEventJournal.java
+  h_eb697744b14c1b 7,14-21,28-36
+src/main/java/io/github/git13166956007/dsh/event/MariaDbEventJournal.java
+  h_eb697744b14c1b 44-48,77-109
+src/main/java/io/github/git13166956007/dsh/plan/PlanExecutor.java
+  h_eb697744b14c1b 186-187
+src/main/java/io/github/git13166956007/dsh/session/event/MariaDbSessionEventLog.java
+  h_eb697744b14c1b 137-142,144-146
+src/test/java/io/github/git13166956007/dsh/context/InMemoryConversationStoreTest.java
+  h_eb697744b14c1b 117-126
+src/test/java/io/github/git13166956007/dsh/context/MariaDbConversationStoreIntegrationTest.java
+  h_eb697744b14c1b 155-189
+src/test/java/io/github/git13166956007/dsh/event/EventBusTest.java
+  h_eb697744b14c1b 158-172
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "245855b22d712ee9f3018aff13b6e10d6f67e7a0",
+  "prompts": {},
+  "humans": {
+    "h_eb697744b14c1b": {
+      "author": "sherlock <sherlock09271207@gmail.com>"
+    }
+  }
+}
