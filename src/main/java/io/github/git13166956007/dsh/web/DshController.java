@@ -825,12 +825,19 @@ public final class DshController {
     }
 
     @GetMapping("/conversations/{id}/messages")
-    public java.util.List<ChatMessage> replayConversation(@PathVariable String id) throws Exception {
+    public java.util.List<ConversationMessageResponse> replayConversation(@PathVariable String id) throws Exception {
         try {
-            return contextManager.replay(id);
+            return contextManager.replay(id).stream().map(DshController::conversationMessage).toList();
         } catch (IllegalArgumentException exception) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, exception.getMessage(), exception);
         }
+    }
+
+    private static ConversationMessageResponse conversationMessage(ChatMessage message) {
+        return new ConversationMessageResponse(message.role().value(), message.content(), message.reasoningContent(),
+                message.toolCallId(), message.toolCalls().stream()
+                        .map(call -> new ToolCallResponse(call.id(), call.name(), call.arguments()))
+                        .toList());
     }
 
     @GetMapping("/conversations/{id}/search")
@@ -1442,6 +1449,13 @@ public final class DshController {
                                java.util.List<io.github.git13166956007.dsh.agent.AgentTraceEvent> trace,
                                int turns, String runId,
                                io.github.git13166956007.dsh.agent.PendingToolApproval pendingApproval) {
+    }
+
+    public record ConversationMessageResponse(String role, String content, String reasoningContent,
+                                              String toolCallId, java.util.List<ToolCallResponse> toolCalls) {
+    }
+
+    public record ToolCallResponse(String id, String name, tools.jackson.databind.JsonNode arguments) {
     }
 
     public record StreamResponse(String conversationId, String answer,

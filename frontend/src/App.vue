@@ -2059,13 +2059,32 @@ function clearConversation() {
 }
 
 function replayMessageList(items) {
-  return (items || []).map((item) => {
+  const toolCalls = new Map()
+  for (const item of items || []) {
+    for (const call of item.toolCalls || []) {
+      if (call?.id) toolCalls.set(call.id, call)
+    }
+  }
+
+  return (items || []).flatMap((item) => {
     const role = String(item.role || '').toLowerCase()
     if (role === 'tool') {
-      return { role: 'tool', id: item.toolCallId || null, name: 'tool', arguments: null, result: item.content || '', state: 'complete', runId: null }
+      const call = toolCalls.get(item.toolCallId)
+      return [{
+        role: 'tool',
+        id: item.toolCallId || null,
+        name: call?.name || 'tool',
+        arguments: call?.arguments || null,
+        result: item.content || '',
+        state: 'complete',
+        runId: null
+      }]
     }
-    if (role === 'user') return { role: 'user', content: item.content || '' }
-    return { role: 'assistant', content: item.content || '', reasoningContent: item.reasoningContent || '' }
+    if (role === 'user') return [{ role: 'user', content: item.content || '' }]
+    if (role === 'assistant' && (item.content || item.reasoningContent)) {
+      return [{ role: 'assistant', content: item.content || '', reasoningContent: item.reasoningContent || '' }]
+    }
+    return []
   })
 }
 
